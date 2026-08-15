@@ -5,7 +5,9 @@ import { TaskRunner } from './TaskRunner.js';
 import { SelectModules } from './SelectModules.js';
 import { StatusDashboard } from './StatusDashboard.js';
 import { ThreatSimView } from './ThreatSimView.js';
+import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
+import { logger } from '../utils/logger.js';
 
 import { checkPrereqs } from '../engine/prereqs.js';
 import { setupCertificates, checkCertificates } from '../engine/certs.js';
@@ -41,26 +43,98 @@ const AppContent = ({
   const [fatalError, setFatalError] = useState(null);
   const [isDone, setIsDone] = useState(false);
 
-  // Keyboard navigation / shortcuts
+  // Log application startup
+  useEffect(() => {
+    logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, nonInteractive=${nonInteractive}`);
+  }, []);
+
+  // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
     if (viewState === 'SELECT_MODULES') return;
 
-    // Shortcut: 't' or 'T' triggers threat-sim from DASHBOARD or other views
-    if (input === 't' || input === 'T') {
+    // In-flight active task: only allow exit/abort
+    const isRunning = viewState === 'RUNNING' && !isDone;
+    logger.debug('UI:KEY', `Key received: input="${input}", isRunning=${isRunning}, viewState=${viewState}, isDone=${isDone}`);
+
+    if (isRunning) {
+      if (key.escape || input === 'q' || input === 'Q') {
+        logger.info('UI:ABORT', 'User requested abort during running task');
+        exit();
+      }
+      return;
+    }
+
+    const keyChar = (input || '').toLowerCase();
+
+    // Trigger Up Workflow
+    if (keyChar === 'u') {
+      logger.info('UI:ACTION', 'User pressed [u] -> Starting UP workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runUpWorkflow(chosenModules);
+      return;
+    }
+
+    // Trigger Down (Teardown) Workflow
+    if (keyChar === 'd') {
+      logger.info('UI:ACTION', 'User pressed [d] -> Starting DOWN workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runDownWorkflow();
+      return;
+    }
+
+    // Trigger Status Dashboard Workflow
+    if (keyChar === 's') {
+      logger.info('UI:ACTION', 'User pressed [s] -> Starting STATUS workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runStatusWorkflow();
+      return;
+    }
+
+    // Trigger Threat Simulation
+    if (keyChar === 't') {
+      logger.info('UI:ACTION', 'User pressed [t] -> Switching to THREAT_SIM view');
+      setFatalError(null);
       setViewState('THREAT_SIM');
       return;
     }
 
-    // Shortcut: 's' or 'S' returns to Status Dashboard
-    if ((input === 's' || input === 'S') && viewState === 'THREAT_SIM' && dashboardData) {
-      setViewState('DASHBOARD');
+    // Trigger Hosts (DNS) Workflow
+    if (keyChar === 'h') {
+      logger.info('UI:ACTION', 'User pressed [h] -> Starting HOSTR workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runHostsWorkflow();
       return;
     }
 
-    if (key.escape || input === 'q' || (isDone && key.return)) {
+    // Trigger Values (Helm) Workflow
+    if (keyChar === 'v') {
+      logger.info('UI:ACTION', 'User pressed [v] -> Starting VALUES workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runValuesWorkflow();
+      return;
+    }
+
+    // Trigger Modules List Workflow
+    if (keyChar === 'm') {
+      logger.info('UI:ACTION', 'User pressed [m] -> Starting MODULES workflow');
+      setFatalError(null);
+      setIsDone(false);
+      runModulesWorkflow();
+      return;
+    }
+
+    // Exit / Return to Dashboard
+    if (keyChar === 'q' || key.escape || (isDone && key.return)) {
       if (viewState === 'THREAT_SIM' && dashboardData) {
+        logger.info('UI:ACTION', 'User pressed [q/Esc] from THREAT_SIM -> Returning to DASHBOARD');
         setViewState('DASHBOARD');
       } else {
+        logger.info('UI:ACTION', 'User pressed [q/Esc/Enter] -> Exiting');
         exit();
       }
     }
@@ -74,10 +148,13 @@ const AppContent = ({
   }, [nonInteractive, isDone]);
 
   const addLog = (message) => {
-    setLogs((prev) => [...prev, typeof message === 'string' ? message : JSON.stringify(message)]);
+    const text = typeof message === 'string' ? message : JSON.stringify(message);
+    logger.debug('TASK:LOG', text);
+    setLogs((prev) => [...prev, text]);
   };
 
   const updateTask = (id, updates) => {
+    logger.debug('TASK:UPDATE', `Task '${id}' -> ${JSON.stringify(updates)}`);
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
@@ -87,7 +164,11 @@ const AppContent = ({
   // Command: UP
   // -------------------------------------------------------------
   const runUpWorkflow = async (modulesToInstall) => {
+    logger.info('WORKFLOW:UP', `Starting UP workflow with modules: ${JSON.stringify(modulesToInstall)}`);
     setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     const initialTasks = [
       { id: 'prereqs', label: 'Verify system prerequisites (Docker, k3d, mkcert, kubectl, Helm)', status: 'pending' },
       { id: 'certs', label: `Generate local TLS certificates for ${domain} (*.${domain})`, status: 'pending' },
@@ -200,6 +281,11 @@ const AppContent = ({
   // Command: DOWN
   // -------------------------------------------------------------
   const runDownWorkflow = async () => {
+    logger.info('WORKFLOW:DOWN', `Starting DOWN teardown workflow for cluster '${clusterName}'`);
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     setTasks([
       { id: 'down', label: `Tearing down k3d cluster '${clusterName}'`, status: 'running' },
       { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' }
@@ -239,6 +325,11 @@ const AppContent = ({
   // Command: STATUS
   // -------------------------------------------------------------
   const runStatusWorkflow = async () => {
+    logger.info('WORKFLOW:STATUS', `Starting STATUS workflow for domain '${domain}'`);
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     setTasks([
       { id: 'status', label: 'Inspecting local environment status', status: 'running' }
     ]);
@@ -280,6 +371,11 @@ const AppContent = ({
   // Command: MODULES
   // -------------------------------------------------------------
   const runModulesWorkflow = async () => {
+    logger.info('WORKFLOW:MODULES', 'Starting MODULES workflow');
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     setTasks([
       { id: 'modules', label: 'Listing available security modules', status: 'running' }
     ]);
@@ -313,9 +409,14 @@ const AppContent = ({
   // Command: HOSTR / HOSTS
   // -------------------------------------------------------------
   const runHostsWorkflow = async () => {
+    logger.info('WORKFLOW:HOSTR', `Starting HOSTR workflow (action=${hostsAction}, domain=${domain})`);
     const isCheck = hostsAction === 'check';
     const isRemove = hostsAction === 'remove';
 
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     setTasks([
       {
         id: 'hosts',
@@ -373,6 +474,11 @@ const AppContent = ({
   // Command: VALUES / CONFIG
   // -------------------------------------------------------------
   const runValuesWorkflow = async () => {
+    logger.info('WORKFLOW:VALUES', `Starting VALUES workflow (subCommand=${subCommand})`);
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
     setTasks([
       { id: 'values', label: 'Manage customizable Helm chart values.yaml configurations', status: 'running' }
     ]);
@@ -569,36 +675,12 @@ const AppContent = ({
     // Toast Notification Banner
     React.createElement(ToastBanner, { toast: copiedToast }),
 
-    // Exit Hint Footer & Click-to-copy tip
+    // Persistent Action Menu Bar (available at all times in interactive mode)
     !nonInteractive
-      ? React.createElement(
-          Box,
-          { marginTop: 1, justifyContent: 'space-between' },
-          React.createElement(
-            Box,
-            null,
-            React.createElement(
-              Text,
-              { color: 'yellow', bold: true },
-              '[t] '
-            ),
-            React.createElement(
-              Text,
-              { color: 'white' },
-              'Threat Sim  '
-            ),
-            React.createElement(
-              Text,
-              { color: 'gray', dimColor: true },
-              isDone ? '| [q]/[Esc] Exit' : '| [Ctrl+C] Abort'
-            )
-          ),
-          React.createElement(
-            Text,
-            { color: 'cyan', dimColor: true },
-            '🖱️  Click pane or press [1-6] to copy'
-          )
-        )
+      ? React.createElement(MenuBar, {
+          isRunning: viewState === 'RUNNING' && !isDone,
+          activeView: viewState
+        })
       : null
   );
 };

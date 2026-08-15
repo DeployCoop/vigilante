@@ -1,20 +1,24 @@
 import { execa } from 'execa';
+import { logger } from './logger.js';
 
 /**
  * Execute a command with options and formatted errors
  */
 export async function exec(file, args = [], options = {}) {
+  const commandStr = [file, ...args].join(' ');
+  logger.debug('EXEC', `Running: ${commandStr}`);
   try {
     const result = await execa(file, args, {
       ...options,
       all: true
     });
+    logger.debug('EXEC:DONE', `Command succeeded: ${commandStr}`);
     return result;
   } catch (error) {
-    const commandStr = [file, ...args].join(' ');
     const enhancedError = new Error(`Command failed: ${commandStr}\n${error.stderr || error.stdout || error.message}`);
     enhancedError.exitCode = error.exitCode;
     enhancedError.originalError = error;
+    logger.error('EXEC:FAIL', `Command failed: ${commandStr}`, enhancedError);
     throw enhancedError;
   }
 }
@@ -23,6 +27,8 @@ export async function exec(file, args = [], options = {}) {
  * Execute a command with line-by-line output streaming
  */
 export async function execStream(file, args = [], { onLog, ...options } = {}) {
+  const commandStr = [file, ...args].join(' ');
+  logger.debug('EXEC:STREAM', `Starting stream: ${commandStr}`);
   try {
     const subprocess = execa(file, args, {
       ...options,
@@ -37,6 +43,7 @@ export async function execStream(file, args = [], { onLog, ...options } = {}) {
           for (const line of lines) {
             const cleanLine = line.trim();
             if (cleanLine) {
+              logger.debug('EXEC:OUTPUT', cleanLine);
               onLog(cleanLine);
             }
           }
@@ -44,13 +51,15 @@ export async function execStream(file, args = [], { onLog, ...options } = {}) {
       });
     }
 
-    return await subprocess;
+    const res = await subprocess;
+    logger.debug('EXEC:STREAM:DONE', `Stream completed: ${commandStr}`);
+    return res;
   } catch (error) {
-    const commandStr = [file, ...args].join(' ');
     const detail = error.stderr || error.stdout || error.all || error.shortMessage || error.message;
     const enhancedError = new Error(`Command failed: ${commandStr}\n${detail}`);
     enhancedError.exitCode = error.exitCode;
     enhancedError.originalError = error;
+    logger.error('EXEC:STREAM:FAIL', `Stream failed: ${commandStr}`, enhancedError);
     throw enhancedError;
   }
 }

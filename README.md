@@ -125,6 +125,24 @@ vigilante down
 
 ---
 
+## 🎮 Interactive Keyboard Action Menu
+
+In interactive mode, Vigilante provides a persistent action menu allowing you to navigate between operations instantly at any time:
+
+| Key | Action | Description |
+|---|---|---|
+| `[u]` / `[U]` | **Up (Deploy)** | Provision k3d cluster, certificates, and security modules |
+| `[d]` / `[D]` | **Down (Teardown)** | Tear down k3d cluster and clean up `/etc/hosts` |
+| `[s]` / `[S]` | **Status** | View live environment health, prerequisites, and endpoints |
+| `[t]` / `[T]` | **Threat-Sim** | Trigger network threat simulations against SIEM |
+| `[h]` / `[H]` | **Hostr** | Synchronize domain mappings in `/etc/hosts` |
+| `[v]` / `[V]` | **Values** | Inspect and manage Helm chart configurations |
+| `[m]` / `[M]` | **Modules** | View available security packages |
+| `[1-6]` / 🖱️ | **Copy Pane** | Copy individual pane text / URL to system clipboard |
+| `[q]` / `[Esc]` | **Quit** | Exit the CLI application |
+
+---
+
 ## ⚙️ Customizing Helm Chart Values (`values.yaml`)
 
 Vigilante allows you to customize the underlying Helm charts for each security module without modifying source code.
@@ -195,6 +213,25 @@ Register new modules in `src/modules/registry.js` to expose them across the CLI 
 
 ---
 
+## 📋 Debug Logging (`/tmp/.vigilante.log`)
+
+Vigilante includes a persistent, low-overhead debug file logger that records real-time lifecycle events to `/tmp/.vigilante.log`:
+
+- **Recorded Information**:
+  - Application startup arguments, active flags, and runtime mode.
+  - Interactive keyboard inputs and workflow navigation triggers.
+  - Subprocess shell execution (`exec` / `execStream`), commands executed, and output streams.
+  - Kubernetes / Helm / k3d task state transitions.
+  - Detailed error messages and full stack traces.
+
+### Live Log Streaming
+To monitor or debug operations in real-time, open a secondary terminal and run:
+```bash
+tail -f /tmp/.vigilante.log
+```
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -206,27 +243,37 @@ vigilante/
 │   ├── engine/
 │   │   ├── prereqs.js            # Tooling verification (docker, k3d, mkcert, kubectl, helm)
 │   │   ├── certs.js              # mkcert CA & TLS certificates manager
-│   │   └── cluster.js            # k3d cluster lifecycle provisioner
+│   │   ├── cluster.js            # k3d cluster lifecycle provisioner
+│   │   ├── hosts.js              # /etc/hosts domain resolution sync & cleanup (hostr)
+│   │   └── helm.js               # Dynamic Helm values resolver, renderer & exporter
 │   ├── modules/
 │   │   ├── base.js               # Abstract BaseModule contract
 │   │   ├── registry.js           # Module registry & dependency resolver
 │   │   └── vigil-soc/            # Package 1: OpenSearch SIEM & Threat Ingestion Pipeline
 │   │       ├── index.js          # VigilSOCModule lifecycle implementation
-│   │       ├── values.yaml       # OpenSearch & Dashboards Helm values
+│   │       ├── values/           # Default Helm chart templates
+│   │       │   ├── opensearch.yaml
+│   │       │   └── opensearch-dashboards.yaml
 │   │       └── manifests/
 │   │           ├── network-threat-pipeline.yaml  # SIGMA threat detection rules
 │   │           └── threat-simulator.yaml        # Network threat event generator Job
 │   ├── ui/                       # React & Ink UI Components
-│   │   ├── App.js                # Master terminal view controller
+│   │   ├── App.js                # Master terminal view controller & router
 │   │   ├── Header.js             # Terminal banner & ASCII styling
+│   │   ├── MenuBar.js            # Persistent interactive keyboard action menu
 │   │   ├── TaskRunner.js         # Animated task spinner & log viewer
 │   │   ├── SelectModules.js      # Interactive keyboard package selector
 │   │   ├── StatusDashboard.js    # Comprehensive diagnostics dashboard
-│   │   └── ThreatSimView.js      # Network threat simulation runner
+│   │   ├── ThreatSimView.js      # Network threat simulation runner
+│   │   └── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
 │   └── utils/
-│       ├── exec.js               # Subprocess execution & streaming
-│       └── logger.js             # Event-based log streaming
-├── design.md                     # Architectural planning document
+│       ├── exec.js               # Subprocess execution & streaming with debug logging
+│       ├── clipboard.js          # Multi-platform clipboard copy utility (OSC 52, Wayland, X11, macOS)
+│       └── logger.js             # Centralized debug file logger (/tmp/.vigilante.log)
+├── tests/
+│   ├── test-values.js            # Unit test suite for Helm values engine & template rendering
+│   └── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
+├── values/                       # Exported starter & custom user Helm values overrides
 ├── package.json
 └── README.md
 ```

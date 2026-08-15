@@ -1,45 +1,48 @@
-import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
-export class Logger extends EventEmitter {
-  constructor() {
-    super();
-    this.logs = [];
-  }
+const LOG_FILE_PATH = path.join(os.tmpdir(), '.vigilante.log');
 
-  log(message, type = 'info') {
-    const entry = {
-      timestamp: new Date(),
-      message,
-      type
-    };
-    this.logs.push(entry);
-    this.emit('log', entry);
-  }
+/**
+ * Append a formatted log entry to /tmp/.vigilante.log
+ * @param {string} level - 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
+ * @param {string} tag - Component or action tag, e.g. 'UI:KEY' or 'CLUSTER'
+ * @param {string} message - Primary log text
+ * @param {any} [details] - Optional extra metadata or error object
+ */
+export function writeDebugLog(level, tag, message, details = null) {
+  try {
+    const timestamp = new Date().toISOString();
+    let entry = `[${timestamp}] [${level.padEnd(5)}] [${tag}] ${message}`;
 
-  info(message) {
-    this.log(message, 'info');
-  }
+    if (details !== null && details !== undefined) {
+      if (details instanceof Error) {
+        entry += `\n  Stack: ${details.stack || details.message}`;
+      } else if (typeof details === 'object') {
+        try {
+          entry += `\n  Data: ${JSON.stringify(details)}`;
+        } catch {
+          entry += `\n  Data: [Circular or unstringifiable object]`;
+        }
+      } else {
+        entry += `\n  Details: ${details}`;
+      }
+    }
 
-  success(message) {
-    this.log(message, 'success');
-  }
+    entry += '\n';
 
-  warn(message) {
-    this.log(message, 'warn');
-  }
-
-  error(message) {
-    this.log(message, 'error');
-  }
-
-  getLogs() {
-    return this.logs;
-  }
-
-  clear() {
-    this.logs = [];
-    this.emit('clear');
+    // Synchronous append so logs are never lost on immediate exit or crash
+    fs.appendFileSync(LOG_FILE_PATH, entry, 'utf8');
+  } catch {
+    // Fail-safe: silently continue if logging fails
   }
 }
 
-export const globalLogger = new Logger();
+export const logger = {
+  debug: (tag, message, details) => writeDebugLog('DEBUG', tag, message, details),
+  info: (tag, message, details) => writeDebugLog('INFO', tag, message, details),
+  warn: (tag, message, details) => writeDebugLog('WARN', tag, message, details),
+  error: (tag, message, details) => writeDebugLog('ERROR', tag, message, details),
+  getLogPath: () => LOG_FILE_PATH
+};
