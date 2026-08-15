@@ -41,10 +41,26 @@ const AppContent = ({
   const [fatalError, setFatalError] = useState(null);
   const [isDone, setIsDone] = useState(false);
 
-  // Keyboard navigation / exit
+  // Keyboard navigation / shortcuts
   useInput((input, key) => {
-    if (viewState !== 'SELECT_MODULES') {
-      if (key.escape || input === 'q' || (isDone && key.return)) {
+    if (viewState === 'SELECT_MODULES') return;
+
+    // Shortcut: 't' or 'T' triggers threat-sim from DASHBOARD or other views
+    if (input === 't' || input === 'T') {
+      setViewState('THREAT_SIM');
+      return;
+    }
+
+    // Shortcut: 's' or 'S' returns to Status Dashboard
+    if ((input === 's' || input === 'S') && viewState === 'THREAT_SIM' && dashboardData) {
+      setViewState('DASHBOARD');
+      return;
+    }
+
+    if (key.escape || input === 'q' || (isDone && key.return)) {
+      if (viewState === 'THREAT_SIM' && dashboardData) {
+        setViewState('DASHBOARD');
+      } else {
         exit();
       }
     }
@@ -152,9 +168,28 @@ const AppContent = ({
         updateTask(taskId, { status: 'done' });
       }
 
-      addLog('All components provisioned successfully!');
+      addLog('All components provisioned successfully! Loading environment status...');
+      const prereqs = await checkPrereqs();
+      const cluster = await getClusterInfo(clusterName);
+      const hosts = await checkHosts({ domain, ip });
+      const allModules = globalModuleRegistry.getAll();
+      const modulesStatus = await Promise.all(
+        allModules.map(async (m) => {
+          return await m.status({ domain, clusterName });
+        })
+      );
+
+      setDashboardData({
+        prereqs,
+        cluster,
+        certs,
+        hosts,
+        modules: modulesStatus,
+        domain
+      });
+
       setIsDone(true);
-      setViewState('SUCCESS');
+      setViewState('DASHBOARD');
     } catch (err) {
       setFatalError(err.message);
       setIsDone(true);
@@ -539,13 +574,29 @@ const AppContent = ({
       ? React.createElement(
           Box,
           { marginTop: 1, justifyContent: 'space-between' },
-          isDone
-            ? React.createElement(Text, { color: 'gray', dimColor: true }, 'Press [q], [Esc], or [Enter] to exit.')
-            : React.createElement(Text, { color: 'gray', dimColor: true }, 'Press [Ctrl+C] to abort.'),
+          React.createElement(
+            Box,
+            null,
+            React.createElement(
+              Text,
+              { color: 'yellow', bold: true },
+              '[t] '
+            ),
+            React.createElement(
+              Text,
+              { color: 'white' },
+              'Threat Sim  '
+            ),
+            React.createElement(
+              Text,
+              { color: 'gray', dimColor: true },
+              isDone ? '| [q]/[Esc] Exit' : '| [Ctrl+C] Abort'
+            )
+          ),
           React.createElement(
             Text,
             { color: 'cyan', dimColor: true },
-            '🖱️  Click any pane to copy to clipboard'
+            '🖱️  Click pane or press [1-6] to copy'
           )
         )
       : null

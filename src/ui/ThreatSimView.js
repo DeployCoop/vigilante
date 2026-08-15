@@ -83,6 +83,15 @@ export const ThreatSimView = ({ domain = 'vigilante.local', onDone }) => {
             Text,
             { color: 'cyan', marginTop: 1 },
             `View alert detections in SIEM Dashboard: https://siem.${domain}`
+          ),
+          React.createElement(
+            Box,
+            { marginTop: 1 },
+            React.createElement(
+              Text,
+              { color: 'yellow', bold: true },
+              '⚡ Press [s] or [Esc] to return to Status Dashboard | [q] to exit'
+            )
           )
         )
       : null,

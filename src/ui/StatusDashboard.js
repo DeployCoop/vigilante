@@ -339,6 +339,15 @@ export const StatusDashboard = ({
               ? `✔ Local DNS mapped: ${hosts.ip} siem.${domain}`
               : `💡 Note: Run 'vigilante hostr' or ensure /etc/hosts includes: 127.0.0.1 siem.${domain}`
           )
+        ),
+        React.createElement(
+          Box,
+          { marginTop: 1 },
+          React.createElement(
+            Text,
+            { color: 'magenta', bold: true },
+            '⚡ Press [t] to trigger Threat Simulation and validate SIEM alert detections'
+          )
         )
       )
     )
