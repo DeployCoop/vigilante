@@ -14,7 +14,7 @@
     "hostr": "node ./bin/vigilante.js hostr",
     "values": "node ./bin/vigilante.js values",
     "config": "node ./bin/vigilante.js config",
-    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-clipboard.js"
+    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-clipboard.js"
   },
   "packageManager": "pnpm@11.12.0",
   "dependencies": {

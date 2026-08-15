@@ -6,6 +6,7 @@ import { SelectModules } from './SelectModules.js';
 import { StatusDashboard } from './StatusDashboard.js';
 import { ThreatSimView } from './ThreatSimView.js';
 import { ValuesView } from './ValuesView.js';
+import { ModulesView } from './ModulesView.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { logger } from '../utils/logger.js';
@@ -51,7 +52,7 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
-    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES') return;
+    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES') return;
 
     // In-flight active task: only allow exit/abort
     const isRunning = viewState === 'RUNNING' && !isDone;
@@ -121,10 +122,9 @@ const AppContent = ({
 
     // Trigger Modules List Workflow
     if (keyChar === 'm') {
-      logger.info('UI:ACTION', 'User pressed [m] -> Starting MODULES workflow');
+      logger.info('UI:ACTION', 'User pressed [m] -> Switching to MODULES view');
       setFatalError(null);
-      setIsDone(false);
-      runModulesWorkflow();
+      setViewState('MODULES');
       return;
     }
 
@@ -368,7 +368,116 @@ const AppContent = ({
   };
 
   // -------------------------------------------------------------
-  // Command: MODULES
+  // Command: APPLY MODULES (Incremental Install / Uninstall)
+  // -------------------------------------------------------------
+  const runApplyModulesWorkflow = async ({ enabledIds, toInstall = [], toUninstall = [] }) => {
+    logger.info('WORKFLOW:APPLY_MODULES', `Applying module changes: toInstall=[${toInstall.join(', ')}], toUninstall=[${toUninstall.join(', ')}]`);
+    setViewState('RUNNING');
+    setLogs([]);
+    setFatalError(null);
+    setIsDone(false);
+
+    const taskList = [];
+    for (const id of toUninstall) {
+      const mod = globalModuleRegistry.get(id);
+      taskList.push({
+        id: `uninst-${id}`,
+        label: `Uninstall package: ${mod ? mod.name : id}`,
+        status: 'pending'
+      });
+    }
+    for (const id of toInstall) {
+      const mod = globalModuleRegistry.get(id);
+      taskList.push({
+        id: `inst-${id}`,
+        label: `Deploy package: ${mod ? mod.name : id}`,
+        status: 'pending'
+      });
+    }
+
+    setTasks(taskList);
+
+    try {
+      // 1. Uninstall disabled modules
+      for (const id of toUninstall) {
+        const mod = globalModuleRegistry.get(id);
+        if (mod) {
+          updateTask(`uninst-${id}`, { status: 'running' });
+          addLog(`Uninstalling module '${mod.name}'...`);
+          await mod.uninstall({
+            clusterName,
+            onLog: (msg) => addLog(msg)
+          });
+          updateTask(`uninst-${id}`, { status: 'done' });
+        }
+      }
+
+      // 2. Setup certs if needed for new installs
+      let certs = null;
+      if (toInstall.length > 0) {
+        certs = await setupCertificates(domain);
+      }
+
+      // 3. Install newly enabled modules in dependency order
+      const resolved = globalModuleRegistry.resolveModules(toInstall);
+      for (const mod of resolved) {
+        if (toInstall.includes(mod.id)) {
+          const taskId = `inst-${mod.id}`;
+          updateTask(taskId, { status: 'running' });
+          addLog(`Deploying security module '${mod.name}'...`);
+          await mod.install({
+            domain,
+            certPath: certs?.certPath,
+            keyPath: certs?.keyPath,
+            clusterName,
+            onLog: (msg) => addLog(msg),
+            options: {
+              customValuesPath,
+              customValuesDir
+            }
+          });
+          updateTask(taskId, { status: 'done' });
+        }
+      }
+
+      setChosenModules(enabledIds);
+
+      // Refresh status dashboard data
+      addLog('Refreshing environment status...');
+      const allModules = globalModuleRegistry.getAll();
+      const modulesStatus = await Promise.all(
+        allModules.map(async (m) => {
+          const st = await m.status({ domain, clusterName });
+          const endpoints = await m.getEndpoints({ domain });
+          return { ...st, endpoints };
+        })
+      );
+
+      const clusterInfo = await getClusterInfo(clusterName);
+      const hostsInfo = await checkHosts({ domain, ip });
+      const certsInfo = await checkCertificates(domain);
+      const prereqs = await checkPrereqs();
+
+      setDashboardData({
+        cluster: clusterInfo,
+        hosts: hostsInfo,
+        certs: certsInfo,
+        prereqs,
+        modules: modulesStatus,
+        domain
+      });
+
+      setIsDone(true);
+      setViewState('DASHBOARD');
+    } catch (err) {
+      logger.error('WORKFLOW:APPLY_MODULES:ERROR', err.message, err);
+      setFatalError(err.message);
+      setIsDone(true);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Command: MODULES (Non-interactive status report)
   // -------------------------------------------------------------
   const runModulesWorkflow = async () => {
     logger.info('WORKFLOW:MODULES', 'Starting MODULES workflow');
@@ -396,7 +505,7 @@ const AppContent = ({
       });
 
       updateTask('modules', { status: 'done' });
-      setViewState('MODULES_LIST');
+      setViewState('MODULES');
       setIsDone(true);
     } catch (err) {
       updateTask('modules', { status: 'error', error: err.message });
@@ -526,7 +635,11 @@ const AppContent = ({
     } else if (command === 'status') {
       runStatusWorkflow();
     } else if (command === 'modules') {
-      runModulesWorkflow();
+      if (nonInteractive) {
+        runModulesWorkflow();
+      } else {
+        setViewState('MODULES');
+      }
     } else if (command === 'threat-sim') {
       setViewState('THREAT_SIM');
     } else if (command === 'hosts' || command === 'hostr') {
@@ -579,34 +692,43 @@ const AppContent = ({
       ? React.createElement(StatusDashboard, dashboardData)
       : null,
 
-    // State 5: Modules List View
-    viewState === 'MODULES_LIST' && dashboardData
-      ? React.createElement(
-          Box,
-          { flexDirection: 'column', borderStyle: 'round', borderColor: 'cyan', padding: 1 },
-          React.createElement(Text, { bold: true, color: 'cyan' }, '📦 Available Security Packages:'),
-          dashboardData.modules.map(mod =>
-            React.createElement(
-              Box,
-              { key: mod.id, flexDirection: 'column', marginY: 1 },
-              React.createElement(
-                Box,
-                null,
-                React.createElement(Text, { bold: true, color: 'yellow' }, `• ${mod.name}`),
-                React.createElement(
-                  Text,
-                  { color: mod.installed ? 'green' : 'gray' },
-                  ` [${mod.status}]`
-                )
-              ),
-              React.createElement(
-                Text,
-                { color: 'gray', marginLeft: 2 },
-                `Endpoints: ${mod.endpoints?.map(e => e.url).join(', ') || 'None'}`
-              )
-            )
-          )
-        )
+    // State 5: Interactive Modules Manager View
+    viewState === 'MODULES'
+      ? React.createElement(ModulesView, {
+          domain,
+          clusterName,
+          initialSelected: chosenModules,
+          onApply: ({ enabledIds, toInstall, toUninstall, hasPendingChanges }) => {
+            if (hasPendingChanges) {
+              runApplyModulesWorkflow({ enabledIds, toInstall, toUninstall });
+            } else {
+              runUpWorkflow(enabledIds);
+            }
+          },
+          onNavigate: (target, customPayload) => {
+            if (target === 'up') {
+              runUpWorkflow(customPayload || chosenModules);
+            } else if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'values') {
+              setViewState('VALUES');
+            } else if (target === 'down') {
+              runDownWorkflow();
+            } else if (target === 'threat-sim') {
+              setViewState('THREAT_SIM');
+            } else if (target === 'hostr') {
+              runHostsWorkflow();
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
       : null,
 
     // State 6: Values & Chart Configuration Manager
