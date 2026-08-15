@@ -111,7 +111,22 @@ export async function resolveChartValuesArgs({
     try {
       await fs.access(candidate);
       if (onLog) onLog(`[helm] Applying custom values override: ${path.relative(cwd, candidate)}`);
-      args.push('-f', candidate);
+
+      // Always render user custom file as well to resolve any {{DOMAIN}}, {{TLS_SECRET}}, etc.
+      const rawUserContent = await fs.readFile(candidate, 'utf8');
+      const renderedUserContent = renderTemplate(rawUserContent, {
+        domain,
+        tlsSecretName,
+        namespace,
+        clusterName
+      });
+
+      const tempDir = path.join(os.tmpdir(), 'vigilante-helm-values');
+      await fs.mkdir(tempDir, { recursive: true });
+      const userRenderedFilePath = path.join(tempDir, `${moduleId}-${chartName}-user-rendered.yaml`);
+      await fs.writeFile(userRenderedFilePath, renderedUserContent, 'utf8');
+
+      args.push('-f', userRenderedFilePath);
       appliedCustom = true;
       break;
     } catch {
@@ -127,12 +142,16 @@ export async function resolveChartValuesArgs({
  * @param {Object} options
  * @param {string} [options.moduleId] - Optional specific module to export
  * @param {string} [options.targetDir='./values'] - Destination directory
+ * @param {string} [options.domain='vigilante.local']
+ * @param {string} [options.clusterName='vigilante-dev']
  * @param {Function} [options.onLog]
  * @returns {Promise<Array<{ moduleId: string, chartName: string, destPath: string }>>}
  */
 export async function exportStarterValues({
   moduleId = null,
   targetDir = './values',
+  domain = 'vigilante.local',
+  clusterName = 'vigilante-dev',
   onLog = null
 } = {}) {
   const cwd = process.cwd();
@@ -157,7 +176,15 @@ export async function exportStarterValues({
         await fs.mkdir(modDestDir, { recursive: true });
         const destPath = path.join(modDestDir, file);
 
-        await fs.copyFile(srcPath, destPath);
+        const rawContent = await fs.readFile(srcPath, 'utf8');
+        const rendered = renderTemplate(rawContent, {
+          domain,
+          tlsSecretName: `${mod}-tls`,
+          namespace: mod,
+          clusterName
+        });
+
+        await fs.writeFile(destPath, rendered, 'utf8');
         const chartName = file.replace(/\.(yaml|yml)$/, '');
         exported.push({ moduleId: mod, chartName, destPath });
 

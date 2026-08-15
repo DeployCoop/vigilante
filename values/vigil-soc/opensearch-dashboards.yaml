@@ -27,7 +27,7 @@ extraEnvs:
 ingress:
   enabled: true
   hosts:
-    - host: "siem.{{DOMAIN}}"
+    - host: "siem.vigilante.local"
       paths:
         - path: /
           pathType: Prefix
@@ -35,5 +35,5 @@ ingress:
             serviceName: ""
   tls:
     - hosts:
-        - "siem.{{DOMAIN}}"
-      secretName: "{{TLS_SECRET}}"
+        - "siem.vigilante.local"
+      secretName: "vigil-soc-tls"

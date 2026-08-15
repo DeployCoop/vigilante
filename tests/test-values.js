@@ -46,10 +46,14 @@ async function runTests() {
     domain: 'vigilante.local'
   });
 
-  if (customArgs.length !== 4 || customArgs[2] !== '-f' || customArgs[3] !== customOverrideFile) {
+  if (customArgs.length !== 4 || customArgs[2] !== '-f') {
     throw new Error(`resolveChartValuesArgs failed to include custom override: ${JSON.stringify(customArgs)}`);
   }
-  console.log('✔ Test 3 passed: Custom override values file correctly layered.');
+  const customRenderedContent = await fs.readFile(customArgs[3], 'utf8');
+  if (!customRenderedContent.includes('persistence:') || !customRenderedContent.includes('enabled: true')) {
+    throw new Error(`Rendered custom values missing expected content: ${customRenderedContent}`);
+  }
+  console.log('✔ Test 3 passed: Custom override values file correctly rendered and layered.');
 
   // Test 4: exportStarterValues
   const exportTargetDir = path.join(tmpOverrideDir, 'exported-values');
