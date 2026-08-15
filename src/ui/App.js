@@ -5,6 +5,7 @@ import { TaskRunner } from './TaskRunner.js';
 import { SelectModules } from './SelectModules.js';
 import { StatusDashboard } from './StatusDashboard.js';
 import { ThreatSimView } from './ThreatSimView.js';
+import { ValuesView } from './ValuesView.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { logger } from '../utils/logger.js';
@@ -50,7 +51,7 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
-    if (viewState === 'SELECT_MODULES') return;
+    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES') return;
 
     // In-flight active task: only allow exit/abort
     const isRunning = viewState === 'RUNNING' && !isDone;
@@ -112,10 +113,9 @@ const AppContent = ({
 
     // Trigger Values (Helm) Workflow
     if (keyChar === 'v') {
-      logger.info('UI:ACTION', 'User pressed [v] -> Starting VALUES workflow');
+      logger.info('UI:ACTION', 'User pressed [v] -> Switching to VALUES view');
       setFatalError(null);
-      setIsDone(false);
-      runValuesWorkflow();
+      setViewState('VALUES');
       return;
     }
 
@@ -532,7 +532,11 @@ const AppContent = ({
     } else if (command === 'hosts' || command === 'hostr') {
       runHostsWorkflow();
     } else if (command === 'values' || command === 'config') {
-      runValuesWorkflow();
+      if (subCommand === 'export' || subCommand === 'dump' || nonInteractive) {
+        runValuesWorkflow();
+      } else {
+        setViewState('VALUES');
+      }
     } else {
       setFatalError(`Unknown command: ${command}`);
       setIsDone(true);
@@ -605,7 +609,38 @@ const AppContent = ({
         )
       : null,
 
-    // State 6: Success View
+    // State 6: Values & Chart Configuration Manager
+    viewState === 'VALUES'
+      ? React.createElement(ValuesView, {
+          domain,
+          customValuesDir,
+          onNavigate: (target) => {
+            if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'up') {
+              runUpWorkflow(chosenModules);
+            } else if (target === 'down') {
+              runDownWorkflow();
+            } else if (target === 'threat-sim') {
+              setViewState('THREAT_SIM');
+            } else if (target === 'hostr') {
+              runHostsWorkflow();
+            } else if (target === 'modules') {
+              runModulesWorkflow();
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 7: Success View
     viewState === 'SUCCESS'
       ? React.createElement(
           Box,

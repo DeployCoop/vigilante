@@ -147,8 +147,17 @@ In interactive mode, Vigilante provides a persistent action menu allowing you to
 
 Vigilante allows you to customize the underlying Helm charts for each security module without modifying source code.
 
-### 1. Export Starter Values Files
-Generate editable starter values files for all installed modules:
+### 1. Interactive Values Manager & `$EDITOR` Integration
+Open the interactive values screen anytime by running `vigilante values` or pressing `[v]` from the main menu:
+```bash
+vigilante values
+```
+- **Chart Selector**: Navigate configurable charts using `[↑/↓]` or `[j/k]`.
+- **Open in `$EDITOR`**: Hit `[e]` or `[Enter]` on any chart to immediately launch your environment's `$EDITOR` (or `$VISUAL`, defaulting to `nano`). If the override file does not exist yet, Vigilante automatically initializes it with clean starter defaults for you!
+- **Quick Export**: Press `[x]` to export all starter templates at once.
+
+### 2. Export Starter Values via CLI
+Generate editable starter values files for all installed modules directly:
 ```bash
 vigilante values export
 ```
@@ -156,7 +165,7 @@ This generates:
 - `./values/vigil-soc/opensearch.yaml` (cluster memory, CPU, replica settings)
 - `./values/vigil-soc/opensearch-dashboards.yaml` (dashboards UI, ingress, resources)
 
-### 2. Edit & Apply Custom Overrides
+### 3. Edit & Apply Custom Overrides
 Modify the YAML files in `./values/` as needed (e.g. increase memory limits or enable persistence). When you run:
 ```bash
 vigilante up
