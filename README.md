@@ -162,7 +162,8 @@ Generate editable starter values files for all installed modules directly:
 vigilante values export
 ```
 This generates:
-- `./values/vigil-soc/opensearch.yaml` (cluster memory, CPU, replica settings)
+- `./values/vigil-soc/vigil.yaml` (Vigil AI SOC: backend, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
+- `./values/vigil-soc/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
 - `./values/vigil-soc/opensearch-dashboards.yaml` (dashboards UI, ingress, resources)
 
 ### 3. Edit & Apply Custom Overrides
@@ -258,9 +259,12 @@ vigilante/
 │   ├── modules/
 │   │   ├── base.js               # Abstract BaseModule contract
 │   │   ├── registry.js           # Module registry & dependency resolver
-│   │   └── vigil-soc/            # Package 1: OpenSearch SIEM & Threat Ingestion Pipeline
+│   │   └── vigil-soc/            # Package 1: OpenSearch SIEM & Vigil AI SOC Ingestion Platform
 │   │       ├── index.js          # VigilSOCModule lifecycle implementation
+│   │       ├── charts/           # Vendored Helm Charts
+│   │       │   └── vigil/        # Vigil SOC AI platform chart (backend, daemon, workers, postgres, redis)
 │   │       ├── values/           # Default Helm chart templates
+│   │       │   ├── vigil.yaml
 │   │       │   ├── opensearch.yaml
 │   │       │   └── opensearch-dashboards.yaml
 │   │       └── manifests/

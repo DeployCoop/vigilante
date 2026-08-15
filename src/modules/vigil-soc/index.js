@@ -15,7 +15,7 @@ export class VigilSOCModule extends BaseModule {
     super({
       id: 'vigil-soc',
       name: 'vigil-SOC',
-      description: 'OpenSearch SIEM & Network Threat Ingestion Pipeline',
+      description: 'Vigil AI-Native SOC & OpenSearch SIEM Ingestion Pipeline',
       category: 'siem',
       version: '1.0.0',
       defaultEnabled: true
@@ -25,7 +25,7 @@ export class VigilSOCModule extends BaseModule {
   }
 
   /**
-   * Install OpenSearch SIEM & Security Dashboards on k3d
+   * Install OpenSearch SIEM, Vigil AI SOC Platform & Security Dashboards on k3d
    */
   async install({ domain = 'vigilante.local', certPath, keyPath, onLog = null, options = {} }) {
     if (onLog) onLog(`[vigil-SOC] Preparing namespace '${this.namespace}'...`);
@@ -53,6 +53,7 @@ export class VigilSOCModule extends BaseModule {
     if (onLog) onLog('[vigil-SOC] Configuring OpenSearch Helm repository...');
     await execa('helm', ['repo', 'add', 'opensearch', 'https://opensearch-project.github.io/helm-charts/']);
     await execa('helm', ['repo', 'update', 'opensearch']);
+
     // 4. Install OpenSearch Single-Node Dev Cluster
     if (onLog) onLog('[vigil-SOC] Deploying OpenSearch SIEM core cluster...');
     const osDefaultValues = path.join(__dirname, 'values', 'opensearch.yaml');
@@ -97,7 +98,30 @@ export class VigilSOCModule extends BaseModule {
     ];
     await execStream('helm', dashboardsArgs, { onLog });
 
-    // 6. Apply Network Threat Detection Rules Manifest
+    // 6. Install Vigil AI-Native SOC Platform (Backend, Daemon, LLM Worker, Agent Worker, Postgres, Redis)
+    if (onLog) onLog(`[vigil-SOC] Deploying Vigil AI SOC Platform (Ingress: https://vigil.${domain})...`);
+    const vigilChartPath = path.join(__dirname, 'charts', 'vigil');
+    const vigilDefaultValues = path.join(__dirname, 'values', 'vigil.yaml');
+    const vigilValuesArgs = await resolveChartValuesArgs({
+      moduleId: this.id,
+      chartName: 'vigil',
+      defaultValuesPath: vigilDefaultValues,
+      customValuesPath: options?.customValuesPath || options?.values,
+      customValuesDir: options?.customValuesDir || options?.valuesDir,
+      domain,
+      tlsSecretName: this.tlsSecretName,
+      namespace: this.namespace,
+      onLog
+    });
+
+    const vigilArgs = [
+      'upgrade', '--install', 'vigil', vigilChartPath,
+      '--namespace', this.namespace,
+      ...vigilValuesArgs
+    ];
+    await execStream('helm', vigilArgs, { onLog });
+
+    // 7. Apply Network Threat Detection Rules Manifest
     const rulesManifestPath = path.join(__dirname, 'manifests', 'network-threat-pipeline.yaml');
     try {
       await fs.access(rulesManifestPath);
@@ -107,13 +131,20 @@ export class VigilSOCModule extends BaseModule {
       // Manifest application error is non-fatal
     }
 
-    if (onLog) onLog(`[vigil-SOC] Successfully deployed vigil-SOC SIEM! Ingress available at https://siem.${domain}`);
+    if (onLog) onLog(`[vigil-SOC] Successfully deployed vigil-SOC! Ingress available at https://vigil.${domain} and https://siem.${domain}`);
   }
 
   /**
    * Uninstall vigil-SOC and delete its namespace
    */
   async uninstall({ onLog = null }) {
+    if (onLog) onLog('[vigil-SOC] Uninstalling Vigil AI SOC Platform...');
+    try {
+      await execa('helm', ['uninstall', 'vigil', '-n', this.namespace]);
+    } catch {
+      // Ignore if not present
+    }
+
     if (onLog) onLog('[vigil-SOC] Uninstalling OpenSearch Dashboards...');
     try {
       await execa('helm', ['uninstall', 'opensearch-dashboards', '-n', this.namespace]);
@@ -185,6 +216,11 @@ export class VigilSOCModule extends BaseModule {
   async getEndpoints({ domain = 'vigilante.local' }) {
     return [
       {
+        name: 'Vigil AI SOC Platform',
+        url: `https://vigil.${domain}`,
+        description: 'Vigil autonomous AI SOC investigation & case management platform'
+      },
+      {
         name: 'OpenSearch SIEM Dashboard',
         url: `https://siem.${domain}`,
         description: 'Web console for security event monitoring, MITRE threat mapping & dashboards'
@@ -193,6 +229,11 @@ export class VigilSOCModule extends BaseModule {
         name: 'OpenSearch REST API (Internal)',
         url: `http://opensearch-cluster-master.${this.namespace}.svc.cluster.local:9200`,
         description: 'SIEM indices and ECS threat event ingestion API'
+      },
+      {
+        name: 'Vigil Backend API (Internal)',
+        url: `http://vigil-backend.${this.namespace}.svc.cluster.local:6987`,
+        description: 'Vigil REST API & real-time investigation endpoints'
       }
     ];
   }

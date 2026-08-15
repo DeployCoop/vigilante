@@ -1,0 +1,118 @@
+# ==============================================================================
+# Default Helm Values for Vigil AI SOC Platform (vigil-soc / vigil)
+# ==============================================================================
+# Override by placing your custom YAML at:
+#   ./values/vigil-soc/vigil.yaml or passing --values <file>
+# ==============================================================================
+
+global:
+  imageRegistry: ghcr.io
+  imageNamespace: vigil-soc/vigil
+  imagePullPolicy: IfNotPresent
+
+config:
+  DEV_MODE: "true"
+  VIGIL_COOKIE_SECURE: "false"
+  BIND_HOST: "0.0.0.0"
+
+backend:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 6987
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+daemon:
+  enabled: true
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  persistence:
+    enabled: true
+    size: "2Gi"
+
+llmWorker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+agentWorker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+agentServe:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+postgresql:
+  enabled: true
+  persistence:
+    size: "2Gi"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+redis:
+  enabled: true
+  persistence:
+    size: "1Gi"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "384Mi"
+
+ingress:
+  enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  hosts:
+    - host: "vigil.{{DOMAIN}}"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: "{{TLS_SECRET}}"
+      hosts:
+        - "vigil.{{DOMAIN}}"
+
+secrets:
+  anthropicApiKey: "dummy-key-for-local-dev"
+  postgresPassword: "vigil_dev_password_123"

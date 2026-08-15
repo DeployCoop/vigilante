@@ -69,10 +69,14 @@ async function runTests() {
 
   // Test 5: listChartValues
   const listed = await listChartValues({ customValuesDir: tmpOverrideDir });
-  if (listed.length < 2) {
-    throw new Error(`listChartValues failed, got: ${JSON.stringify(listed)}`);
+  if (listed.length < 3) {
+    throw new Error(`listChartValues failed, expected at least 3 charts, got: ${JSON.stringify(listed)}`);
   }
-  console.log('✔ Test 5 passed: listChartValues returned chart definitions.');
+  const chartNames = listed.map(l => l.chartName);
+  if (!chartNames.includes('vigil') || !chartNames.includes('opensearch') || !chartNames.includes('opensearch-dashboards')) {
+    throw new Error(`listChartValues missing expected charts: ${JSON.stringify(chartNames)}`);
+  }
+  console.log('✔ Test 5 passed: listChartValues returned all 3 chart definitions (opensearch, opensearch-dashboards, vigil).');
 
   // Cleanup
   await fs.rm(tmpOverrideDir, { recursive: true, force: true });

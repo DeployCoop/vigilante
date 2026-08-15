@@ -326,6 +326,9 @@ export const ValuesView = ({
 };
 
 function getChartDescription(moduleId, chartName) {
+  if (chartName === 'vigil') {
+    return 'Vigil AI-Native SOC (Backend API, daemon orchestrator, LLM & agent workers, Postgres, Redis)';
+  }
   if (chartName === 'opensearch') {
     return 'OpenSearch SIEM core cluster (JVM heap, singleNode, memory & CPU resources)';
   }
