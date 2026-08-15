@@ -255,6 +255,7 @@ vigilante/
 │   │   ├── certs.js              # mkcert CA & TLS certificates manager
 │   │   ├── cluster.js            # k3d cluster lifecycle provisioner
 │   │   ├── hosts.js              # /etc/hosts domain resolution sync & cleanup (hostr)
+│   │   ├── pods.js               # Live Kubernetes pods querying & watch poller (-A -o wide)
 │   │   └── helm.js               # Dynamic Helm values resolver, renderer & exporter
 │   ├── modules/
 │   │   ├── base.js               # Abstract BaseModule contract
@@ -276,6 +277,8 @@ vigilante/
 │   │   ├── StatusDashboard.js    # Comprehensive diagnostics dashboard
 │   │   ├── ThreatSimView.js      # Network threat simulation runner
 │   │   ├── ValuesView.js         # Interactive Values & $EDITOR manager
+│   │   ├── ModulesView.js        # Interactive Security Modules & Package Manager
+│   │   ├── PodsView.js           # Live Kubernetes Pods Monitor (-A -o wide table)
 │   │   └── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
 │   └── utils/
 │       ├── exec.js               # Subprocess execution & streaming with debug logging
@@ -285,6 +288,8 @@ vigilante/
 ├── tests/
 │   ├── test-values.js            # Unit test suite for Helm values engine & template rendering
 │   ├── test-editor.js            # Unit test suite for editor & starter file initialization
+│   ├── test-modules.js           # Unit test suite for module registry & dependency resolver
+│   ├── test-pods.js              # Unit test suite for pod status formatting & live watcher
 │   └── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
 ├── values/                       # Exported starter & custom user Helm values overrides
 ├── package.json

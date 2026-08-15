@@ -7,6 +7,7 @@ import { StatusDashboard } from './StatusDashboard.js';
 import { ThreatSimView } from './ThreatSimView.js';
 import { ValuesView } from './ValuesView.js';
 import { ModulesView } from './ModulesView.js';
+import { PodsView } from './PodsView.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { logger } from '../utils/logger.js';
@@ -52,7 +53,7 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
-    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES') return;
+    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS') return;
 
     // In-flight active task: only allow exit/abort
     const isRunning = viewState === 'RUNNING' && !isDone;
@@ -125,6 +126,14 @@ const AppContent = ({
       logger.info('UI:ACTION', 'User pressed [m] -> Switching to MODULES view');
       setFatalError(null);
       setViewState('MODULES');
+      return;
+    }
+
+    // Trigger Live Pods Monitor
+    if (keyChar === 'p') {
+      logger.info('UI:ACTION', 'User pressed [p] -> Switching to PODS view');
+      setFatalError(null);
+      setViewState('PODS');
       return;
     }
 
@@ -640,6 +649,8 @@ const AppContent = ({
       } else {
         setViewState('MODULES');
       }
+    } else if (command === 'pods') {
+      setViewState('PODS');
     } else if (command === 'threat-sim') {
       setViewState('THREAT_SIM');
     } else if (command === 'hosts' || command === 'hostr') {
@@ -731,7 +742,40 @@ const AppContent = ({
         })
       : null,
 
-    // State 6: Values & Chart Configuration Manager
+    // State 6: Live Kubernetes Pods Monitor
+    viewState === 'PODS'
+      ? React.createElement(PodsView, {
+          domain,
+          clusterName,
+          onNavigate: (target) => {
+            if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'up') {
+              runUpWorkflow(chosenModules);
+            } else if (target === 'down') {
+              runDownWorkflow();
+            } else if (target === 'modules') {
+              setViewState('MODULES');
+            } else if (target === 'values') {
+              setViewState('VALUES');
+            } else if (target === 'threat-sim') {
+              setViewState('THREAT_SIM');
+            } else if (target === 'hostr') {
+              runHostsWorkflow();
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 7: Values & Chart Configuration Manager
     viewState === 'VALUES'
       ? React.createElement(ValuesView, {
           domain,

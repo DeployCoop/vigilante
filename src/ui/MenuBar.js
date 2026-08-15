@@ -34,6 +34,7 @@ export const MenuBar = ({ isRunning = false, activeView = 'RUNNING' }) => {
     { key: 'u', label: 'Up (Deploy)', color: 'green' },
     { key: 'd', label: 'Down (Teardown)', color: 'red' },
     { key: 's', label: 'Status', color: 'blue' },
+    { key: 'p', label: 'Pods (Live)', color: 'cyan' },
     { key: 't', label: 'Threat-Sim', color: 'magenta' },
     { key: 'h', label: 'Hostr (DNS)', color: 'cyan' },
     { key: 'v', label: 'Values (Helm)', color: 'yellow' },

@@ -342,11 +342,16 @@ export const StatusDashboard = ({
         ),
         React.createElement(
           Box,
-          { marginTop: 1 },
+          { marginTop: 1, flexDirection: 'row', justifyContent: 'space-between' },
+          React.createElement(
+            Text,
+            { color: 'cyan', bold: true },
+            '⚡ Press [p] for Live Pod Monitor (-A -o wide)'
+          ),
           React.createElement(
             Text,
             { color: 'magenta', bold: true },
-            '⚡ Press [t] to trigger Threat Simulation and validate SIEM alert detections'
+            '⚡ Press [t] for Threat Simulation'
           )
         )
       )

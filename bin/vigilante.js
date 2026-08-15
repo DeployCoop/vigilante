@@ -13,6 +13,7 @@ const cli = meow(`
     down        Tear down k3d cluster and clean up resources
     status      Check status of prerequisites, cluster, certificates, and DNS
     modules     List available and installed modules
+    pods        Live monitor of Kubernetes pods with -A -o wide details
     threat-sim  Trigger network threat simulation batch against SIEM
     hosts/hostr Sync local domain mappings into /etc/hosts
     values      Manage, list, or export customizable chart values.yaml files
