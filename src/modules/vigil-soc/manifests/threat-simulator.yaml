@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vigil-threat-injector
+  namespace: vigil-soc
+  labels:
+    app.kubernetes.io/part-of: vigilante
+    vigilante.io/module: vigil-soc
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      name: vigil-threat-injector
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: injector
+        image: curlimages/curl:8.5.0
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -e
+          OS_URL="http://opensearch-cluster-master.vigil-soc.svc.cluster.local:9200"
+          echo "Injecting simulated network threat events into OpenSearch SIEM at $OS_URL..."
+          
+          # Sample Event 1: Port Scan Reconnaissance
+          curl -s -X POST "$OS_URL/vigilante-network-events/_doc" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "@timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+              "event": { "kind": "alert", "category": "network", "action": "port_scan_detected", "severity": 7 },
+              "source": { "ip": "198.51.100.45", "port": 49152 },
+              "destination": { "ip": "10.0.0.15", "port": 445 },
+              "network": { "transport": "tcp", "protocol": "smb", "direction": "inbound" },
+              "threat": { "framework": "MITRE ATT&CK", "technique": { "id": "T1046", "name": "Network Service Discovery" } },
+              "message": "Port scan activity detected from 198.51.100.45 targeting local ports 22, 80, 443, 445, 3389"
+            }'
+
+          # Sample Event 2: SSH Brute Force
+          curl -s -X POST "$OS_URL/vigilante-network-events/_doc" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "@timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+              "event": { "kind": "alert", "category": "authentication", "action": "ssh_bruteforce_failure", "severity": 8, "outcome": "failure" },
+              "source": { "ip": "203.0.113.88", "port": 52140 },
+              "destination": { "ip": "10.0.0.20", "port": 22 },
+              "network": { "transport": "tcp", "protocol": "ssh" },
+              "user": { "name": "root" },
+              "threat": { "framework": "MITRE ATT&CK", "technique": { "id": "T1110", "name": "Brute Force" } },
+              "message": "Repeated SSH authentication failure (15 attempts/sec) for user root from 203.0.113.88"
+            }'
+
+          # Sample Event 3: DNS Tunneling Exfiltration
+          curl -s -X POST "$OS_URL/vigilante-network-events/_doc" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "@timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+              "event": { "kind": "alert", "category": "network", "action": "dns_tunneling", "severity": 9 },
+              "source": { "ip": "10.0.0.52", "port": 58392 },
+              "destination": { "ip": "1.1.1.1", "port": 53 },
+              "network": { "transport": "udp", "protocol": "dns", "direction": "outbound" },
+              "dns": { "question": { "name": "dGhpcy1pcy1hbi1leGZpbHRyYXRpb24tdGVzdC1wYXlsb2Fk.c2.attacker-c2.net", "type": "TXT" } },
+              "threat": { "framework": "MITRE ATT&CK", "technique": { "id": "T1071.004", "name": "DNS Application Layer Protocol" } },
+              "message": "High entropy long DNS query detected indicating C2 data exfiltration"
+            }'
+
+          echo "Threat simulation batch successfully ingested!"

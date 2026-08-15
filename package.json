@@ -1,0 +1,25 @@
+{
+  "name": "vigilante",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "vigilante": "./bin/vigilante.js"
+  },
+  "scripts": {
+    "start": "node ./bin/vigilante.js",
+    "status": "node ./bin/vigilante.js status",
+    "threat-sim": "node ./bin/vigilante.js threat-sim",
+    "hosts": "node ./bin/vigilante.js hosts",
+    "hostr": "node ./bin/vigilante.js hostr"
+  },
+  "dependencies": {
+    "execa": "^8.0.1",
+    "ink": "^4.4.1",
+    "ink-select-input": "^5.0.0",
+    "ink-spinner": "^5.0.0",
+    "meow": "^12.1.1",
+    "react": "^18.2.0",
+    "vigilante": "link:"
+  }
+}

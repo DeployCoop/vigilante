@@ -1,0 +1,12 @@
+export { BaseModule } from './modules/base.js';
+export { VigilSOCModule } from './modules/vigil-soc/index.js';
+export { ModuleRegistry, globalModuleRegistry } from './modules/registry.js';
+export { checkPrereqs, REQUIRED_TOOLS } from './engine/prereqs.js';
+export { setupCertificates, checkCertificates, applyK8sTlsSecret } from './engine/certs.js';
+export { createK3dCluster, deleteK3dCluster, getClusterInfo } from './engine/cluster.js';
+export { App } from './ui/App.js';
+export { Header } from './ui/Header.js';
+export { TaskRunner } from './ui/TaskRunner.js';
+export { SelectModules } from './ui/SelectModules.js';
+export { StatusDashboard } from './ui/StatusDashboard.js';
+export { ThreatSimView } from './ui/ThreatSimView.js';

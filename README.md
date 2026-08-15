@@ -7,8 +7,10 @@
 ## 🌟 Features
 
 - **Ink Terminal UI**: Interactive dashboards, step spinners, dynamic logs, and keyboard-driven module selectors.
+- **Interactive Click-to-Copy**: Click on any pane/card in interactive mode (or press `[1-6]`) to instantly copy its text or URL to your system clipboard (Wayland `wl-copy`, X11 `xclip`/`xsel`, macOS `pbcopy`, Windows, and OSC 52 supported).
 - **Automated k3d Orchestration**: Spin up lightweight K3s clusters in Docker with Ingress port bindings (`80` / `443`).
 - **Zero-Config Local TLS (`mkcert`)**: Generate wildcard certificates (`*.vigilante.local`) trusted by your operating system keychain and automatically inject them as Kubernetes Ingress secrets.
+- **Automated Local DNS (`hostr`)**: Automatically synchronizes `/etc/hosts` with managed domain mappings (`127.0.0.1 vigilante.local`, `127.0.0.1 siem.vigilante.local`) in an idempotent, safe block with sudo elevation when required.
 - **Modular Package Ecosystem**: Clean `BaseModule` architecture allowing security tools (SIEM, IDS/IPS, telemetry, analyzers) to be plugged in dynamically.
 - **vigil-SOC (OpenSearch SIEM)**: Out-of-the-box OpenSearch and OpenSearch Dashboards configured for SIEM and network threat analysis at `https://siem.vigilante.local`.
 - **Network Threat Pipeline & Simulator**: Pre-packaged SIGMA threat detection rules and an automated threat injection simulator (Port Scanning, SSH Brute Force, DNS Tunneling) to validate SIEM alerts.
@@ -39,25 +41,34 @@ npm link
 
 ### 2. Provision Local Environment
 ```bash
-# Interactive mode with package selector
+# Interactive mode with package selector (auto-configures TLS, DNS, & k3d)
 vigilante up
 
 # Or with custom domain
 vigilante up --domain dev.local
 ```
 
-### 3. Configure Local DNS
-Add the following line to `/etc/hosts`:
-```text
-127.0.0.1 siem.vigilante.local
+### 3. Local DNS & Host Resolution (`hostr`)
+`/etc/hosts` is automatically updated during `vigilante up`. You can also manage it directly at any time:
+```bash
+# Sync domain mappings to /etc/hosts
+vigilante hostr
+
+# Check current resolution status
+vigilante hostr --check
+
+# Remove managed entries from /etc/hosts
+vigilante hostr --remove
 ```
 
 ### 4. Access OpenSearch SIEM
 Open your browser and navigate to:
-```
+```text
 https://siem.vigilante.local
 ```
-*(TLS certificate is automatically trusted via mkcert root CA)*
+- **Username**: `admin`
+- **Password**: `Admin123456!` *(or `admin`)*
+- *(Local TLS certificate is automatically trusted via mkcert root CA; dev mode allows direct access without auth friction)*
 
 ---
 
@@ -69,27 +80,34 @@ $ vigilante [command] [options]
 Commands:
   up          Provision k3d cluster, certificates, and deploy security modules
   down        Tear down k3d cluster and clean up resources
-  status      Check status of prerequisites, cluster, certificates, and modules
+  status      Check status of prerequisites, cluster, certificates, and DNS
   modules     List available and installed security modules
   threat-sim  Trigger network threat simulation batch against SIEM
+  hosts/hostr Sync or manage local domain mappings in /etc/hosts
 
 Options:
   --domain, -d       Local top-level domain (Default: vigilante.local)
   --cluster-name, -c Cluster name (Default: vigilante-dev)
   --module, -m       Specific module(s) to install (comma-separated, Default: vigil-soc)
+  --ip               Target IP for hosts mapping (Default: 127.0.0.1)
+  --remove           Remove managed entries from /etc/hosts (for hosts/hostr)
+  --check            Check /etc/hosts status without modifying (for hosts/hostr)
   --non-interactive  Run without interactive prompts
   --skip-prereqs     Skip prerequisite verification
 ```
 
 ### Examples
 ```bash
-# Check system and cluster health
+# Check system and cluster health (including /etc/hosts status)
 vigilante status
+
+# Sync local DNS mappings for custom domain
+vigilante hostr --domain custom.local
 
 # Trigger sample network threat injection to test SIEM detection rules
 vigilante threat-sim
 
-# Destroy the cluster and clean up
+# Destroy the cluster and clean up hosts
 vigilante down
 ```
 

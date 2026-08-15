@@ -1,0 +1,45 @@
+# OpenSearch SIEM Dev Configuration for Vigilante
+opensearch:
+  singleNode: true
+  clusterName: "vigil-soc-cluster"
+  nodeGroup: "master"
+  replicas: 1
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1024Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2048Mi"
+  opensearchJavaOpts: "-Xms512m -Xmx1024m"
+  config:
+    opensearch.yml: |
+      cluster.name: vigil-soc-cluster
+      network.host: 0.0.0.0
+      plugins.security.disabled: false
+      plugins.security.ssl.http.enabled: false
+      plugins.security.allow_default_init_securityindex: true
+      plugins.security.authcz.admin_dn:
+        - "CN=admin,OU=Vigilante,O=DeployCoop,L=Local,C=US"
+
+opensearchDashboards:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+  opensearchAccount:
+    adminUsername: "admin"
+    adminPassword: "adminPassword123!"
+  config:
+    opensearch_dashboards.yml: |
+      opensearch.hosts: ["http://opensearch-cluster:9200"]
+      opensearch.ssl.verificationMode: none
+      opensearch.requestHeadersAllowlist: ["securitytenant","Authorization"]
+      opensearch_security.multitenancy.enabled: false
+      opensearch_security.readonly_mode.roles: ["kibana_read_only"]
