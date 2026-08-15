@@ -7,8 +7,8 @@ async function runTests() {
   console.log('🧪 Testing Editor & Override Initializer...');
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-test-editor-'));
-  const targetPath = path.join(tmpDir, 'values', 'vigil-soc', 'opensearch.yaml');
-  const defaultPath = path.resolve('src/modules/vigil-soc/values/opensearch.yaml');
+  const targetPath = path.join(tmpDir, 'values', 'opensearch', 'opensearch.yaml');
+  const defaultPath = path.resolve('src/modules/opensearch/values/opensearch.yaml');
 
   // Test 1: ensureOverrideFileExists creates when missing
   const created = await ensureOverrideFileExists(targetPath, defaultPath, {

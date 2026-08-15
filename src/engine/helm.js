@@ -158,9 +158,9 @@ export async function exportStarterValues({
   const destBase = path.resolve(cwd, targetDir);
   const exported = [];
 
-  // Known modules & their values templates
+  // Discover modules with values templates
   const modulesDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../modules');
-  const availableModules = ['vigil-soc'];
+  const availableModules = await getAvailableModuleIds(modulesDir);
 
   const targetModules = moduleId ? [moduleId] : availableModules;
 
@@ -199,6 +199,29 @@ export async function exportStarterValues({
 }
 
 /**
+ * Helper to discover modules that have a values directory
+ */
+async function getAvailableModuleIds(modulesDir) {
+  const modIds = [];
+  try {
+    const entries = await fs.readdir(modulesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        try {
+          await fs.access(path.join(modulesDir, entry.name, 'values'));
+          modIds.push(entry.name);
+        } catch {
+          // No values dir
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  return modIds.length > 0 ? modIds : ['opensearch', 'vigil-soc'];
+}
+
+/**
  * List all configurable chart values across modules and check for active user overrides
  * @param {Object} options
  * @param {string} [options.customValuesDir]
@@ -209,7 +232,7 @@ export async function listChartValues({ customValuesDir } = {}) {
   const modulesDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../modules');
   const results = [];
 
-  const availableModules = ['vigil-soc'];
+  const availableModules = await getAvailableModuleIds(modulesDir);
 
   for (const mod of availableModules) {
     const modValuesDir = path.join(modulesDir, mod, 'values');

@@ -1,3 +1,4 @@
+import { OpenSearchModule } from './opensearch/index.js';
 import { VigilSOCModule } from './vigil-soc/index.js';
 
 export class ModuleRegistry {
@@ -7,6 +8,7 @@ export class ModuleRegistry {
   }
 
   registerDefaultModules() {
+    this.register(new OpenSearchModule());
     this.register(new VigilSOCModule());
   }
 

@@ -15,13 +15,13 @@ async function runTests() {
   console.log('✔ Test 1 passed: renderTemplate accurately substituted placeholders.');
 
   // Test 2: resolveChartValuesArgs (defaults)
-  const defaultPath = path.resolve('src/modules/vigil-soc/values/opensearch.yaml');
+  const defaultPath = path.resolve('src/modules/opensearch/values/opensearch.yaml');
   const defaultArgs = await resolveChartValuesArgs({
-    moduleId: 'vigil-soc',
+    moduleId: 'opensearch',
     chartName: 'opensearch',
     defaultValuesPath: defaultPath,
     domain: 'vigilante.local',
-    tlsSecretName: 'vigil-soc-tls'
+    tlsSecretName: 'opensearch-tls'
   });
 
   if (defaultArgs[0] !== '-f' || !defaultArgs[1].includes('opensearch-rendered.yaml')) {
@@ -39,7 +39,7 @@ async function runTests() {
   await fs.writeFile(customOverrideFile, 'persistence:\n  enabled: true\n', 'utf8');
 
   const customArgs = await resolveChartValuesArgs({
-    moduleId: 'vigil-soc',
+    moduleId: 'opensearch',
     chartName: 'opensearch',
     defaultValuesPath: defaultPath,
     customValuesPath: customOverrideFile,
@@ -58,12 +58,11 @@ async function runTests() {
   // Test 4: exportStarterValues
   const exportTargetDir = path.join(tmpOverrideDir, 'exported-values');
   const exported = await exportStarterValues({
-    moduleId: 'vigil-soc',
     targetDir: exportTargetDir
   });
 
-  if (exported.length < 2) {
-    throw new Error(`exportStarterValues failed, expected at least 2 files, got ${exported.length}`);
+  if (exported.length < 3) {
+    throw new Error(`exportStarterValues failed, expected at least 3 files, got ${exported.length}`);
   }
   console.log(`✔ Test 4 passed: Exported ${exported.length} starter YAML files to ${exportTargetDir}`);
 

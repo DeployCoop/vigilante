@@ -162,9 +162,9 @@ Generate editable starter values files for all installed modules directly:
 vigilante values export
 ```
 This generates:
-- `./values/vigil-soc/vigil.yaml` (Vigil AI SOC: backend, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
-- `./values/vigil-soc/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
-- `./values/vigil-soc/opensearch-dashboards.yaml` (dashboards UI, ingress, resources)
+- `./values/opensearch/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
+- `./values/opensearch/opensearch-dashboards.yaml` (OpenSearch Dashboards UI, ingress, resources)
+- `./values/vigil-soc/vigil.yaml` (Vigil AI SOC: backend API, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
 
 ### 3. Edit & Apply Custom Overrides
 Modify the YAML files in `./values/` as needed (e.g. increase memory limits or enable persistence). When you run:
@@ -196,7 +196,7 @@ export class MyCustomSecurityModule extends BaseModule {
       description: 'Network IDS sensor and packet analyzer',
       category: 'ids',
       version: '1.0.0',
-      dependencies: ['vigil-soc']
+      dependencies: ['opensearch']
     });
   }
 
@@ -259,17 +259,14 @@ vigilante/
 │   ├── modules/
 │   │   ├── base.js               # Abstract BaseModule contract
 │   │   ├── registry.js           # Module registry & dependency resolver
-│   │   └── vigil-soc/            # Package 1: OpenSearch SIEM & Vigil AI SOC Ingestion Platform
+│   │   ├── opensearch/           # Package 1: OpenSearch SIEM Analytics & Dashboards
+│   │   │   ├── index.js          # OpenSearchModule lifecycle implementation
+│   │   │   ├── values/           # Default Helm values templates (opensearch, opensearch-dashboards)
+│   │   │   └── manifests/        # SIGMA threat rules & threat simulation Job
+│   │   └── vigil-soc/            # Package 2: Vigil AI-Native SOC Investigation Platform
 │   │       ├── index.js          # VigilSOCModule lifecycle implementation
-│   │       ├── charts/           # Vendored Helm Charts
-│   │       │   └── vigil/        # Vigil SOC AI platform chart (backend, daemon, workers, postgres, redis)
-│   │       ├── values/           # Default Helm chart templates
-│   │       │   ├── vigil.yaml
-│   │       │   ├── opensearch.yaml
-│   │       │   └── opensearch-dashboards.yaml
-│   │       └── manifests/
-│   │           ├── network-threat-pipeline.yaml  # SIGMA threat detection rules
-│   │           └── threat-simulator.yaml        # Network threat event generator Job
+│   │       ├── charts/           # Vendored Helm charts (charts/vigil)
+│   │       └── values/           # Default Helm values templates (vigil.yaml)
 │   ├── ui/                       # React & Ink UI Components
 │   │   ├── App.js                # Master terminal view controller & router
 │   │   ├── Header.js             # Terminal banner & ASCII styling
@@ -278,13 +275,16 @@ vigilante/
 │   │   ├── SelectModules.js      # Interactive keyboard package selector
 │   │   ├── StatusDashboard.js    # Comprehensive diagnostics dashboard
 │   │   ├── ThreatSimView.js      # Network threat simulation runner
+│   │   ├── ValuesView.js         # Interactive Values & $EDITOR manager
 │   │   └── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
 │   └── utils/
 │       ├── exec.js               # Subprocess execution & streaming with debug logging
+│       ├── editor.js             # Terminal TTY suspension & $EDITOR launcher
 │       ├── clipboard.js          # Multi-platform clipboard copy utility (OSC 52, Wayland, X11, macOS)
 │       └── logger.js             # Centralized debug file logger (/tmp/.vigilante.log)
 ├── tests/
 │   ├── test-values.js            # Unit test suite for Helm values engine & template rendering
+│   ├── test-editor.js            # Unit test suite for editor & starter file initialization
 │   └── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
 ├── values/                       # Exported starter & custom user Helm values overrides
 ├── package.json
