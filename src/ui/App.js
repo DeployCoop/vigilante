@@ -11,13 +11,17 @@ import { checkPrereqs } from '../engine/prereqs.js';
 import { setupCertificates, checkCertificates } from '../engine/certs.js';
 import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cluster.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
+import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
   command = 'up',
+  subCommand = null,
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
   selectedModules: cliSelectedModules,
+  customValuesPath = null,
+  customValuesDir = null,
   hostsAction = 'sync',
   ip = '127.0.0.1',
   nonInteractive = false,
@@ -179,6 +183,7 @@ const AppContent = ({
       updateTask('down', { status: 'done' });
 
       updateTask('hosts', { status: 'running' });
+      addLog(`Cleaning up /etc/hosts managed domain mappings...`);
       try {
         await removeHosts({ onLog: (msg) => addLog(msg) });
         updateTask('hosts', { status: 'done' });
@@ -186,6 +191,7 @@ const AppContent = ({
         updateTask('hosts', { status: 'done', detail: 'Skipped' });
       }
 
+      addLog('Environment torn down successfully.');
       setIsDone(true);
     } catch (err) {
       updateTask('down', { status: 'error', error: err.message });
@@ -198,17 +204,22 @@ const AppContent = ({
   // Command: STATUS
   // -------------------------------------------------------------
   const runStatusWorkflow = async () => {
+    setTasks([
+      { id: 'status', label: 'Inspecting local environment status', status: 'running' }
+    ]);
+
     try {
-      const [prereqs, cluster, certs, hosts] = await Promise.all([
-        checkPrereqs(),
-        getClusterInfo(clusterName),
-        checkCertificates(domain),
-        checkHosts({ domain, ip })
-      ]);
+      addLog('Gathering prerequisite checks, cluster status, and module health...');
+      const prereqs = await checkPrereqs();
+      const cluster = await getClusterInfo(clusterName);
+      const certs = await checkCertificates(domain);
+      const hosts = await checkHosts({ domain, ip });
 
       const allModules = globalModuleRegistry.getAll();
-      const moduleStatuses = await Promise.all(
-        allModules.map(m => m.status({ domain, clusterName }))
+      const modulesStatus = await Promise.all(
+        allModules.map(async (mod) => {
+          return await mod.status({ domain, clusterName });
+        })
       );
 
       setDashboardData({
@@ -216,12 +227,15 @@ const AppContent = ({
         cluster,
         certs,
         hosts,
-        modules: moduleStatuses,
+        modules: modulesStatus,
         domain
       });
+
+      updateTask('status', { status: 'done' });
       setViewState('DASHBOARD');
       setIsDone(true);
     } catch (err) {
+      updateTask('status', { status: 'error', error: err.message });
       setFatalError(err.message);
       setIsDone(true);
     }
@@ -231,59 +245,76 @@ const AppContent = ({
   // Command: MODULES
   // -------------------------------------------------------------
   const runModulesWorkflow = async () => {
+    setTasks([
+      { id: 'modules', label: 'Listing available security modules', status: 'running' }
+    ]);
+
     try {
       const allModules = globalModuleRegistry.getAll();
-      const moduleStatuses = await Promise.all(
-        allModules.map(m => m.status({ domain, clusterName }))
+      const modulesStatus = await Promise.all(
+        allModules.map(async (mod) => {
+          const st = await mod.status({ domain, clusterName });
+          const endpoints = await mod.getEndpoints({ domain });
+          return { ...st, endpoints };
+        })
       );
+
       setDashboardData({
-        modules: moduleStatuses,
+        modules: modulesStatus,
         domain
       });
+
+      updateTask('modules', { status: 'done' });
       setViewState('MODULES_LIST');
       setIsDone(true);
     } catch (err) {
+      updateTask('modules', { status: 'error', error: err.message });
       setFatalError(err.message);
       setIsDone(true);
     }
   };
 
   // -------------------------------------------------------------
-  // Command: HOSTS / HOSTR
+  // Command: HOSTR / HOSTS
   // -------------------------------------------------------------
   const runHostsWorkflow = async () => {
+    const isCheck = hostsAction === 'check';
+    const isRemove = hostsAction === 'remove';
+
     setTasks([
       {
         id: 'hosts',
-        label: hostsAction === 'remove'
-          ? `Remove Vigilante domain mappings from /etc/hosts`
-          : hostsAction === 'check'
+        label: isCheck
           ? `Check /etc/hosts domain resolution status (*.${domain})`
+          : isRemove
+          ? `Remove local domain mappings (*.${domain}) from /etc/hosts`
           : `Sync local domain mappings (*.${domain}) in /etc/hosts`,
         status: 'running'
       }
     ]);
 
     try {
-      if (hostsAction === 'remove') {
+      if (isCheck) {
+        const info = await checkHosts({ domain, ip });
+        if (info.configured) {
+          addLog(`✔ All required hostnames are mapped in /etc/hosts:`);
+          for (const h of info.configuredHosts) {
+            addLog(`  • ${ip} ${h}`);
+          }
+        } else {
+          if (info.configuredHosts.length > 0) {
+            addLog(`○ Configured hostnames: ${info.configuredHosts.join(', ')}`);
+          }
+          addLog(`✖ Missing hostnames: ${info.missingHosts.join(', ')}`);
+          addLog(`Run 'vigilante hostr' to synchronize missing entries.`);
+        }
+      } else if (isRemove) {
         addLog(`Removing Vigilante managed block from /etc/hosts...`);
         const res = await removeHosts({ onLog: (msg) => addLog(msg) });
         if (res.removed) {
-          addLog(`✔ Successfully removed Vigilante domain mappings from /etc/hosts.`);
+          addLog(`✔ Removed managed hosts block from /etc/hosts.`);
         } else {
-          addLog(`ℹ No managed Vigilante domain block found in /etc/hosts.`);
-        }
-      } else if (hostsAction === 'check') {
-        const check = await checkHosts({ domain, ip });
-        if (check.configured) {
-          addLog(`✔ All required hostnames are mapped in /etc/hosts:`);
-          for (const h of check.allRequiredHosts) {
-            addLog(`  • ${check.ip} ${h}`);
-          }
-        } else {
-          addLog(`○ Configured hostnames: ${check.configuredHosts.join(', ') || 'None'}`);
-          addLog(`✖ Missing hostnames: ${check.missingHosts.join(', ')}`);
-          addLog(`Run 'vigilante hostr' to synchronize missing entries.`);
+          addLog(`✔ No managed hosts block found in /etc/hosts.`);
         }
       } else {
         addLog(`Synchronizing domain hosts for *.${domain} in /etc/hosts...`);
@@ -298,6 +329,46 @@ const AppContent = ({
       setIsDone(true);
     } catch (err) {
       updateTask('hosts', { status: 'error', error: err.message });
+      setFatalError(err.message);
+      setIsDone(true);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Command: VALUES / CONFIG
+  // -------------------------------------------------------------
+  const runValuesWorkflow = async () => {
+    setTasks([
+      { id: 'values', label: 'Manage customizable Helm chart values.yaml configurations', status: 'running' }
+    ]);
+
+    try {
+      if (subCommand === 'export' || subCommand === 'dump' || subCommand === 'init') {
+        const targetDir = customValuesDir || './values';
+        addLog(`Exporting editable starter values.yaml templates to '${targetDir}'...`);
+        const exported = await exportStarterValues({
+          targetDir,
+          onLog: (msg) => addLog(msg)
+        });
+        addLog(`✔ Successfully exported ${exported.length} starter chart values files!`);
+        addLog(`You can now customize these files in '${targetDir}' and run 'vigilante up'.`);
+      } else {
+        addLog('Customizable Helm chart configurations across Vigilante packages:');
+        const items = await listChartValues({ customValuesDir });
+        for (const item of items) {
+          addLog(`• Module: ${item.moduleId} | Chart: ${item.chartName}`);
+          addLog(`    Default template: ${item.defaultPath}`);
+          if (item.userOverridePath) {
+            addLog(`    ✔ Active user override: ${item.userOverridePath}`);
+          } else {
+            addLog(`    ○ No user override detected. Run 'vigilante values export' to create custom files.`);
+          }
+        }
+      }
+      updateTask('values', { status: 'done' });
+      setIsDone(true);
+    } catch (err) {
+      updateTask('values', { status: 'error', error: err.message });
       setFatalError(err.message);
       setIsDone(true);
     }
@@ -319,6 +390,8 @@ const AppContent = ({
       setViewState('THREAT_SIM');
     } else if (command === 'hosts' || command === 'hostr') {
       runHostsWorkflow();
+    } else if (command === 'values' || command === 'config') {
+      runValuesWorkflow();
     } else {
       setFatalError(`Unknown command: ${command}`);
       setIsDone(true);

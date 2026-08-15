@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { BaseModule } from '../base.js';
 import { execStream } from '../../utils/exec.js';
 import { applyK8sTlsSecret } from '../../engine/certs.js';
+import { resolveChartValuesArgs } from '../../engine/helm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,52 +53,47 @@ export class VigilSOCModule extends BaseModule {
     if (onLog) onLog('[vigil-SOC] Configuring OpenSearch Helm repository...');
     await execa('helm', ['repo', 'add', 'opensearch', 'https://opensearch-project.github.io/helm-charts/']);
     await execa('helm', ['repo', 'update', 'opensearch']);
-
     // 4. Install OpenSearch Single-Node Dev Cluster
     if (onLog) onLog('[vigil-SOC] Deploying OpenSearch SIEM core cluster...');
+    const osDefaultValues = path.join(__dirname, 'values', 'opensearch.yaml');
+    const osValuesArgs = await resolveChartValuesArgs({
+      moduleId: this.id,
+      chartName: 'opensearch',
+      defaultValuesPath: osDefaultValues,
+      customValuesPath: options?.customValuesPath || options?.values,
+      customValuesDir: options?.customValuesDir || options?.valuesDir,
+      domain,
+      tlsSecretName: this.tlsSecretName,
+      namespace: this.namespace,
+      onLog
+    });
+
     const osArgs = [
       'upgrade', '--install', 'opensearch', 'opensearch/opensearch',
       '--namespace', this.namespace,
-      '--set', 'singleNode=true',
-      '--set', 'persistence.enabled=false',
-      '--set', 'resources.requests.cpu=300m',
-      '--set', 'resources.requests.memory=1024Mi',
-      '--set', 'resources.limits.cpu=1500m',
-      '--set', 'resources.limits.memory=2048Mi',
-      '--set', 'opensearchJavaOpts=-Xms512m -Xmx1024m',
-      '--set', 'securityConfig.action.auto_create_indices=true',
-      '--set', 'securityConfig.enabled=false', // Local dev mode for easy ingestion without cert auth friction
-      '--set', 'extraEnvs[0].name=DISABLE_SECURITY_PLUGIN',
-      '--set-string', 'extraEnvs[0].value=true',
-      '--set', 'extraEnvs[1].name=DISABLE_INSTALL_DEMO_CONFIG',
-      '--set-string', 'extraEnvs[1].value=true',
-      '--set', 'extraEnvs[2].name=OPENSEARCH_INITIAL_ADMIN_PASSWORD',
-      '--set-string', 'extraEnvs[2].value=Admin123456!'
+      ...osValuesArgs
     ];
     await execStream('helm', osArgs, { onLog });
 
     // 5. Install OpenSearch Dashboards with Ingress and TLS
     if (onLog) onLog(`[vigil-SOC] Deploying OpenSearch Dashboards (Ingress: https://siem.${domain})...`);
+    const dashboardsDefaultValues = path.join(__dirname, 'values', 'opensearch-dashboards.yaml');
+    const dashboardsValuesArgs = await resolveChartValuesArgs({
+      moduleId: this.id,
+      chartName: 'opensearch-dashboards',
+      defaultValuesPath: dashboardsDefaultValues,
+      customValuesPath: options?.customValuesPath || options?.values,
+      customValuesDir: options?.customValuesDir || options?.valuesDir,
+      domain,
+      tlsSecretName: this.tlsSecretName,
+      namespace: this.namespace,
+      onLog
+    });
+
     const dashboardsArgs = [
       'upgrade', '--install', 'opensearch-dashboards', 'opensearch/opensearch-dashboards',
       '--namespace', this.namespace,
-      '--set', 'opensearchHosts=http://opensearch-cluster-master:9200',
-      '--set', 'resources.requests.cpu=150m',
-      '--set', 'resources.requests.memory=512Mi',
-      '--set', 'resources.limits.cpu=800m',
-      '--set', 'resources.limits.memory=1024Mi',
-      '--set', 'opensearch_security.enabled=false',
-      '--set', 'extraEnvs[0].name=DISABLE_SECURITY_DASHBOARDS_PLUGIN',
-      '--set-string', 'extraEnvs[0].value=true',
-      '--set', 'extraEnvs[1].name=DISABLE_SECURITY_PLUGIN',
-      '--set-string', 'extraEnvs[1].value=true',
-      '--set', 'ingress.enabled=true',
-      '--set', `ingress.hosts[0].host=siem.${domain}`,
-      '--set', 'ingress.hosts[0].paths[0].path=/',
-      '--set', 'ingress.hosts[0].paths[0].pathType=Prefix',
-      '--set', 'ingress.hosts[0].paths[0].backend.serviceName=',
-      '--set', `ingress.tls[0].hosts[0]=siem.${domain}`,
-      '--set', `ingress.tls[0].secretName=${this.tlsSecretName}`
+      ...dashboardsValuesArgs
     ];
     await execStream('helm', dashboardsArgs, { onLog });
 

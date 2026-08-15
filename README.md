@@ -35,8 +35,8 @@ Vigilante automatically verifies your local environment before spinning up resou
 
 ### 1. Install & Link CLI
 ```bash
-npm install
-npm link
+pnpm install
+pnpm link --global
 ```
 
 ### 2. Provision Local Environment
@@ -84,11 +84,14 @@ Commands:
   modules     List available and installed security modules
   threat-sim  Trigger network threat simulation batch against SIEM
   hosts/hostr Sync or manage local domain mappings in /etc/hosts
+  values      Inspect or export customizable Helm chart values.yaml files
 
 Options:
   --domain, -d       Local top-level domain (Default: vigilante.local)
   --cluster-name, -c Cluster name (Default: vigilante-dev)
   --module, -m       Specific module(s) to install (comma-separated, Default: vigil-soc)
+  --values, -f       Path to custom Helm values override file
+  --values-dir       Path to directory with custom values files (Default: ./values)
   --ip               Target IP for hosts mapping (Default: 127.0.0.1)
   --remove           Remove managed entries from /etc/hosts (for hosts/hostr)
   --check            Check /etc/hosts status without modifying (for hosts/hostr)
@@ -101,6 +104,15 @@ Options:
 # Check system and cluster health (including /etc/hosts status)
 vigilante status
 
+# Export editable starter values.yaml files to ./values/
+vigilante values export
+
+# Inspect active default and override values files
+vigilante values
+
+# Deploy using custom values overrides
+vigilante up --values ./values/vigil-soc/opensearch.yaml
+
 # Sync local DNS mappings for custom domain
 vigilante hostr --domain custom.local
 
@@ -109,6 +121,34 @@ vigilante threat-sim
 
 # Destroy the cluster and clean up hosts
 vigilante down
+```
+
+---
+
+## ⚙️ Customizing Helm Chart Values (`values.yaml`)
+
+Vigilante allows you to customize the underlying Helm charts for each security module without modifying source code.
+
+### 1. Export Starter Values Files
+Generate editable starter values files for all installed modules:
+```bash
+vigilante values export
+```
+This generates:
+- `./values/vigil-soc/opensearch.yaml` (cluster memory, CPU, replica settings)
+- `./values/vigil-soc/opensearch-dashboards.yaml` (dashboards UI, ingress, resources)
+
+### 2. Edit & Apply Custom Overrides
+Modify the YAML files in `./values/` as needed (e.g. increase memory limits or enable persistence). When you run:
+```bash
+vigilante up
+```
+Vigilante automatically detects `./values/<module>/<chart>.yaml` and layers your overrides on top of the module defaults!
+
+You can also pass explicit files or directories via the CLI:
+```bash
+vigilante up -f ./my-custom-opensearch.yaml
+vigilante up --values-dir ./custom-values
 ```
 
 ---

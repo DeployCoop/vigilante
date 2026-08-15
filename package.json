@@ -11,8 +11,12 @@
     "status": "node ./bin/vigilante.js status",
     "threat-sim": "node ./bin/vigilante.js threat-sim",
     "hosts": "node ./bin/vigilante.js hosts",
-    "hostr": "node ./bin/vigilante.js hostr"
+    "hostr": "node ./bin/vigilante.js hostr",
+    "values": "node ./bin/vigilante.js values",
+    "config": "node ./bin/vigilante.js config",
+    "test": "node tests/test-values.js && node tests/test-clipboard.js"
   },
+  "packageManager": "pnpm@11.12.0",
   "dependencies": {
     "execa": "^8.0.1",
     "ink": "^4.4.1",
