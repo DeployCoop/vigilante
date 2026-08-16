@@ -54,9 +54,11 @@ export function openInEditor(filePath) {
   process.stdout.write('\x1b[?1000l\x1b[?1006l\x1b[2J\x1b[H');
 
   try {
-    const result = spawnSync(editor, [filePath], {
-      stdio: 'inherit',
-      shell: true
+    const parts = editor.trim().split(/\s+/);
+    const bin = parts[0];
+    const args = [...parts.slice(1), filePath];
+    const result = spawnSync(bin, args, {
+      stdio: 'inherit'
     });
 
     logger.info('EDITOR:EXIT', `Editor "${editor}" finished with status ${result.status}`);

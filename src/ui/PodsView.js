@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { watchPodsWide, getPodsWide } from '../engine/pods.js';
+import {
+  watchPodsWide,
+  getPodsWide,
+  describePodInteractive,
+  streamPodLogsInteractive,
+  openPodShellInteractive
+} from '../engine/pods.js';
 import { useClipboard } from './ClipboardManager.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { logger } from '../utils/logger.js';
@@ -84,9 +90,10 @@ export const PodsView = ({
     ]);
   }, [filteredPods, registerPanes]);
 
-  // Keyboard navigation
+  // Keyboard navigation & pod actions
   useInput((input, key) => {
     const keyChar = (input || '').toLowerCase();
+    const selectedPod = filteredPods[cursor];
 
     if (key.upArrow || keyChar === 'k') {
       setCursor(c => (c > 0 ? c - 1 : Math.max(0, filteredPods.length - 1)));
@@ -95,6 +102,51 @@ export const PodsView = ({
 
     if (key.downArrow || keyChar === 'j') {
       setCursor(c => (c < filteredPods.length - 1 ? c + 1 : 0));
+      return;
+    }
+
+    // [d] -> kubectl describe pod
+    if (keyChar === 'd') {
+      if (selectedPod) {
+        describePodInteractive({
+          clusterName,
+          namespace: selectedPod.namespace,
+          podName: selectedPod.name
+        });
+      } else {
+        setCopyFeedback('✖ No pod selected to describe.');
+        setTimeout(() => setCopyFeedback(null), 2500);
+      }
+      return;
+    }
+
+    // [l] or [L] -> kubectl logs -f
+    if (keyChar === 'l') {
+      if (selectedPod) {
+        streamPodLogsInteractive({
+          clusterName,
+          namespace: selectedPod.namespace,
+          podName: selectedPod.name
+        });
+      } else {
+        setCopyFeedback('✖ No pod selected to view logs.');
+        setTimeout(() => setCopyFeedback(null), 2500);
+      }
+      return;
+    }
+
+    // [s] or [S] -> kubectl exec -it /bin/sh (Shell)
+    if (keyChar === 's') {
+      if (selectedPod) {
+        openPodShellInteractive({
+          clusterName,
+          namespace: selectedPod.namespace,
+          podName: selectedPod.name
+        });
+      } else {
+        setCopyFeedback('✖ No pod selected to connect shell.');
+        setTimeout(() => setCopyFeedback(null), 2500);
+      }
       return;
     }
 
@@ -126,10 +178,6 @@ export const PodsView = ({
     }
 
     // Navigation delegates
-    if (keyChar === 's' && onNavigate) {
-      onNavigate('status');
-      return;
-    }
     if (keyChar === 'm' && onNavigate) {
       onNavigate('modules');
       return;
@@ -140,10 +188,6 @@ export const PodsView = ({
     }
     if (keyChar === 'u' && onNavigate) {
       onNavigate('up');
-      return;
-    }
-    if (keyChar === 'd' && onNavigate) {
-      onNavigate('down');
       return;
     }
     if (keyChar === 't' && onNavigate) {
@@ -179,11 +223,11 @@ export const PodsView = ({
       React.createElement(
         Box,
         null,
-        React.createElement(Spinner, { type: 'dots' }),
+        React.createElement(Text, { color: 'green', bold: true }, '●'),
         React.createElement(
           Text,
           { bold: true, color: 'cyan', marginLeft: 1 },
-          '⚡ LIVE KUBERNETES POD MONITOR (-A -o wide)'
+          'LIVE KUBERNETES POD MONITOR (-A -o wide)'
         )
       ),
       React.createElement(
@@ -234,14 +278,14 @@ export const PodsView = ({
       React.createElement(
         Box,
         null,
-        React.createElement(Text, { bold: true, color: 'cyan' }, '  NAMESPACE'.padEnd(16)),
-        React.createElement(Text, { bold: true, color: 'white' }, 'NAME'.padEnd(38)),
-        React.createElement(Text, { bold: true, color: 'green' }, 'READY'.padEnd(8)),
-        React.createElement(Text, { bold: true, color: 'yellow' }, 'STATUS'.padEnd(18)),
-        React.createElement(Text, { bold: true, color: 'magenta' }, 'RESTARTS'.padEnd(10)),
-        React.createElement(Text, { bold: true, color: 'gray' }, 'AGE'.padEnd(7)),
-        React.createElement(Text, { bold: true, color: 'blue' }, 'IP'.padEnd(15)),
-        React.createElement(Text, { bold: true, color: 'gray' }, 'NODE')
+        React.createElement(Text, { bold: true, color: 'cyan', wrap: 'truncate-end' }, '  NAMESPACE'.padEnd(16)),
+        React.createElement(Text, { bold: true, color: 'white', wrap: 'truncate-end' }, 'NAME'.padEnd(38)),
+        React.createElement(Text, { bold: true, color: 'green', wrap: 'truncate-end' }, 'READY'.padEnd(8)),
+        React.createElement(Text, { bold: true, color: 'yellow', wrap: 'truncate-end' }, 'STATUS'.padEnd(18)),
+        React.createElement(Text, { bold: true, color: 'magenta', wrap: 'truncate-end' }, 'RESTARTS'.padEnd(10)),
+        React.createElement(Text, { bold: true, color: 'gray', wrap: 'truncate-end' }, 'AGE'.padEnd(7)),
+        React.createElement(Text, { bold: true, color: 'blue', wrap: 'truncate-end' }, 'IP'.padEnd(15)),
+        React.createElement(Text, { bold: true, color: 'gray', wrap: 'truncate-end' }, 'NODE')
       )
     ),
 
@@ -285,47 +329,47 @@ export const PodsView = ({
             },
             React.createElement(
               Text,
-              { color: isFocused ? 'yellow' : 'gray', bold: isFocused },
+              { color: isFocused ? 'yellow' : 'gray', bold: isFocused, wrap: 'truncate-end' },
               isFocused ? '❯ ' : '  '
             ),
             React.createElement(
               Text,
-              { color: isFocused ? 'white' : 'cyan' },
+              { color: isFocused ? 'white' : 'cyan', wrap: 'truncate-end' },
               pod.namespace.padEnd(14)
             ),
             React.createElement(
               Text,
-              { bold: isFocused, color: isFocused ? 'yellow' : 'white' },
+              { bold: isFocused, color: isFocused ? 'yellow' : 'white', wrap: 'truncate-end' },
               displayName.padEnd(38)
             ),
             React.createElement(
               Text,
-              { color: pod.readyCount === pod.totalCount && pod.totalCount > 0 ? 'green' : 'gray' },
+              { color: pod.readyCount === pod.totalCount && pod.totalCount > 0 ? 'green' : 'gray', wrap: 'truncate-end' },
               pod.ready.padEnd(8)
             ),
             React.createElement(
               Text,
-              { color: statusColor, bold: statusColor === 'red' || statusColor === 'yellow' },
+              { color: statusColor, bold: statusColor === 'red' || statusColor === 'yellow', wrap: 'truncate-end' },
               pod.status.padEnd(18)
             ),
             React.createElement(
               Text,
-              { color: pod.restarts > 0 ? 'yellow' : 'gray' },
+              { color: pod.restarts > 0 ? 'yellow' : 'gray', wrap: 'truncate-end' },
               String(pod.restarts).padEnd(10)
             ),
             React.createElement(
               Text,
-              { color: 'gray' },
+              { color: 'gray', wrap: 'truncate-end' },
               pod.age.padEnd(7)
             ),
             React.createElement(
               Text,
-              { color: 'blue' },
+              { color: 'blue', wrap: 'truncate-end' },
               pod.ip.padEnd(15)
             ),
             React.createElement(
               Text,
-              { color: 'gray' },
+              { color: 'gray', wrap: 'truncate-end' },
               pod.node
             )
           );
@@ -357,13 +401,17 @@ export const PodsView = ({
       React.createElement(
         Box,
         null,
+        React.createElement(Text, { color: 'green', bold: true }, '[d] '),
+        React.createElement(Text, { color: 'white' }, 'Describe  '),
+        React.createElement(Text, { color: 'cyan', bold: true }, '[L] '),
+        React.createElement(Text, { color: 'white' }, 'Logs  '),
+        React.createElement(Text, { color: 'magenta', bold: true }, '[S] '),
+        React.createElement(Text, { color: 'white' }, 'Shell  '),
         React.createElement(Text, { color: 'yellow', bold: true }, '[f] '),
         React.createElement(Text, { color: 'white' }, 'Filter NS  '),
-        React.createElement(Text, { color: 'cyan', bold: true }, '[c] '),
-        React.createElement(Text, { color: 'white' }, 'Copy Table  '),
-        React.createElement(Text, { color: 'green', bold: true }, '[r] '),
-        React.createElement(Text, { color: 'white' }, 'Refresh  '),
-        React.createElement(Text, { color: 'gray' }, '| [s] Status  [m] Modules  [v] Values  [q] Return')
+        React.createElement(Text, { color: 'white', bold: true }, '[c] '),
+        React.createElement(Text, { color: 'white' }, 'Copy  '),
+        React.createElement(Text, { color: 'gray' }, '| [m] Modules  [v] Values  [q/Esc] Return')
       ),
       React.createElement(
         Text,

@@ -1,5 +1,10 @@
 import { execa } from 'execa';
+import { spawnSync } from 'node:child_process';
+import fsSync from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { logger } from '../utils/logger.js';
+import { runInteractiveTerminal } from '../utils/terminal-runner.js';
 
 /**
  * Format age from ISO timestamp into concise human string (e.g. 12s, 4m, 2h, 5d)
@@ -117,6 +122,34 @@ export async function getPodsWide({ clusterName = 'vigilante-dev', namespace = n
 }
 
 /**
+ * Deep compare two pod arrays to avoid redundant state updates and UI re-renders
+ * @param {Array<Object>} a
+ * @param {Array<Object>} b
+ * @returns {boolean}
+ */
+export function arePodsEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p1 = a[i];
+    const p2 = b[i];
+    if (
+      p1.namespace !== p2.namespace ||
+      p1.name !== p2.name ||
+      p1.ready !== p2.ready ||
+      p1.status !== p2.status ||
+      p1.restarts !== p2.restarts ||
+      p1.age !== p2.age ||
+      p1.ip !== p2.ip ||
+      p1.node !== p2.node
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Set up a live poller for pods matching `kubectl get pods -A -o wide`
  * @param {Object} options
  * @param {string} [options.clusterName]
@@ -135,13 +168,17 @@ export function watchPodsWide({
 }) {
   let active = true;
   let timerId = null;
+  let lastPods = null;
 
   async function poll() {
     if (!active) return;
     try {
       const pods = await getPodsWide({ clusterName, namespace });
       if (active && onUpdate) {
-        onUpdate(pods);
+        if (!lastPods || !arePodsEqual(lastPods, pods)) {
+          lastPods = pods;
+          onUpdate(pods);
+        }
       }
     } catch (err) {
       if (active && onError) {
@@ -164,4 +201,131 @@ export function watchPodsWide({
       timerId = null;
     }
   };
+}
+
+/**
+ * Open text content in the system pager ($PAGER or less -R) and wait for user to exit
+ * @param {string} content
+ * @param {string} filenameHint
+ */
+export function openInSystemPager(content, filenameHint = 'output.txt') {
+  if (!content) return;
+  const pager = process.env.PAGER || 'less -R';
+  const tmpFile = path.join(os.tmpdir(), `vigilante-${Date.now()}-${filenameHint}`);
+
+  try {
+    fsSync.writeFileSync(tmpFile, content, 'utf8');
+  } catch (err) {
+    logger.warn('PODS:PAGER', `Could not write temporary file: ${err.message}`);
+    return;
+  }
+
+  runInteractiveTerminal(() => {
+    try {
+      const parts = pager.trim().split(/\s+/);
+      const bin = parts[0];
+      const args = [...parts.slice(1), tmpFile];
+      spawnSync(bin, args, {
+        stdio: 'inherit'
+      });
+    } catch (err) {
+      logger.error('PODS:PAGER', `Failed to open pager: ${err.message}`, err);
+    }
+  });
+
+  try {
+    fsSync.unlinkSync(tmpFile);
+  } catch {
+    // Ignore cleanup error
+  }
+}
+
+/**
+ * Interactively describe a pod with the system pager
+ * @param {Object} options
+ * @param {string} [options.clusterName]
+ * @param {string} options.namespace
+ * @param {string} options.podName
+ */
+export function describePodInteractive({ clusterName = 'vigilante-dev', namespace, podName }) {
+  if (!podName || !namespace) return;
+  logger.info('PODS:DESCRIBE', `Running kubectl describe pod ${podName} -n ${namespace}`);
+  let output = '';
+  try {
+    const res = spawnSync('kubectl', [
+      'describe',
+      'pod',
+      podName,
+      '-n',
+      namespace,
+      '--context',
+      `k3d-${clusterName}`
+    ], { encoding: 'utf8' });
+    output = res.stdout || res.stderr || 'No describe output available.';
+  } catch (err) {
+    output = `Failed to execute kubectl describe: ${err.message}`;
+  }
+  openInSystemPager(output, `describe-${namespace}-${podName}.txt`);
+}
+
+/**
+ * Interactively view pod logs in the system pager
+ * @param {Object} options
+ * @param {string} [options.clusterName]
+ * @param {string} options.namespace
+ * @param {string} options.podName
+ */
+export function viewPodLogsInteractive({ clusterName = 'vigilante-dev', namespace, podName }) {
+  if (!podName || !namespace) return;
+  logger.info('PODS:LOGS', `Viewing kubectl logs for ${podName} -n ${namespace}`);
+  let output = '';
+  try {
+    const res = spawnSync('kubectl', [
+      'logs',
+      '--tail=5000',
+      podName,
+      '-n',
+      namespace,
+      '--context',
+      `k3d-${clusterName}`,
+      '--all-containers=true'
+    ], { encoding: 'utf8' });
+    output = res.stdout || res.stderr || 'No logs available for this pod.';
+  } catch (err) {
+    output = `Failed to retrieve logs: ${err.message}`;
+  }
+  openInSystemPager(output, `logs-${namespace}-${podName}.log`);
+}
+
+/**
+ * Alias for viewPodLogsInteractive
+ */
+export const streamPodLogsInteractive = viewPodLogsInteractive;
+
+/**
+ * Interactively open a shell into a pod
+ * @param {Object} options
+ * @param {string} [options.clusterName]
+ * @param {string} options.namespace
+ * @param {string} options.podName
+ */
+export function openPodShellInteractive({ clusterName = 'vigilante-dev', namespace, podName }) {
+  if (!podName || !namespace) return;
+  logger.info('PODS:SHELL', `Opening shell into pod ${podName} -n ${namespace}`);
+  runInteractiveTerminal(() => {
+    console.log(`\x1b[1;32m=== Connecting interactive shell to pod: ${namespace}/${podName} (Type 'exit' to return to Vigilante) ===\x1b[0m\n`);
+    spawnSync('kubectl', [
+      'exec',
+      '-it',
+      podName,
+      '-n',
+      namespace,
+      '--context',
+      `k3d-${clusterName}`,
+      '--',
+      '/bin/sh',
+      '-c',
+      'command -v bash >/dev/null 2>&1 && exec bash || exec sh'
+    ], { stdio: 'inherit' });
+  });
 }

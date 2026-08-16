@@ -1,4 +1,15 @@
-import { formatAge, computePodStatus, getPodsWide, watchPodsWide } from '../src/engine/pods.js';
+import {
+  formatAge,
+  computePodStatus,
+  getPodsWide,
+  watchPodsWide,
+  arePodsEqual,
+  openInSystemPager,
+  describePodInteractive,
+  streamPodLogsInteractive,
+  viewPodLogsInteractive,
+  openPodShellInteractive
+} from '../src/engine/pods.js';
 
 async function runTests() {
   console.log('🧪 Testing Kubernetes Pods Monitor Engine (-A -o wide)...');
@@ -68,7 +79,16 @@ async function runTests() {
   }
   console.log(`✔ Test 3 passed: getPodsWide returned valid array (${pods.length} pods detected).`);
 
-  // Test 4: watchPodsWide starts and stops cleanly
+  // Test 4: arePodsEqual diffing
+  const listA = [{ namespace: 'ns', name: 'p1', ready: '1/1', status: 'Running', restarts: 0, age: '1m', ip: '1.2.3.4', node: 'n1' }];
+  const listB = [{ namespace: 'ns', name: 'p1', ready: '1/1', status: 'Running', restarts: 0, age: '1m', ip: '1.2.3.4', node: 'n1' }];
+  const listC = [{ namespace: 'ns', name: 'p1', ready: '1/1', status: 'CrashLoopBackOff', restarts: 1, age: '1m', ip: '1.2.3.4', node: 'n1' }];
+
+  if (!arePodsEqual(listA, listB)) throw new Error('arePodsEqual should return true for identical lists');
+  if (arePodsEqual(listA, listC)) throw new Error('arePodsEqual should return false for different status/restarts');
+  console.log('✔ Test 4 passed: arePodsEqual accurately detects changes in pod states.');
+
+  // Test 5: watchPodsWide starts and stops cleanly
   let updateCalled = false;
   const stopWatch = watchPodsWide({
     clusterName: 'vigilante-dev',
@@ -84,7 +104,15 @@ async function runTests() {
   if (!updateCalled) {
     console.log('○ Note: watchPodsWide executed initial poll.');
   }
-  console.log('✔ Test 4 passed: watchPodsWide started and stopped polling cleanly.');
+  console.log('✔ Test 5 passed: watchPodsWide started and stopped polling cleanly.');
+
+  // Test 6: Interactive helpers exist and handle null/empty args without crashing
+  describePodInteractive({ namespace: null, podName: null });
+  streamPodLogsInteractive({ namespace: null, podName: null });
+  viewPodLogsInteractive({ namespace: null, podName: null });
+  openPodShellInteractive({ namespace: null, podName: null });
+  openInSystemPager(null, 'test.txt');
+  console.log('✔ Test 6 passed: Interactive pod action helpers handle edge cases safely.');
 
   console.log('🎉 All Pods Engine tests passed successfully!');
 }
