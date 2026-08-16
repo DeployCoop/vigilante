@@ -155,4 +155,17 @@ export class VigilSOCModule extends BaseModule {
       }
     ];
   }
+
+  /**
+   * Run network threat simulation against OpenSearch SIEM
+   */
+  async simulateThreats(options = {}) {
+    // Dynamic import to avoid circular dependency
+    const { globalModuleRegistry } = await import('../registry.js');
+    const osModule = globalModuleRegistry.get('opensearch');
+    if (osModule && typeof osModule.simulateThreats === 'function') {
+      return osModule.simulateThreats(options);
+    }
+    throw new Error('OpenSearch module is required to simulate and ingest threat events.');
+  }
 }

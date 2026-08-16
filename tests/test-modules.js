@@ -49,6 +49,18 @@ async function runTests() {
   }
   console.log('✔ Test 4 passed: getDomainHosts maps both siem and vigil subdomains.');
 
+  // Test 5: simulateThreats exists on opensearch and vigil-soc
+  const opensearch = globalModuleRegistry.get('opensearch');
+  const vigilSoc = globalModuleRegistry.get('vigil-soc');
+
+  if (typeof opensearch.simulateThreats !== 'function') {
+    throw new Error('OpenSearch module must have simulateThreats function');
+  }
+  if (typeof vigilSoc.simulateThreats !== 'function') {
+    throw new Error('Vigil SOC module must have simulateThreats function');
+  }
+  console.log('✔ Test 5 passed: simulateThreats function supported across modules.');
+
   console.log('🎉 All Modules tests passed successfully!');
 }
 

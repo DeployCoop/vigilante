@@ -26,9 +26,9 @@ export const ThreatSimView = ({ domain = 'vigilante.local', onDone }) => {
     async function runSim() {
       try {
         setLogs(l => [...l, '🎯 Initializing Network Threat Simulation Pipeline...']);
-        const soc = globalModuleRegistry.get('vigil-soc');
-        if (!soc) {
-          throw new Error('vigil-SOC module not found in registry.');
+        const simModule = globalModuleRegistry.get('opensearch') || globalModuleRegistry.get('vigil-soc');
+        if (!simModule || typeof simModule.simulateThreats !== 'function') {
+          throw new Error('OpenSearch or Vigil SOC module with threat simulation support not found in registry.');
         }
 
         setLogs(l => [...l, '📡 Generating ECS-formatted Network Threat Events:']);
@@ -36,7 +36,7 @@ export const ThreatSimView = ({ domain = 'vigilante.local', onDone }) => {
         setLogs(l => [...l, '  • [T1110] SSH Brute Force Authentication Flooding']);
         setLogs(l => [...l, '  • [T1071.004] DNS Tunneling / High Entropy Exfiltration']);
 
-        await soc.simulateThreats({
+        await simModule.simulateThreats({
           onLog: (msg) => setLogs(l => [...l, msg])
         });
 
