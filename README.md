@@ -4,6 +4,12 @@
 
 ---
 
+## Asciinema demo
+
+[![asciicast](https://asciinema.org/a/vG4odD90z9xHqw3a.svg)](https://asciinema.org/a/vG4odD90z9xHqw3a)
+
+---
+
 ## 🌟 Features
 
 - **Ink Terminal UI**: Interactive dashboards, step spinners, dynamic logs, and keyboard-driven module selectors.
