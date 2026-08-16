@@ -2,3 +2,4 @@ node_modules/
 .certs/
 .DS_Store
 *.log
+values
