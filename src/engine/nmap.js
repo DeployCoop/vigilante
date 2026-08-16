@@ -4,6 +4,7 @@ import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getVigilanteNmapsDir, ensureVigilanteConfig } from './config.js';
+import { autoSignIfConfigured } from './gpg.js';
 import { logger } from '../utils/logger.js';
 
 export const SCAN_PROFILES = [
@@ -401,6 +402,14 @@ export async function runNmapScan({
 
     logger.info('NMAP:SUCCESS', `Scan completed for ${cleanTarget} in ${durationMs}ms`);
 
+    // Auto-sign scan reports if GPG is configured
+    try {
+      await autoSignIfConfigured(nmapFilePath);
+      await autoSignIfConfigured(xmlFilePath);
+    } catch (err) {
+      logger.warn('NMAP:GPG', `Failed to auto-sign scan outputs: ${err.message}`);
+    }
+
     const parsed = parseNmapReportContent(fullOutput, `${baseName}.nmap`);
 
     return {
@@ -431,6 +440,12 @@ export async function deleteSavedScan(filePath) {
     const xmlPath = filePath.replace(/\.(nmap|txt)$/, '.xml');
     try {
       await fs.unlink(xmlPath);
+    } catch {
+      // Ignore
+    }
+    try {
+      await fs.unlink(`${filePath}.asc`);
+      await fs.unlink(`${xmlPath}.asc`);
     } catch {
       // Ignore
     }

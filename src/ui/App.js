@@ -1023,11 +1023,14 @@ const AppContent = ({
     // Toast Notification Banner
     React.createElement(ToastBanner, { toast: copiedToast }),
 
-    // Persistent Action Menu Bar (available at all times in interactive mode)
+    // Globally Context-Sensitive Action Menu & Workflow Breadcrumb Bar
     !nonInteractive
       ? React.createElement(MenuBar, {
-          isRunning: viewState === 'RUNNING' && !isDone,
-          activeView: viewState
+          activeView: viewState,
+          contextData: {
+            isRunning: viewState === 'RUNNING' && !isDone,
+            isDone
+          }
         })
       : null
   );

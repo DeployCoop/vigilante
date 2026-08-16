@@ -131,24 +131,28 @@ vigilante down
 
 ---
 
-## 🎮 Interactive Keyboard Action Menu
+## 🎮 Globally Context-Sensitive Action Menu & Workflow
 
-In interactive mode, Vigilante provides a persistent action menu allowing you to navigate between operations instantly at any time:
+Vigilante features an adaptive, **context-sensitive bottom action bar** that updates dynamically depending on which pane and state you are actively in, preventing keyboard shortcut collisions (for instance, `[p]` triggers Ping when inspecting a host in the Visualizer, while taking you to the Live Pods monitor when in the Status Dashboard).
 
-| Key | Action | Description |
+### 1. Canonical Operational Workflow
+```
+[1. UP] ➔ [2. Modules] ➔ [3. Status] ➔ [4. Pods] ➔ [5. Nmap] ➔ [6. Visualizer]
+```
+The menu automatically highlights your active stage (e.g. `[● 4. Pods]`) and indicates the next recommended step (e.g. `Next ➔ [n] Nmap (Scan)`).
+
+### 2. Contextual Shortcuts per Screen
+
+| Screen / Context | Keybindings | Description |
 |---|---|---|
-| `[u]` / `[U]` | **Up (Deploy)** | Provision k3d cluster, certificates, and security modules |
-| `[d]` / `[D]` | **Down (Teardown)** | Tear down k3d cluster and clean up `/etc/hosts` |
-| `[s]` / `[S]` | **Status** | View live environment health, prerequisites, and endpoints |
-| `[p]` / `[P]` | **Pods (Live)** | Live Kubernetes Pods monitor (`-A -o wide`) with logs, describe, shell |
-| `[n]` / `[N]` | **Nmap (Scan)** | Data collection & network reconnaissance scanner |
-| `[x]` / `[X]` | **XML Map** | Interactive XML network topology & port matrix visualizer |
-| `[t]` / `[T]` | **Threat-Sim** | Trigger network threat simulations against SIEM |
-| `[h]` / `[H]` | **Hostr** | Synchronize domain mappings in `/etc/hosts` |
-| `[v]` / `[V]` | **Values** | Inspect and manage Helm chart configurations |
-| `[m]` / `[M]` | **Modules** | View and toggle security packages |
-| `[1-6]` / 🖱️ | **Copy Pane** | Copy individual pane text / URL to system clipboard |
-| `[q]` / `[Esc]` | **Quit** | Exit the CLI application |
+| **6. XML Visualizer** | `[p]` Ping, `[b]` Bench (`ab`), `[m]` MTR, `[h]` HTTP, `[d]` DNS, `[s]` Switch Scan, `[f]` Filter, `[x/v]` Raw XML, `[e]` Editor, `[c]` Copy, `[n]` Nmap, `[q]` Return | Host network diagnostics & XML topology exploration |
+| **5. Nmap Scanner** | `[n]` Run Scan, `[i]` Custom CIDR/IP, `[t]` Target, `[p]` Profile, `[x]` ➔ XML Visualizer, `[v]` Pager, `[e]` Editor, `[c]` Copy, `[d]` Delete, `[q]` Dashboard | Network sweeps & target profiling |
+| **4. Live Pods** | `[↑/↓]` Select Pod, `[d]` Describe, `[l]` Logs, `[s]` Shell, `[f]` Filter NS, `[r]` Refresh, `[n]` ➔ Nmap, `[x]` Visualizer, `[c]` Copy, `[q]` Dashboard | Kubernetes pod operations (`-A -o wide`) |
+| **3. Status Dashboard** | `[p]` ➔ Pods (Live), `[n]` Nmap, `[x]` Visualizer, `[t]` Threat-Sim, `[m]` Modules, `[v]` Values, `[h]` Hostr, `[u]` Up, `[d]` Down, `[1-6]` Copy, `[q]` Quit | Global health, ingress endpoints & quick navigation |
+| **2. Modules** | `[↑/↓]` Navigate, `[Space]` Toggle, `[Enter]` Apply, `[u]` ➔ Deploy (Up), `[s]` Status, `[v]` Values, `[q]` Back | Security package enablement & dependencies |
+| **1. Up (Running)** | `[Esc/Ctrl+C]` Abort Task, `[Enter]` ➔ Next: Status Dashboard | Cluster creation, TLS provisioning & chart deployments |
+| **Values** | `[↑/↓]` Select Chart, `[e/Enter]` Edit in `$EDITOR`, `[v]` View Pager, `[x]` Export Starters, `[u]` ➔ Deploy (Up), `[q]` Back | Helm value customization & overrides |
+| **Threat-Sim** | `[↑/↓]` Select Scenario, `[Enter]` Run Scenario, `[a]` Run All, `[s]` Open SIEM UI, `[q]` Back | Adversary simulation & detection verification |
 
 ---
 
@@ -323,12 +327,76 @@ Vigilante includes an interactive **XML Network Visualizer** that parses `.xml` 
   - Structured table with Port ID, Protocol (`tcp`/`udp`), State (`OPEN`/`CLOSED`), Service Name (`http`, `https`, `ipp`), Product & Software Version (`nginx 1.24.0`, `OpenSearch 2.11`), and CPEs.
 - **Security & NSE Script Findings**:
   - Automatically highlights CVE vulnerability reports, SSL certificate details, and HTTP banners from `--script=vuln` or custom NSE scripts.
+- **Individual Host Forensic Probes & Incident Response (IR)**:
+  - **`[t]` Full IR Triage Bundle**: Executes parallel multi-vector forensic triage probes (`ping`, `mtr`, `dns`, `tls_certs`, `http_headers`, `arp_neighbors`, `benchmark`) and archives the complete evidence bundle into the evidence vault.
+  - **`[p]` Ping (ICMP)**: Measure RTT latency, packet loss, and jitter (`ping -c 4`).
+  - **`[b]` Bench (ab / ApacheBench)**: Benchmark HTTP response throughput and concurrency against discovered web ports.
+  - **`[m]` MTR / Network Route Trace**: Trace latency and packet loss per hop across the network route.
+  - **`[h]` HTTP Headers & TLS (curl -I)**: Inspect server headers, cookies, TLS versions, and redirect chains.
+  - **`[c]` TLS Certificate Chain (OpenSSL)**: Extract full public certificates, issuer CAs, validity dates, SANs, and cipher suites with `openssl s_client -showcerts`.
+  - **`[d]` DNS Lookup (dig)**: Perform forward (A/AAAA/CNAME/MX) and reverse PTR lookups.
+  - **`[a]` Kernel ARP & Neighbor Cache**: Inspect kernel ARP cache (`ip neigh show`) to identify MAC addresses and detect potential ARP spoofing / MITM gateways.
 - **Scan Cycling & Filtering**:
   - Press **`[s]`** or **`[Tab]`** to cycle through saved XML scans in `$XDG_CONFIG_HOME/vigilante/nmaps/`.
   - Press **`[f]`** to cycle filters: `All Hosts` | `🟢 Live Hosts` | `🔓 Open Ports` | `🛡️ Script / CVEs`.
   - Press **`[x]`** / **`[v]`** / **`[Enter]`** to view the raw XML in the system pager (`$PAGER`).
   - Press **`[e]`** to open the raw XML in `$EDITOR`.
-  - Press **`[c]`** to export a clean JSON summary of the XML scan to your clipboard.
+  - Press **`[y]`** to export a clean JSON summary of the XML scan to your clipboard.
+
+---
+
+## 📁 Incident Response Evidence Vault (`net/host/data.ext`)
+
+Vigilante automatically archives all forensic evidence, telemetry, and live triage data in a hierarchical network/host directory structure under `$XDG_CONFIG_HOME/vigilante/evidence/`:
+
+```
+$XDG_CONFIG_HOME/vigilante/evidence/
+├── 10.0.1.0_24/                          # Network CIDR Block
+│   ├── 10.0.1.1/                         # Gateway / Router
+│   │   ├── ping.json
+│   │   ├── mtr.txt
+│   │   ├── http_headers.txt
+│   │   └── arp_neighbors.json
+│   └── 10.0.1.5/                         # Target / SIEM Host
+│       ├── triage_summary.json           # Triage index with timestamps & artifact hashes
+│       ├── ping.json                     # ICMP RTT statistics
+│       ├── mtr.txt                       # MTR route hop latency & packet loss
+│       ├── dns_records.json              # Forward DNS & reverse PTR records
+│       ├── tls_certificates.pem         # Full X.509 certificate chain
+│       ├── http_headers.txt              # Security headers & server tokens
+│       ├── arp_neighbors.json            # Kernel ARP neighbor entries & MACs
+│       └── benchmark.txt                 # HTTP latency & concurrency metrics
+└── 127.0.0.0_8/
+    └── 127.0.0.1/
+        ├── triage_summary.json
+        ├── ping.json
+        └── tls_certificates.pem
+```
+
+---
+
+## 🔏 GPG Cryptographic Signatures & Non-Repudiation
+
+When responding to an active incident or preparing chain-of-custody forensic reports, Vigilante can automatically sign every file, diagnostic output, and scan with a designated GPG identity upon creation.
+
+### Enabling GPG in `$XDG_CONFIG_HOME/vigilante/config.yaml`
+```yaml
+# GPG Digital Signature & Evidence Integrity
+gpg:
+  enabled: true                                      # Enable cryptographic signing
+  keyId: "security-lead@vigilante.local"             # Key identity, email, or fingerprint
+  autoSign: true                                     # Automatically sign files as they are written
+  detached: true                                     # Create detached ASCII-armored signatures (.asc)
+  gnupgHome: ""                                      # Optional custom GNUPGHOME directory
+```
+
+When enabled, every evidence file (`.json`, `.txt`, `.pem`, `.xml`, `.nmap`) automatically receives a cryptographic detached signature (`.asc`) created at the exact moment of acquisition:
+- `evidence/10.0.1.0_24/10.0.1.5/mtr.txt` + `mtr.txt.asc`
+- `evidence/10.0.1.0_24/10.0.1.5/ping.json` + `ping.json.asc`
+- `evidence/10.0.1.0_24/10.0.1.5/tls_certificates.pem` + `tls_certificates.pem.asc`
+- `evidence/10.0.1.0_24/10.0.1.5/triage_summary.json` + `triage_summary.json.asc`
+
+The Visualizer automatically inspects and displays signature badges (`[🔏 GPG Signed]`) for verified artifacts.
 
 ---
 

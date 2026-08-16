@@ -177,7 +177,15 @@ export const PodsView = ({
       return;
     }
 
-    // Navigation delegates
+    // Navigation delegates (Workflow: UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER)
+    if (keyChar === 'n' && onNavigate) {
+      onNavigate('nmap');
+      return;
+    }
+    if (keyChar === 'x' && onNavigate) {
+      onNavigate('xml-visualizer');
+      return;
+    }
     if (keyChar === 'm' && onNavigate) {
       onNavigate('modules');
       return;
@@ -196,6 +204,10 @@ export const PodsView = ({
     }
     if (keyChar === 'h' && onNavigate) {
       onNavigate('hostr');
+      return;
+    }
+    if (keyChar === 'b' && onNavigate) {
+      onNavigate('dashboard');
       return;
     }
 

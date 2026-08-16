@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
+import Spinner from 'ink-spinner';
 import path from 'node:path';
 import { listSavedXmlScans, readXmlScan } from '../engine/nmap-xml.js';
+import {
+  runPing,
+  runBenchmark,
+  runMtr,
+  runCurlHeaders,
+  runDnsLookup,
+  runTlsCertDump,
+  runArpNeighLookup,
+  runFullTriageCapture
+} from '../engine/diagnostics.js';
+import { listHostEvidence, saveEvidenceFile, readEvidenceContent } from '../engine/evidence.js';
 import { openInSystemPager } from '../engine/pods.js';
 import { openInEditor } from '../utils/editor.js';
 import { useClipboard } from './ClipboardManager.js';
@@ -27,6 +39,8 @@ export const NmapVisualizerView = ({
   const [filterIdx, setFilterIdx] = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeDiagnostic, setActiveDiagnostic] = useState(null);
+  const [hostEvidenceList, setHostEvidenceList] = useState([]);
 
   const { registerPanes } = useClipboard();
 
@@ -66,6 +80,18 @@ export const NmapVisualizerView = ({
   });
 
   const selectedHost = filteredHosts[hostCursor] || null;
+  const networkTarget = activeScan?.target || 'local_network';
+
+  // Load existing evidence for selected host
+  useEffect(() => {
+    if (selectedHost) {
+      listHostEvidence(networkTarget, selectedHost.ip).then(items => {
+        setHostEvidenceList(items);
+      });
+    } else {
+      setHostEvidenceList([]);
+    }
+  }, [selectedHost, networkTarget]);
 
   // Register clipboard pane
   useEffect(() => {
@@ -132,9 +158,261 @@ export const NmapVisualizerView = ({
     }
   };
 
+  // Diagnostic Executions
+  const executePing = async (host) => {
+    if (!host) return;
+    setActiveDiagnostic({ tool: 'Ping (ICMP)', host: host.ip, isRunning: true, output: '' });
+    const res = await runPing(host.ip);
+    await saveEvidenceFile(networkTarget, host.ip, 'ping.json', res);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: 'Ping (ICMP)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/ping.json`
+    });
+  };
+
+  const executeBenchmark = async (host) => {
+    if (!host) return;
+    const hasHttps = host.ports.some(p => p.port === 443 && p.state === 'open');
+    const httpPort = host.ports.find(p => (p.port === 80 || p.port === 443 || p.service.includes('http')) && p.state === 'open');
+    const targetPort = httpPort ? httpPort.port : (hasHttps ? 443 : 80);
+
+    setActiveDiagnostic({ tool: 'HTTP Benchmark (ab)', host: host.ip, isRunning: true, output: '' });
+    const res = await runBenchmark(host.ip, { port: targetPort, isHttps: hasHttps });
+    await saveEvidenceFile(networkTarget, host.ip, 'benchmark.txt', res.output);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: res.tool || 'HTTP Benchmark (ab)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/benchmark.txt`
+    });
+  };
+
+  const executeMtr = async (host) => {
+    if (!host) return;
+    setActiveDiagnostic({ tool: 'MTR Network Path Trace', host: host.ip, isRunning: true, output: '' });
+    const res = await runMtr(host.ip);
+    await saveEvidenceFile(networkTarget, host.ip, 'mtr.txt', res.output);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: res.tool || 'MTR',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/mtr.txt`
+    });
+  };
+
+  const executeCurl = async (host) => {
+    if (!host) return;
+    const hasHttps = host.ports.some(p => p.port === 443 && p.state === 'open');
+    const httpPort = host.ports.find(p => (p.port === 80 || p.port === 443 || p.service.includes('http')) && p.state === 'open');
+    const targetPort = httpPort ? httpPort.port : (hasHttps ? 443 : 80);
+
+    setActiveDiagnostic({ tool: 'HTTP Headers & TLS (curl)', host: host.ip, isRunning: true, output: '' });
+    const res = await runCurlHeaders(host.ip, { port: targetPort, isHttps: hasHttps });
+    await saveEvidenceFile(networkTarget, host.ip, 'http_headers.txt', res.output);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: 'HTTP Headers (curl)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/http_headers.txt`
+    });
+  };
+
+  const executeTlsCertDump = async (host) => {
+    if (!host) return;
+    const sslPort = host.ports.find(p => p.port === 443 || p.service.includes('ssl') || p.service.includes('https'));
+    const targetPort = sslPort ? sslPort.port : 443;
+
+    setActiveDiagnostic({ tool: 'OpenSSL TLS Certificate Dump', host: host.ip, isRunning: true, output: '' });
+    const res = await runTlsCertDump(host.ip, targetPort);
+    await saveEvidenceFile(networkTarget, host.ip, 'tls_certificates.pem', res.output);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: 'TLS Certificate Chain (OpenSSL)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/tls_certificates.pem`
+    });
+  };
+
+  const executeDns = async (host) => {
+    if (!host) return;
+    setActiveDiagnostic({ tool: 'DNS Resolution & PTR (dig)', host: host.ip, isRunning: true, output: '' });
+    const res = await runDnsLookup(host.ip);
+    await saveEvidenceFile(networkTarget, host.ip, 'dns_records.json', res);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: 'DNS Lookup (dig)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/dns_records.json`
+    });
+  };
+
+  const executeArp = async (host) => {
+    if (!host) return;
+    setActiveDiagnostic({ tool: 'Kernel ARP & Neighbor Lookup', host: host.ip, isRunning: true, output: '' });
+    const res = await runArpNeighLookup(host.ip);
+    await saveEvidenceFile(networkTarget, host.ip, 'arp_neighbors.json', res);
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    setActiveDiagnostic({
+      tool: 'ARP & Neighbor Table (ip neigh)',
+      host: host.ip,
+      isRunning: false,
+      command: res.command,
+      output: res.output,
+      success: res.success,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/arp_neighbors.json`
+    });
+  };
+
+  const executeFullTriage = async (host) => {
+    if (!host) return;
+    const hasHttps = host.ports.some(p => p.port === 443 && p.state === 'open');
+    const httpPort = host.ports.find(p => (p.port === 80 || p.port === 443 || p.service.includes('http')) && p.state === 'open');
+    const targetPort = httpPort ? httpPort.port : (hasHttps ? 443 : 80);
+
+    setActiveDiagnostic({ tool: '🚨 Full IR Triage Evidence Bundle', host: host.ip, isRunning: true, output: '' });
+    const res = await runFullTriageCapture(host.ip, {
+      networkCidr: networkTarget,
+      port: targetPort,
+      isHttps: hasHttps
+    });
+
+    const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
+    setHostEvidenceList(updatedEvidence);
+
+    const artifactList = res.saved.artifacts.map(a => `  • ${a.name} (${a.type})`).join('\n');
+    const summaryText = [
+      `=== 🛡️ Incident Response Triage Bundle Complete ===`,
+      `Target: ${host.ip} in network ${networkTarget}`,
+      `Captured: ${res.saved.artifacts.length} evidence artifacts in ${res.durationMs}ms`,
+      `Saved to: $XDG_CONFIG_HOME/vigilante/evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/`,
+      '',
+      `Evidence Artifacts Generated:`,
+      artifactList,
+      '',
+      `Press [v] to inspect the triage summary index in pager.`
+    ].join('\n');
+
+    setActiveDiagnostic({
+      tool: 'Full IR Triage Bundle',
+      host: host.ip,
+      isRunning: false,
+      command: `Parallel forensic triage probes against ${host.ip}`,
+      output: summaryText,
+      success: true,
+      savedFile: `evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/triage_summary.json`
+    });
+  };
+
   // Keyboard navigation
   useInput((input, key) => {
     const keyChar = (input || '').toLowerCase();
+
+    // If active diagnostic modal is open
+    if (activeDiagnostic) {
+      if (key.escape || keyChar === 'q' || keyChar === 'x') {
+        setActiveDiagnostic(null);
+        return;
+      }
+      if (keyChar === 'v' || key.return) {
+        if (activeDiagnostic.output) {
+          openInSystemPager(activeDiagnostic.output, `${activeDiagnostic.tool}-${activeDiagnostic.host}`);
+        }
+        return;
+      }
+      if (keyChar === 'c') {
+        if (activeDiagnostic.output) {
+          copyToClipboard(activeDiagnostic.output);
+          setFeedback({ type: 'success', text: '✔ Copied diagnostic output to clipboard!' });
+          setTimeout(() => setFeedback(null), 3000);
+        }
+        return;
+      }
+      return;
+    }
+
+    // Host Quick Diagnostic Triggers
+    if (selectedHost) {
+      // [t] -> Full Incident Response Triage Bundle
+      if (keyChar === 't') {
+        executeFullTriage(selectedHost);
+        return;
+      }
+      // [p] -> Ping host
+      if (keyChar === 'p') {
+        executePing(selectedHost);
+        return;
+      }
+      // [b] -> ApacheBench / HTTP load test
+      if (keyChar === 'b') {
+        executeBenchmark(selectedHost);
+        return;
+      }
+      // [m] -> MTR Network trace
+      if (keyChar === 'm') {
+        executeMtr(selectedHost);
+        return;
+      }
+      // [h] -> HTTP Header inspection (curl -I)
+      if (keyChar === 'h') {
+        executeCurl(selectedHost);
+        return;
+      }
+      // [c] -> OpenSSL TLS Certificate Dump
+      if (keyChar === 'c') {
+        executeTlsCertDump(selectedHost);
+        return;
+      }
+      // [d] -> DNS resolution (dig)
+      if (keyChar === 'd') {
+        executeDns(selectedHost);
+        return;
+      }
+      // [a] -> ARP / Neighbor table inspection
+      if (keyChar === 'a') {
+        executeArp(selectedHost);
+        return;
+      }
+    }
 
     // Navigate hosts
     if (key.upArrow || keyChar === 'k') {
@@ -178,8 +456,8 @@ export const NmapVisualizerView = ({
       return;
     }
 
-    // Copy report [c]
-    if (keyChar === 'c') {
+    // Copy report [y]
+    if (keyChar === 'y') {
       handleCopyReport();
       return;
     }
@@ -191,19 +469,19 @@ export const NmapVisualizerView = ({
     }
 
     // Standard navigation
-    if (keyChar === 'm' && onNavigate) {
-      onNavigate('modules');
+    if (keyChar === 'b' && onNavigate) {
+      onNavigate('dashboard');
       return;
     }
-    if (keyChar === 'p' && onNavigate) {
-      onNavigate('pods');
+    if (keyChar === 'u' && onNavigate) {
+      onNavigate('up');
       return;
     }
 
     // [q] or [Esc] -> Return
     if (keyChar === 'q' || key.escape) {
       if (onNavigate) {
-        onNavigate('nmap');
+        onNavigate('dashboard');
       }
     }
   });
@@ -361,6 +639,67 @@ export const NmapVisualizerView = ({
         )
       : null,
 
+    // Live Diagnostic Inspector Modal / Box
+    activeDiagnostic
+      ? React.createElement(
+          Box,
+          {
+            flexDirection: 'column',
+            marginBottom: 1,
+            padding: 1,
+            borderStyle: 'double',
+            borderColor: activeDiagnostic.isRunning ? theme.warning : (activeDiagnostic.success ? theme.success : theme.error)
+          },
+          React.createElement(
+            Box,
+            { justifyContent: 'space-between', marginBottom: 0 },
+            React.createElement(
+              Box,
+              null,
+              activeDiagnostic.isRunning
+                ? React.createElement(Spinner, { type: 'dots' })
+                : null,
+              React.createElement(
+                Text,
+                { color: theme.accent, bold: true, marginLeft: activeDiagnostic.isRunning ? 1 : 0 },
+                ` ⚡ ${activeDiagnostic.tool}: ${activeDiagnostic.host}`
+              )
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted },
+              activeDiagnostic.isRunning ? 'Executing...' : '[v/Enter] Pager | [c] Copy | [Esc] Close'
+            )
+          ),
+          activeDiagnostic.command
+            ? React.createElement(
+                Text,
+                { color: theme.muted, dimColor: true },
+                `Command: ${activeDiagnostic.command}`
+              )
+            : null,
+          activeDiagnostic.savedFile
+            ? React.createElement(
+                Text,
+                { color: theme.success, dimColor: true },
+                `✔ Saved Artifact: $XDG_CONFIG_HOME/vigilante/${activeDiagnostic.savedFile}`
+              )
+            : null,
+          React.createElement(
+            Box,
+            { marginY: 1, flexDirection: 'column' },
+            activeDiagnostic.isRunning
+              ? React.createElement(Text, { color: theme.text }, 'Running diagnostic probe against host...')
+              : React.createElement(
+                  Text,
+                  { color: theme.text },
+                  activeDiagnostic.output.split('\n').slice(0, 8).join('\n') +
+                    (activeDiagnostic.output.split('\n').length > 8 ? '\n... (Press [v] to view full report in pager)' : '')
+                )
+          )
+        )
+      : null,
+
     // Main Content: Host Tree & Selected Host Detail Matrix
     React.createElement(
       Box,
@@ -456,6 +795,63 @@ export const NmapVisualizerView = ({
                 )
               ),
 
+              // Live Incident Response & Forensic Probes Banner
+              React.createElement(
+                Box,
+                {
+                  paddingX: 1,
+                  marginBottom: 1,
+                  borderStyle: 'single',
+                  borderColor: theme.secondary,
+                  flexWrap: 'wrap'
+                },
+                React.createElement(Text, { color: theme.error, bold: true }, '[t] '),
+                React.createElement(Text, { color: theme.text }, 'Full Triage Bundle  '),
+                React.createElement(Text, { color: theme.success, bold: true }, '[p] '),
+                React.createElement(Text, { color: theme.text }, 'Ping  '),
+                React.createElement(Text, { color: theme.primary, bold: true }, '[b] '),
+                React.createElement(Text, { color: theme.text }, 'Bench  '),
+                React.createElement(Text, { color: theme.accent, bold: true }, '[m] '),
+                React.createElement(Text, { color: theme.text }, 'MTR  '),
+                React.createElement(Text, { color: theme.info, bold: true }, '[h] '),
+                React.createElement(Text, { color: theme.text }, 'HTTP  '),
+                React.createElement(Text, { color: theme.secondary, bold: true }, '[c] '),
+                React.createElement(Text, { color: theme.text }, 'TLS Certs  '),
+                React.createElement(Text, { color: theme.warning, bold: true }, '[d] '),
+                React.createElement(Text, { color: theme.text }, 'DNS  '),
+                React.createElement(Text, { color: theme.accent, bold: true }, '[a] '),
+                React.createElement(Text, { color: theme.text }, 'ARP')
+              ),
+
+              // Saved Evidence Vault Artifacts for this Host
+              hostEvidenceList.length > 0
+                ? React.createElement(
+                    Box,
+                    {
+                      flexDirection: 'column',
+                      marginBottom: 1,
+                      paddingX: 1,
+                      borderStyle: 'single',
+                      borderColor: theme.success
+                    },
+                    React.createElement(
+                      Text,
+                      { color: theme.success, bold: true },
+                      `📁 Saved Evidence in Vault (${hostEvidenceList.length} artifacts)${hostEvidenceList.some(a => a.isSigned) ? ' [🔏 GPG Signed]' : ''}:`
+                    ),
+                    React.createElement(
+                      Text,
+                      { color: theme.muted, dimColor: true },
+                      `Path: evidence/${networkTarget.replace(/\//g, '_')}/${selectedHost.ip}/`
+                    ),
+                    React.createElement(
+                      Text,
+                      { color: theme.text },
+                      hostEvidenceList.map(a => `${a.name}${a.isSigned ? ' 🔏' : ''} (${Math.round(a.sizeBytes / 1024 * 10) / 10}KB)`).join(' | ')
+                    )
+                  )
+                : null,
+
               // Hardware & OS Info
               selectedHost.mac || selectedHost.bestOsMatch
                 ? React.createElement(
@@ -540,41 +936,6 @@ export const NmapVisualizerView = ({
               { color: theme.muted },
               'Select a host from the list to view port matrix and security details.'
             )
-      )
-    ),
-
-    // Footer Action Bar
-    React.createElement(
-      Box,
-      {
-        marginTop: 1,
-        paddingTop: 1,
-        borderStyle: 'single',
-        borderColor: theme.muted,
-        justifyContent: 'space-between',
-        flexWrap: 'wrap'
-      },
-      React.createElement(
-        Box,
-        { flexWrap: 'wrap' },
-        React.createElement(Text, { color: theme.accent, bold: true }, '[s] '),
-        React.createElement(Text, { color: theme.text }, 'Switch Scan  '),
-        React.createElement(Text, { color: theme.primary, bold: true }, '[f] '),
-        React.createElement(Text, { color: theme.text }, 'Cycle Filter  '),
-        React.createElement(Text, { color: theme.info, bold: true }, '[x/v] '),
-        React.createElement(Text, { color: theme.text }, 'Raw XML (Pager)  '),
-        React.createElement(Text, { color: theme.secondary, bold: true }, '[e] '),
-        React.createElement(Text, { color: theme.text }, 'Editor  '),
-        React.createElement(Text, { color: theme.success, bold: true }, '[c] '),
-        React.createElement(Text, { color: theme.text }, 'Copy JSON  '),
-        React.createElement(Text, { color: theme.accent, bold: true }, '[n] '),
-        React.createElement(Text, { color: theme.text }, 'Nmap Scanner  '),
-        React.createElement(Text, { color: theme.muted }, '| [q/Esc] Return')
-      ),
-      React.createElement(
-        Text,
-        { color: theme.muted, dimColor: true },
-        'XML Reports from $XDG_CONFIG_HOME/vigilante/nmaps/'
       )
     )
   );

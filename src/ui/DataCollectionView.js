@@ -324,6 +324,10 @@ export const DataCollectionView = ({
     }
 
     // Navigation delegates
+    if (keyChar === 'b' && onNavigate) {
+      onNavigate('dashboard');
+      return;
+    }
     if (keyChar === 'm' && onNavigate) {
       onNavigate('modules');
       return;

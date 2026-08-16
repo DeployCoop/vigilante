@@ -46,6 +46,37 @@ export function getVigilanteNmapsDir() {
 }
 
 /**
+ * Get the evidence directory within XDG_CONFIG_HOME for incident response artifacts
+ * @returns {string}
+ */
+export function getVigilanteEvidenceDir() {
+  return path.join(getVigilanteConfigDir(), 'evidence');
+}
+
+/**
+ * Sanitize a string for safe directory path component
+ * @param {string} str
+ * @returns {string}
+ */
+export function sanitizePathComponent(str) {
+  if (!str) return 'unknown';
+  return String(str).trim().replace(/\//g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+/**
+ * Get the specific evidence directory for a network and host
+ * Structure: $XDG_CONFIG_HOME/vigilante/evidence/<network_cidr>/<host_ip>/
+ * @param {string} networkCidr
+ * @param {string} hostIp
+ * @returns {string}
+ */
+export function getHostEvidenceDir(networkCidr, hostIp) {
+  const netDir = sanitizePathComponent(networkCidr || 'local_network');
+  const hostDir = sanitizePathComponent(hostIp || '127.0.0.1');
+  return path.join(getVigilanteEvidenceDir(), netDir, hostDir);
+}
+
+/**
  * Default Vigilante Configuration Object
  */
 export const DEFAULT_CONFIG = {
@@ -78,6 +109,14 @@ export const DEFAULT_CONFIG = {
     enabled: true,
     autoSyncOnUp: true,
     autoCleanOnDown: true
+  },
+  gpg: {
+    enabled: false,
+    keyId: '',
+    autoSign: true,
+    detached: true,
+    armor: true,
+    gnupgHome: ''
   },
   behavior: {
     autoWatchPods: true,
@@ -131,6 +170,15 @@ hostr:
   autoSyncOnUp: true    # Automatically sync local domain mappings on 'vigilante up'
   autoCleanOnDown: true # Automatically clean up domain mappings on 'vigilante down'
 
+# GPG Digital Signature & Evidence Integrity
+# Signs evidence artifacts, scans, and reports at creation time for non-repudiation
+gpg:
+  enabled: false        # Set to true to enable cryptographic signing
+  keyId: ""             # GPG Key ID, fingerprint, or email (e.g., security@vigilante.local)
+  autoSign: true        # Automatically sign files upon creation
+  detached: true        # Generate detached ASCII-armored signatures (.asc)
+  gnupgHome: ""         # Optional custom GNUPGHOME directory path
+
 # Runtime Monitor Behavior
 behavior:
   autoWatchPods: true
@@ -145,12 +193,14 @@ export async function ensureVigilanteConfig() {
   const configDir = getVigilanteConfigDir();
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
+  const evidenceDir = getVigilanteEvidenceDir();
   const configFile = getVigilanteConfigFile();
   let created = false;
 
   try {
     await fs.mkdir(valuesDir, { recursive: true });
     await fs.mkdir(nmapsDir, { recursive: true });
+    await fs.mkdir(evidenceDir, { recursive: true });
     try {
       await fs.access(configFile);
     } catch {
@@ -162,7 +212,7 @@ export async function ensureVigilanteConfig() {
     logger.warn('CONFIG', `Failed to ensure config directories: ${err.message}`);
   }
 
-  return { configDir, valuesDir, nmapsDir, configFile, created };
+  return { configDir, valuesDir, nmapsDir, evidenceDir, configFile, created };
 }
 
 /**
@@ -172,6 +222,7 @@ export function ensureVigilanteConfigSync() {
   const configDir = getVigilanteConfigDir();
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
+  const evidenceDir = getVigilanteEvidenceDir();
   const configFile = getVigilanteConfigFile();
 
   try {
@@ -181,6 +232,9 @@ export function ensureVigilanteConfigSync() {
     if (!fsSync.existsSync(nmapsDir)) {
       fsSync.mkdirSync(nmapsDir, { recursive: true });
     }
+    if (!fsSync.existsSync(evidenceDir)) {
+      fsSync.mkdirSync(evidenceDir, { recursive: true });
+    }
     if (!fsSync.existsSync(configFile)) {
       fsSync.writeFileSync(configFile, DEFAULT_CONFIG_YAML, 'utf8');
     }
@@ -188,7 +242,7 @@ export function ensureVigilanteConfigSync() {
     // Ignore sync fallback error
   }
 
-  return { configDir, valuesDir, nmapsDir, configFile };
+  return { configDir, valuesDir, nmapsDir, evidenceDir, configFile };
 }
 
 /**
@@ -220,6 +274,10 @@ export function loadConfig() {
           hostr: {
             ...DEFAULT_CONFIG.hostr,
             ...(parsed.hostr || {})
+          },
+          gpg: {
+            ...DEFAULT_CONFIG.gpg,
+            ...(parsed.gpg || {})
           },
           behavior: {
             ...DEFAULT_CONFIG.behavior,
