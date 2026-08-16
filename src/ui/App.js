@@ -8,8 +8,11 @@ import { ThreatSimView } from './ThreatSimView.js';
 import { ValuesView } from './ValuesView.js';
 import { ModulesView } from './ModulesView.js';
 import { PodsView } from './PodsView.js';
+import { DataCollectionView } from './DataCollectionView.js';
+import { NmapVisualizerView } from './NmapVisualizerView.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
+import { ThemeProvider } from './theme.js';
 import { logger } from '../utils/logger.js';
 
 import { checkPrereqs } from '../engine/prereqs.js';
@@ -17,6 +20,7 @@ import { setupCertificates, checkCertificates } from '../engine/certs.js';
 import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cluster.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
+import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -26,7 +30,7 @@ const AppContent = ({
   clusterName = 'vigilante-dev',
   selectedModules: cliSelectedModules,
   customValuesPath = null,
-  customValuesDir = null,
+  customValuesDir: cliCustomValuesDir = null,
   hostsAction = 'sync',
   ip = '127.0.0.1',
   nonInteractive = false,
@@ -43,6 +47,8 @@ const AppContent = ({
   const [tasks, setTasks] = useState([]);
   const [logs, setLogs] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
+  const [customValuesDir, setCustomValuesDir] = useState(cliCustomValuesDir);
+  const [selectedXmlPath, setSelectedXmlPath] = useState(null);
   const [fatalError, setFatalError] = useState(null);
   const [isDone, setIsDone] = useState(false);
 
@@ -53,7 +59,7 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
-    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS') return;
+    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER') return;
 
     // In-flight active task: only allow exit/abort
     const isRunning = viewState === 'RUNNING' && !isDone;
@@ -134,6 +140,22 @@ const AppContent = ({
       logger.info('UI:ACTION', 'User pressed [p] -> Switching to PODS view');
       setFatalError(null);
       setViewState('PODS');
+      return;
+    }
+
+    // Trigger Nmap Data Collection
+    if (keyChar === 'n') {
+      logger.info('UI:ACTION', 'User pressed [n] -> Switching to NMAP view');
+      setFatalError(null);
+      setViewState('NMAP');
+      return;
+    }
+
+    // Trigger Nmap XML Topology Visualizer
+    if (keyChar === 'x') {
+      logger.info('UI:ACTION', 'User pressed [x] -> Switching to XML_VISUALIZER view');
+      setFatalError(null);
+      setViewState('XML_VISUALIZER');
       return;
     }
 
@@ -220,18 +242,26 @@ const AppContent = ({
       updateTask('certs', { status: 'done' });
 
       // Step 3: Local Hosts (hostr)
+      const cfg = loadConfig();
+      const hostrSyncEnabled = cfg.hostr?.enabled !== false && cfg.hostr?.autoSyncOnUp !== false;
+
       updateTask('hosts', { status: 'running' });
-      addLog(`Configuring local DNS mappings in /etc/hosts for *.${domain}...`);
-      try {
-        await syncHosts({
-          domain,
-          ip,
-          onLog: (msg) => addLog(msg)
-        });
-        updateTask('hosts', { status: 'done' });
-      } catch (hostsErr) {
-        updateTask('hosts', { status: 'done', detail: 'Warning: skipped (requires sudo)' });
-        addLog(`[hostr] Notice: Unable to auto-update /etc/hosts (${hostsErr.message}). Run 'vigilante hostr' or update manually.`);
+      if (hostrSyncEnabled) {
+        addLog(`Configuring local DNS mappings in /etc/hosts for *.${domain}...`);
+        try {
+          await syncHosts({
+            domain,
+            ip,
+            onLog: (msg) => addLog(msg)
+          });
+          updateTask('hosts', { status: 'done' });
+        } catch (hostsErr) {
+          updateTask('hosts', { status: 'done', detail: 'Warning: skipped (requires sudo)' });
+          addLog(`[hostr] Notice: Unable to auto-update /etc/hosts (${hostsErr.message}). Run 'vigilante hostr' or update manually.`);
+        }
+      } else {
+        updateTask('hosts', { status: 'done', detail: 'Skipped (disabled in config.yaml)' });
+        addLog(`[hostr] Automatic /etc/hosts sync is disabled in config.yaml. Press [h] to sync manually anytime.`);
       }
 
       // Step 4: Cluster
@@ -312,13 +342,21 @@ const AppContent = ({
       }
       updateTask('down', { status: 'done' });
 
+      const cfg = loadConfig();
+      const hostrCleanEnabled = cfg.hostr?.enabled !== false && cfg.hostr?.autoCleanOnDown !== false;
+
       updateTask('hosts', { status: 'running' });
-      addLog(`Cleaning up /etc/hosts managed domain mappings...`);
-      try {
-        await removeHosts({ onLog: (msg) => addLog(msg) });
-        updateTask('hosts', { status: 'done' });
-      } catch {
-        updateTask('hosts', { status: 'done', detail: 'Skipped' });
+      if (hostrCleanEnabled) {
+        addLog(`Cleaning up /etc/hosts managed domain mappings...`);
+        try {
+          await removeHosts({ onLog: (msg) => addLog(msg) });
+          updateTask('hosts', { status: 'done' });
+        } catch {
+          updateTask('hosts', { status: 'done', detail: 'Skipped' });
+        }
+      } else {
+        updateTask('hosts', { status: 'done', detail: 'Skipped (disabled in config.yaml)' });
+        addLog(`[hostr] Automatic /etc/hosts cleanup is disabled in config.yaml.`);
       }
 
       addLog('Environment torn down successfully.');
@@ -592,17 +630,45 @@ const AppContent = ({
   // Command: VALUES / CONFIG
   // -------------------------------------------------------------
   const runValuesWorkflow = async () => {
-    logger.info('WORKFLOW:VALUES', `Starting VALUES workflow (subCommand=${subCommand})`);
+    logger.info('WORKFLOW:VALUES', `Starting VALUES/CONFIG workflow (command=${command}, subCommand=${subCommand})`);
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
     setIsDone(false);
     setTasks([
-      { id: 'values', label: 'Manage customizable Helm chart values.yaml configurations', status: 'running' }
+      {
+        id: 'values',
+        label: command === 'config'
+          ? 'Manage global XDG configuration & themes'
+          : 'Manage customizable Helm chart values.yaml configurations',
+        status: 'running'
+      }
     ]);
 
     try {
-      if (subCommand === 'export' || subCommand === 'dump' || subCommand === 'init') {
+      await ensureVigilanteConfig();
+      const configFile = getVigilanteConfigFile();
+      const xdgValuesDir = getVigilanteValuesDir();
+
+      if (command === 'config') {
+        if (subCommand === 'path') {
+          addLog(configFile);
+        } else if (subCommand === 'init') {
+          addLog(`✔ Initialized config file: ${configFile}`);
+          addLog(`✔ Initialized XDG values directory: ${xdgValuesDir}`);
+        } else {
+          const cfg = loadConfig();
+          addLog(`Vigilante XDG Configuration & Theming:`);
+          addLog(`• Config file:        ${configFile}`);
+          addLog(`• XDG Values dir:     ${xdgValuesDir}`);
+          addLog(`• Active Theme:       ${cfg.theme?.name || 'default'}`);
+          addLog(`• Default Domain:     ${cfg.defaults?.domain || 'vigilante.local'}`);
+          addLog(`• Default Cluster:    ${cfg.defaults?.clusterName || 'vigilante-dev'}`);
+          addLog('');
+          addLog(`To edit your config in $EDITOR, launch interactive mode or run:`);
+          addLog(`  $EDITOR ${configFile}`);
+        }
+      } else if (subCommand === 'export' || subCommand === 'dump' || subCommand === 'init') {
         const targetDir = customValuesDir || './values';
         addLog(`Exporting editable starter values.yaml templates to '${targetDir}'...`);
         const exported = await exportStarterValues({
@@ -617,10 +683,11 @@ const AppContent = ({
         for (const item of items) {
           addLog(`• Module: ${item.moduleId} | Chart: ${item.chartName}`);
           addLog(`    Default template: ${item.defaultPath}`);
+          addLog(`    XDG User path:    ${item.xdgPath || 'N/A'}`);
           if (item.userOverridePath) {
             addLog(`    ✔ Active user override: ${item.userOverridePath}`);
           } else {
-            addLog(`    ○ No user override detected. Run 'vigilante values export' to create custom files.`);
+            addLog(`    ○ No user override detected.`);
           }
         }
       }
@@ -651,6 +718,10 @@ const AppContent = ({
       }
     } else if (command === 'pods') {
       setViewState('PODS');
+    } else if (command === 'nmap' || command === 'scan' || command === 'collect') {
+      setViewState('NMAP');
+    } else if (command === 'xml' || command === 'visualizer' || command === 'netmap') {
+      setViewState('XML_VISUALIZER');
     } else if (command === 'threat-sim') {
       setViewState('THREAT_SIM');
     } else if (command === 'hosts' || command === 'hostr') {
@@ -793,6 +864,82 @@ const AppContent = ({
               runHostsWorkflow();
             } else if (target === 'modules') {
               runModulesWorkflow();
+            } else if (target === 'nmap') {
+              setViewState('NMAP');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 8: Nmap Data Collection & Reconnaissance View
+    viewState === 'NMAP'
+      ? React.createElement(DataCollectionView, {
+          domain,
+          ip,
+          onNavigate: (target, optArg) => {
+            if (target === 'xml-visualizer') {
+              setSelectedXmlPath(optArg);
+              setViewState('XML_VISUALIZER');
+            } else if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'up') {
+              runUpWorkflow(chosenModules);
+            } else if (target === 'down') {
+              runDownWorkflow();
+            } else if (target === 'modules') {
+              setViewState('MODULES');
+            } else if (target === 'values') {
+              setViewState('VALUES');
+            } else if (target === 'pods') {
+              setViewState('PODS');
+            } else if (target === 'threat-sim') {
+              setViewState('THREAT_SIM');
+            } else if (target === 'hostr') {
+              runHostsWorkflow();
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 9: Nmap XML Network Topology Visualizer View
+    viewState === 'XML_VISUALIZER'
+      ? React.createElement(NmapVisualizerView, {
+          initialXmlPath: selectedXmlPath,
+          onNavigate: (target) => {
+            if (target === 'nmap') {
+              setViewState('NMAP');
+            } else if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'up') {
+              runUpWorkflow(chosenModules);
+            } else if (target === 'down') {
+              runDownWorkflow();
+            } else if (target === 'modules') {
+              setViewState('MODULES');
+            } else if (target === 'values') {
+              setViewState('VALUES');
+            } else if (target === 'pods') {
+              setViewState('PODS');
+            } else if (target === 'threat-sim') {
+              setViewState('THREAT_SIM');
+            } else if (target === 'hostr') {
+              runHostsWorkflow();
             } else if (target === 'dashboard') {
               if (dashboardData) {
                 setViewState('DASHBOARD');
@@ -888,8 +1035,12 @@ const AppContent = ({
 
 export const App = (props) => {
   return React.createElement(
-    ClipboardProvider,
-    { isInteractive: !props.nonInteractive },
-    React.createElement(AppContent, props)
+    ThemeProvider,
+    { customConfig: props.theme ? { theme: { name: props.theme } } : null },
+    React.createElement(
+      ClipboardProvider,
+      { isInteractive: !props.nonInteractive },
+      React.createElement(AppContent, props)
+    )
   );
 };

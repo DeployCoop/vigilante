@@ -140,12 +140,87 @@ In interactive mode, Vigilante provides a persistent action menu allowing you to
 | `[u]` / `[U]` | **Up (Deploy)** | Provision k3d cluster, certificates, and security modules |
 | `[d]` / `[D]` | **Down (Teardown)** | Tear down k3d cluster and clean up `/etc/hosts` |
 | `[s]` / `[S]` | **Status** | View live environment health, prerequisites, and endpoints |
+| `[p]` / `[P]` | **Pods (Live)** | Live Kubernetes Pods monitor (`-A -o wide`) with logs, describe, shell |
+| `[n]` / `[N]` | **Nmap (Scan)** | Data collection & network reconnaissance scanner |
+| `[x]` / `[X]` | **XML Map** | Interactive XML network topology & port matrix visualizer |
 | `[t]` / `[T]` | **Threat-Sim** | Trigger network threat simulations against SIEM |
 | `[h]` / `[H]` | **Hostr** | Synchronize domain mappings in `/etc/hosts` |
 | `[v]` / `[V]` | **Values** | Inspect and manage Helm chart configurations |
-| `[m]` / `[M]` | **Modules** | View available security packages |
+| `[m]` / `[M]` | **Modules** | View and toggle security packages |
 | `[1-6]` / 🖱️ | **Copy Pane** | Copy individual pane text / URL to system clipboard |
 | `[q]` / `[Esc]` | **Quit** | Exit the CLI application |
+
+---
+
+## 🎨 XDG Configuration & Theming (`config.yaml`)
+
+Vigilante supports standard **XDG Base Directory** configurations at `$XDG_CONFIG_HOME/vigilante/` (defaulting to `~/.config/vigilante/`).
+
+```
+$XDG_CONFIG_HOME/vigilante/
+├── config.yaml          # Global configuration, themes, custom colors, and CLI defaults
+├── nmaps/               # Historical Nmap scan reports (.nmap, .xml)
+└── values/              # Global Helm values overrides for all security packages
+    ├── opensearch/
+    │   ├── opensearch.yaml
+    │   └── opensearch-dashboards.yaml
+    └── vigil-soc/
+        └── vigil.yaml
+```
+
+### 1. Theming & Color Customization
+Vigilante comes with built-in color themes and supports fine-grained color customization in `config.yaml`:
+
+- **Predefined Themes**: `default`, `cyberpunk`, `dracula`, `nord`, `matrix`, `monokai`.
+- **Switch Theme on the Fly**:
+  ```bash
+  vigilante up --theme dracula
+  vigilante pods --theme cyberpunk
+  ```
+- **Edit `$XDG_CONFIG_HOME/vigilante/config.yaml`**:
+  ```yaml
+  theme:
+    name: "dracula" # default, cyberpunk, dracula, nord, matrix, monokai
+    colors:
+      primary: "magenta"
+      secondary: "cyan"
+      accent: "green"
+      border: "magenta"
+      header: "magenta"
+      success: "green"
+      warning: "yellow"
+      error: "red"
+      muted: "gray"
+
+  defaults:
+    domain: "vigilante.local"
+    clusterName: "vigilante-dev"
+    ip: "127.0.0.1"
+
+  # Host Resolution (hostr) Settings
+  # Controls automatic /etc/hosts management during cluster up/down.
+  # Note: Even when disabled, manual 'vigilante hostr' or pressing [h] remains available.
+  hostr:
+    enabled: true         # Set to false to disable automatic /etc/hosts modifications
+    autoSyncOnUp: true    # Automatically sync local domain mappings on 'vigilante up'
+    autoCleanOnDown: true # Automatically clean up domain mappings on 'vigilante down'
+
+  behavior:
+    autoWatchPods: true
+    podsPollIntervalMs: 2000
+  ```
+
+### 2. Inspect & Manage Config via CLI
+```bash
+# Print config path
+vigilante config path
+
+# View config summary and active theme
+vigilante config
+
+# Initialize default config and values directory
+vigilante config init
+```
 
 ---
 
@@ -153,37 +228,107 @@ In interactive mode, Vigilante provides a persistent action menu allowing you to
 
 Vigilante allows you to customize the underlying Helm charts for each security module without modifying source code.
 
-### 1. Interactive Values Manager & `$EDITOR` Integration
+### 1. Values Override Hierarchy
+When deploying charts, Vigilante checks for custom `values.yaml` files in the following priority order:
+1. **Explicit CLI Flag**: `--values / -f <path>` or `--values-dir <dir>`
+2. **Local Workspace**: `./values/<module>/<chart>.yaml` or `./config/values/...`
+3. **Global XDG Directory**: `$XDG_CONFIG_HOME/vigilante/values/<module>/<chart>.yaml`
+4. **Built-in Module Defaults**: `src/modules/<module>/values/<chart>.yaml`
+
+### 2. Interactive Values Manager & `$EDITOR` Integration
 Open the interactive values screen anytime by running `vigilante values` or pressing `[v]` from the main menu:
 ```bash
 vigilante values
 ```
 - **Chart Selector**: Navigate configurable charts using `[↑/↓]` or `[j/k]`.
 - **Open in `$EDITOR`**: Hit `[e]` or `[Enter]` on any chart to immediately launch your environment's `$EDITOR` (or `$VISUAL`, defaulting to `nano`). If the override file does not exist yet, Vigilante automatically initializes it with clean starter defaults for you!
-- **Quick Export**: Press `[x]` to export all starter templates at once.
+- **Edit `config.yaml`**: Press `[c]` to quickly edit `$XDG_CONFIG_HOME/vigilante/config.yaml` to change themes or defaults.
+- **Export Local**: Press `[x]` to export starter templates into local `./values/`.
+- **Export Global (XDG)**: Press `[g]` to export starter templates into `$XDG_CONFIG_HOME/vigilante/values/`.
 
-### 2. Export Starter Values via CLI
+### 3. Export Starter Values via CLI
 Generate editable starter values files for all installed modules directly:
 ```bash
+# Export to local workspace (./values/)
 vigilante values export
+
+# Export to global XDG directory (~/.config/vigilante/values/)
+vigilante values export --values-dir ~/.config/vigilante/values
 ```
 This generates:
-- `./values/opensearch/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
-- `./values/opensearch/opensearch-dashboards.yaml` (OpenSearch Dashboards UI, ingress, resources)
-- `./values/vigil-soc/vigil.yaml` (Vigil AI SOC: backend API, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
+- `opensearch/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
+- `opensearch/opensearch-dashboards.yaml` (OpenSearch Dashboards UI, ingress, resources)
+- `vigil-soc/vigil.yaml` (Vigil AI SOC: backend API, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
 
-### 3. Edit & Apply Custom Overrides
-Modify the YAML files in `./values/` as needed (e.g. increase memory limits or enable persistence). When you run:
-```bash
-vigilante up
-```
-Vigilante automatically detects `./values/<module>/<chart>.yaml` and layers your overrides on top of the module defaults!
+---
 
-You can also pass explicit files or directories via the CLI:
-```bash
-vigilante up -f ./my-custom-opensearch.yaml
-vigilante up --values-dir ./custom-values
+## 📡 Data Collection & Network Reconnaissance (Nmap)
+
+Vigilante features a dedicated **Data Collection & Reconnaissance Pane** powered by **Nmap**. Scan individual host targets or map entire network subnets via CIDR notation (e.g. `10.0.1.0/24`, `192.168.1.0/24`, `10.42.0.0/16`), automatically archiving structured reports into `$XDG_CONFIG_HOME/vigilante/nmaps/`.
+
+### 1. Interactive Nmap Console & Network Mapper
+Launch the scanner anytime via `vigilante scan` / `vigilante nmap` or by pressing **`[n]`** from the main menu:
+
+- **Scan Profiles**:
+  - `🗺️  Network Ping Sweep / Host Discovery`: Discover all live hosts across a CIDR network block (`-sn -T4`)
+  - `⚡ Network Sweep & Top Ports`: Sweep CIDR for live hosts and scan top 100 ports (`-T4 -F`)
+  - `🔍 Network Service & Version Mapping`: Scan CIDR hosts for service versions on top 20 ports (`-sV -T4 --top-ports 20`)
+  - `⚡ Quick Scan (Single Host)`: Fast audit of top 100 ports (`-T4 -F`)
+  - `🔍 Service & Version Detection`: Banner grabbing and version fingerprinting (`-sV -T4`)
+  - `🛡️  Vulnerability & Threat Audit`: Run CVE and security audit scripts (`-sV --script=vuln`)
+  - `🌐 Full Port Scan`: Comprehensive 65,535 TCP port audit (`-p- -T4`)
+- **Custom CIDR / Target Input (`[i]`)**: Type any custom CIDR (e.g. `10.0.1.0/24`, `192.168.1.0/24`) or IP address directly into the terminal with live interactive entry.
+- **Smart Target & Subnet Cycling (`[t]`)**: Auto-detects local LAN interfaces, cluster pod CIDR (`10.42.0.0/16`), cluster service CIDR (`10.43.0.0/16`), Docker bridges, and deployed endpoints (`siem.vigilante.local`, `vigil.vigilante.local`).
+- **Discovered Network Hosts Map**: Selecting any historical CIDR scan displays an active host breakdown with IP addresses, hostnames, and open ports.
+- **System Pager Integration (`[v]` / `[Enter]`)**: Open any saved scan directly in `$PAGER` (`less -R`) with full search and scroll navigation.
+- **Actions**:
+  - `[n]`: Run new scan against selected target
+  - `[i]`: Input custom CIDR or IP
+  - `[t]`: Cycle detected targets and subnets
+  - `[p]`: Cycle scan profiles
+  - `[e]`: Open raw scan file in `$EDITOR`
+  - `[c]`: Copy full scan output to system clipboard
+  - `[d]`: Delete saved scan report
+
+### 2. Output Storage
+Every scan automatically saves both human-readable text and XML reports in your XDG directory:
 ```
+$XDG_CONFIG_HOME/vigilante/nmaps/
+├── nmap-10.0.1.0_24-1786886669150.nmap
+├── nmap-10.0.1.0_24-1786886669150.xml
+├── nmap-127.0.0.1-1786886384289.nmap
+├── nmap-127.0.0.1-1786886384289.xml
+├── nmap-siem.vigilante.local-1786886400000.nmap
+└── nmap-siem.vigilante.local-1786886400000.xml
+```
+
+---
+
+## 📊 Nmap XML Network Topology & Port Matrix Visualizer
+
+Vigilante includes an interactive **XML Network Visualizer** that parses `.xml` scan reports from `$XDG_CONFIG_HOME/vigilante/nmaps/` into structured network topology cards and port matrices.
+
+### 1. Launching the XML Visualizer
+- From the main menu: Press **`[x]`** anytime.
+- From the Data Collection pane: Highlight any scan and press **`[x]`**.
+- From the CLI: `vigilante xml` or `vigilante visualizer`.
+
+### 2. Features & Navigation
+- **Network Overview**: Target network, scanner version, command line arguments, execution time, and live host counts (`🟢 Up / 🔴 Down`).
+- **Interactive Host Tree (`[↑/↓]` or `[j/k]`)**:
+  - Live vs. down host indicator.
+  - Resolved IP addresses, PTR/user hostnames, MAC address, and hardware vendor.
+  - OS detection accuracy and fingerprint matches (`Linux 5.15 - 6.5 (98% match)`).
+- **Port & Service Matrix**:
+  - Structured table with Port ID, Protocol (`tcp`/`udp`), State (`OPEN`/`CLOSED`), Service Name (`http`, `https`, `ipp`), Product & Software Version (`nginx 1.24.0`, `OpenSearch 2.11`), and CPEs.
+- **Security & NSE Script Findings**:
+  - Automatically highlights CVE vulnerability reports, SSL certificate details, and HTTP banners from `--script=vuln` or custom NSE scripts.
+- **Scan Cycling & Filtering**:
+  - Press **`[s]`** or **`[Tab]`** to cycle through saved XML scans in `$XDG_CONFIG_HOME/vigilante/nmaps/`.
+  - Press **`[f]`** to cycle filters: `All Hosts` | `🟢 Live Hosts` | `🔓 Open Ports` | `🛡️ Script / CVEs`.
+  - Press **`[x]`** / **`[v]`** / **`[Enter]`** to view the raw XML in the system pager (`$PAGER`).
+  - Press **`[e]`** to open the raw XML in `$EDITOR`.
+  - Press **`[c]`** to export a clean JSON summary of the XML scan to your clipboard.
 
 ---
 

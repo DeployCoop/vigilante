@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { getVigilanteValuesDir } from './config.js';
 
 /**
  * Replace template placeholders in values content
@@ -105,6 +106,13 @@ export async function resolveChartValuesArgs({
   candidatePaths.push(path.resolve(cwd, 'config', 'values', `${chartName}.yaml`));
   candidatePaths.push(path.resolve(cwd, 'config', 'values', `${chartName}.yml`));
 
+  // E. XDG User Directory: $XDG_CONFIG_HOME/vigilante/values/<module>/<chart>.yaml
+  const xdgValuesDir = getVigilanteValuesDir();
+  candidatePaths.push(path.resolve(xdgValuesDir, moduleId, `${chartName}.yaml`));
+  candidatePaths.push(path.resolve(xdgValuesDir, moduleId, `${chartName}.yml`));
+  candidatePaths.push(path.resolve(xdgValuesDir, `${chartName}.yaml`));
+  candidatePaths.push(path.resolve(xdgValuesDir, `${chartName}.yml`));
+
   // Find first existing user custom file
   let appliedCustom = false;
   for (const candidate of candidatePaths) {
@@ -150,12 +158,15 @@ export async function resolveChartValuesArgs({
 export async function exportStarterValues({
   moduleId = null,
   targetDir = './values',
+  useXdg = false,
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
   onLog = null
 } = {}) {
   const cwd = process.cwd();
-  const destBase = path.resolve(cwd, targetDir);
+  const destBase = (useXdg || targetDir === 'xdg')
+    ? getVigilanteValuesDir()
+    : path.resolve(cwd, targetDir);
   const exported = [];
 
   // Discover modules with values templates
@@ -246,11 +257,14 @@ export async function listChartValues({ customValuesDir } = {}) {
 
         // Check if user override exists
         let userOverridePath = null;
+        const xdgValuesDir = getVigilanteValuesDir();
         const candidates = [
           path.resolve(cwd, 'values', mod, file),
           path.resolve(cwd, 'values', file),
           path.resolve(cwd, 'config', 'values', mod, file),
-          path.resolve(cwd, 'config', 'values', file)
+          path.resolve(cwd, 'config', 'values', file),
+          path.resolve(xdgValuesDir, mod, file),
+          path.resolve(xdgValuesDir, file)
         ];
 
         if (customValuesDir) {
@@ -261,7 +275,7 @@ export async function listChartValues({ customValuesDir } = {}) {
         for (const cand of candidates) {
           try {
             await fs.access(cand);
-            userOverridePath = path.relative(cwd, cand);
+            userOverridePath = cand.startsWith(cwd) ? path.relative(cwd, cand) : cand;
             break;
           } catch {
             // Not found
@@ -272,6 +286,7 @@ export async function listChartValues({ customValuesDir } = {}) {
           moduleId: mod,
           chartName,
           defaultPath: path.relative(cwd, defaultPath),
+          xdgPath: path.resolve(xdgValuesDir, mod, file),
           userOverridePath
         });
       }

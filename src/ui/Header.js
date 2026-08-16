@@ -1,41 +1,44 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { useTheme } from './theme.js';
 
 export const Header = ({ command = 'up', domain = 'vigilante.local' }) => {
+  const theme = useTheme();
+
   return React.createElement(
     Box,
     { flexDirection: 'column', marginBottom: 1 },
     React.createElement(
       Box,
-      { borderStyle: 'round', borderColor: 'cyan', paddingX: 2, paddingY: 0, flexDirection: 'column' },
+      { borderStyle: 'round', borderColor: theme.border, paddingX: 2, paddingY: 0, flexDirection: 'column' },
       React.createElement(
         Text,
-        { bold: true, color: 'cyan' },
+        { bold: true, color: theme.header || theme.primary },
         '██╗   ██╗██╗ ██████╗ ██╗██╗      █████╗ ███╗   ██╗████████╗███████╗'
       ),
       React.createElement(
         Text,
-        { bold: true, color: 'cyan' },
+        { bold: true, color: theme.header || theme.primary },
         '██║   ██║██║██╔════╝ ██║██║     ██╔══██╗████╗  ██║╚══██╔══╝██╔════╝'
       ),
       React.createElement(
         Text,
-        { bold: true, color: 'blue' },
+        { bold: true, color: theme.primary },
         '██║   ██║██║██║  ███╗██║██║     ███████║██╔██╗ ██║   ██║   █████╗  '
       ),
       React.createElement(
         Text,
-        { bold: true, color: 'blue' },
+        { bold: true, color: theme.primary },
         '╚██╗ ██╔╝██║██║   ██║██║██║     ██╔══██║██║╚██╗██║   ██║   ██╔══╝  '
       ),
       React.createElement(
         Text,
-        { bold: true, color: 'magenta' },
+        { bold: true, color: theme.banner || theme.secondary },
         ' ╚████╔╝ ██║╚██████╔╝██║███████╗██║  ██║██║ ╚████║   ██║   ███████╗'
       ),
       React.createElement(
         Text,
-        { bold: true, color: 'magenta' },
+        { bold: true, color: theme.banner || theme.secondary },
         '  ╚═══╝  ╚═╝ ╚═════╝ ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝'
       ),
       React.createElement(
@@ -43,12 +46,12 @@ export const Header = ({ command = 'up', domain = 'vigilante.local' }) => {
         { marginTop: 1, justifyContent: 'space-between' },
         React.createElement(
           Text,
-          { color: 'yellow', bold: true },
+          { color: theme.accent, bold: true },
           '🦇 Local Threat Analysis & SIEM Sandbox'
         ),
         React.createElement(
           Text,
-          { color: 'gray' },
+          { color: theme.muted },
           `Command: [${command}] | Domain: ${domain}`
         )
       )
