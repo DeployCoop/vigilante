@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getInstanceCertsDir, ensureVigilanteConfig } from './config.js';
 import { ensureInstanceDirs } from './instances.js';
+import { ensureNamespace, safeKubectlApply } from './k8s.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -104,19 +105,13 @@ export async function applyK8sTlsSecret({
   namespace = 'default',
   secretName = 'vigilante-tls',
   certPath,
-  keyPath
+  keyPath,
+  onLog = null
 }) {
-  // Ensure namespace exists
-  await execa('kubectl', [
-    'create', 'namespace', namespace,
-    '--dry-run=client', '-o', 'yaml'
-  ], {
-    stdout: 'pipe'
-  }).then(({ stdout }) => {
-    return execa('kubectl', ['apply', '-f', '-'], { input: stdout });
-  });
+  // 1. Ensure namespace exists safely
+  await ensureNamespace(namespace, { onLog });
 
-  // Create or update secret
+  // 2. Create or update secret
   const { stdout: secretYaml } = await execa('kubectl', [
     'create', 'secret', 'tls', secretName,
     `--cert=${certPath}`,
@@ -125,7 +120,7 @@ export async function applyK8sTlsSecret({
     '--dry-run=client', '-o', 'yaml'
   ]);
 
-  await execa('kubectl', ['apply', '-f', '-'], { input: secretYaml });
+  await safeKubectlApply(secretYaml, { onLog });
 
   return {
     namespace,

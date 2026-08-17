@@ -17,10 +17,12 @@
     "pods": "node ./bin/vigilante.js pods",
     "scan": "node ./bin/vigilante.js scan",
     "instances": "node ./bin/vigilante.js instances",
-    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-pods.js && node tests/test-clipboard.js && node tests/test-config.js && node tests/test-nmap.js && node tests/test-nmap-xml.js && node tests/test-diagnostics.js && node tests/test-menubar.js && node tests/test-evidence.js && node tests/test-gpg.js && node tests/test-instances.js && node tests/test-namespaces.js"
+    "mcp": "node ./bin/vigilante.js mcp",
+    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-pods.js && node tests/test-clipboard.js && node tests/test-config.js && node tests/test-nmap.js && node tests/test-nmap-xml.js && node tests/test-diagnostics.js && node tests/test-menubar.js && node tests/test-evidence.js && node tests/test-gpg.js && node tests/test-instances.js && node tests/test-namespaces.js && node tests/test-k8s.js && node tests/test-hub.js && node tests/test-mcp.js"
   },
   "packageManager": "pnpm@11.12.0",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "execa": "^8.0.1",
     "ink": "^4.4.1",
     "ink-select-input": "^5.0.0",

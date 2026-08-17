@@ -287,12 +287,24 @@ export async function listHostEvidence(networkCidr, hostIp) {
 }
 
 /**
- * Read content of an evidence file
+ * Read content of an evidence file by path or target object
  * @param {string|Object} target - File path string or object containing filePath/path
  * @returns {Promise<string>}
  */
 export async function readEvidenceContent(target) {
   const targetPath = typeof target === 'string' ? target : (target?.filePath || target?.path);
+  return await fs.readFile(targetPath, 'utf8');
+}
+
+/**
+ * Read content of an evidence file by network, host, and filename
+ * @param {string} networkCidr
+ * @param {string} hostIp
+ * @param {string} fileName
+ * @returns {Promise<string>}
+ */
+export async function readEvidenceFile(networkCidr, hostIp, fileName) {
+  const targetPath = path.join(getHostEvidenceDir(networkCidr, hostIp), fileName);
   return await fs.readFile(targetPath, 'utf8');
 }
 

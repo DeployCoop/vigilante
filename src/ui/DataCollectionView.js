@@ -225,6 +225,11 @@ export const DataCollectionView = ({
     // ---------------------------------------------------------
     // Mode 2: Standard Navigation & Actions
     // ---------------------------------------------------------
+    if (key.tab && onNavigate) {
+      onNavigate('menu');
+      return;
+    }
+
     const keyChar = (input || '').toLowerCase();
 
     // If active scan is running, only allow abort / escape

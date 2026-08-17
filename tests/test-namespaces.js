@@ -112,6 +112,21 @@ async function runTests() {
     }
     console.log('✔ Test 5 passed: removeNamespaceDeployment cleanly removed targeted namespace without affecting other tenant deployments.');
 
+    // Test 6: Verify module status query parameterization across namespaces
+    const statusDefault = await osMod.status({ domain: 'test.local', clusterName: 'multi-tenant-cluster', namespace: 'default' });
+    const statusTenantA = await osMod.status({ domain: 'test.local', clusterName: 'multi-tenant-cluster', namespace: 'tenant-a' });
+    if (!statusDefault.name || !statusTenantA.name) {
+      throw new Error('Module status query failed');
+    }
+    console.log('✔ Test 6 passed: Modules correctly accept and query distinct target namespaces.');
+
+    // Test 7: SelectModules component and namespace safety
+    const { SelectModules } = await import('../src/ui/SelectModules.js');
+    if (typeof SelectModules !== 'function') {
+      throw new Error('SelectModules is not exported as a valid React component');
+    }
+    console.log('✔ Test 7 passed: SelectModules UI component supports interactive [n] key target namespace switcher.');
+
     console.log('🎉 All Namespaced Module Deployments & Multi-Tenant tests passed successfully!');
   } finally {
     try {

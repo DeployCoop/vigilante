@@ -178,6 +178,12 @@ export const PodsView = ({
       return;
     }
 
+    // [Tab] -> Operations Hub Menu
+    if (key.tab && onNavigate) {
+      onNavigate('menu');
+      return;
+    }
+
     // Navigation delegates (Workflow: UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER)
     if (keyChar === 'n' && onNavigate) {
       onNavigate('nmap');

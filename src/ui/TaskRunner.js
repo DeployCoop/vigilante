@@ -9,22 +9,27 @@ export const TaskRunner = ({ tasks = [], logs = [], maxLogs = 6 }) => {
 
   useEffect(() => {
     const runnerPanes = [];
-    const tasksHeight = tasks.length + 2;
-
+    
+    // 1. Primary all-in-one execution log & tasks payload
     runnerPanes.push({
-      id: 'tasks',
-      title: 'Tasks List',
-      startRow: 6,
-      endRow: 6 + tasksHeight,
-      getText: () => tasks.map(t => `[${t.status}] ${t.label}${t.detail ? ' (' + t.detail + ')' : ''}${t.error ? ' - Error: ' + t.error : ''}`).join('\n')
+      id: 'all',
+      title: 'Deployment Tasks & Logs',
+      startRow: 1,
+      endRow: 100,
+      getText: () => {
+        const taskText = tasks.map(t => `[${t.status}] ${t.label}${t.detail ? ' (' + t.detail + ')' : ''}${t.error ? ' - Error: ' + t.error : ''}`).join('\n');
+        const logText = logs.map(l => typeof l === 'string' ? l : l.message || JSON.stringify(l)).join('\n');
+        return `=== Deployment Tasks ===\n${taskText}\n\n=== Execution Logs ===\n${logText}`;
+      }
     });
 
-    if (visibleLogs.length > 0) {
+    // 2. Dedicated logs stream pane
+    if (logs.length > 0) {
       runnerPanes.push({
         id: 'logs',
         title: 'Execution Logs Stream',
-        startRow: 7 + tasksHeight,
-        endRow: 7 + tasksHeight + visibleLogs.length + 3,
+        startRow: 1,
+        endRow: 100,
         getText: () => logs.map(l => typeof l === 'string' ? l : l.message || JSON.stringify(l)).join('\n')
       });
     }

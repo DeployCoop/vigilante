@@ -1,6 +1,37 @@
 import { spawn } from 'node:child_process';
 
 /**
+ * Safely execute a clipboard CLI tool with stdin piping and ENOENT protection
+ */
+function trySpawnCopy(binary, args, text) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(binary, args, { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
+      let hasError = false;
+
+      child.on('error', () => {
+        hasError = true;
+        resolve(false);
+      });
+
+      child.stdin.on('error', () => {
+        hasError = true;
+        resolve(false);
+      });
+
+      child.stdin.end(text, () => {
+        if (!hasError) {
+          child.unref();
+          resolve(true);
+        }
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
  * Copy text to system clipboard using native utilities and OSC 52 escape sequences
  * @param {string} text - Text to copy
  * @returns {Promise<boolean>}
@@ -28,31 +59,29 @@ export async function copyToClipboard(text) {
   const isMac = process.platform === 'darwin';
   const isWin = process.platform === 'win32';
 
-  try {
-    if (isLinux) {
-      if (process.env.WAYLAND_DISPLAY) {
-        const child = spawn('wl-copy', [text], { stdio: 'ignore', detached: true });
-        child.unref();
-        success = true;
-      } else if (process.env.DISPLAY) {
-        const child = spawn('xclip', ['-selection', 'clipboard'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
-        child.stdin.end(text);
-        child.unref();
-        success = true;
-      }
-    } else if (isMac) {
-      const child = spawn('pbcopy', [], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
-      child.stdin.end(text);
-      child.unref();
-      success = true;
-    } else if (isWin) {
-      const child = spawn('clip.exe', [], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
-      child.stdin.end(text);
-      child.unref();
-      success = true;
+  if (isLinux) {
+    // Try wl-copy (Wayland)
+    if (process.env.WAYLAND_DISPLAY || !process.env.DISPLAY) {
+      const wlRes = await trySpawnCopy('wl-copy', [], text);
+      if (wlRes) success = true;
     }
-  } catch {
-    // Fallback to OSC 52 result
+
+    // Try xclip / xsel (X11 or XWayland)
+    if (!success || process.env.DISPLAY) {
+      const xclipRes = await trySpawnCopy('xclip', ['-selection', 'clipboard'], text);
+      if (xclipRes) {
+        success = true;
+      } else {
+        const xselRes = await trySpawnCopy('xsel', ['--clipboard', '--input'], text);
+        if (xselRes) success = true;
+      }
+    }
+  } else if (isMac) {
+    const macRes = await trySpawnCopy('pbcopy', [], text);
+    if (macRes) success = true;
+  } else if (isWin) {
+    const winRes = await trySpawnCopy('clip.exe', [], text);
+    if (winRes) success = true;
   }
 
   return success;

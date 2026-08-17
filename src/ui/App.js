@@ -11,6 +11,7 @@ import { PodsView } from './PodsView.js';
 import { DataCollectionView } from './DataCollectionView.js';
 import { NmapVisualizerView } from './NmapVisualizerView.js';
 import { InstancesView } from './InstancesView.js';
+import { NavHub } from './NavHub.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { ThemeProvider } from './theme.js';
@@ -19,6 +20,7 @@ import { logger } from '../utils/logger.js';
 import { checkPrereqs } from '../engine/prereqs.js';
 import { setupCertificates, checkCertificates } from '../engine/certs.js';
 import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cluster.js';
+import { ensureNamespace } from '../engine/k8s.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
@@ -40,11 +42,14 @@ const AppContent = ({
   skipPrereqs = false
 }) => {
   const { exit } = useApp();
-  const { copiedToast } = useClipboard();
+  const { copiedToast, copyPane, registerPanes } = useClipboard();
   const [targetNamespace, setTargetNamespace] = useState(cliNamespace || 'default');
-  const [viewState, setViewState] = useState(
-    command === 'up' && !cliSelectedModules && !nonInteractive ? 'SELECT_MODULES' : 'RUNNING'
-  );
+  const [previousViewState, setPreviousViewState] = useState('DASHBOARD');
+  const [viewState, setViewState] = useState(() => {
+    if (command === 'menu' || command === 'hub') return 'MENU';
+    if (command === 'up' && !cliSelectedModules && !nonInteractive) return 'SELECT_MODULES';
+    return 'RUNNING';
+  });
   const [chosenModules, setChosenModules] = useState(
     cliSelectedModules || ['vigil-soc']
   );
@@ -56,6 +61,27 @@ const AppContent = ({
   const [fatalError, setFatalError] = useState(null);
   const [isDone, setIsDone] = useState(false);
 
+  // Register fatal error & execution logs in clipboard manager when error occurs
+  useEffect(() => {
+    if (fatalError) {
+      registerPanes([
+        {
+          id: 'fatal-error',
+          title: 'Fatal Error & Execution Logs',
+          startRow: 1,
+          endRow: 100,
+          getText: () => {
+            const errText = `✖ Execution Failed:\n${fatalError}`;
+            const logText = logs.length > 0
+              ? `\n\n=== Execution Logs ===\n` + logs.map(l => typeof l === 'string' ? l : l.message || JSON.stringify(l)).join('\n')
+              : '';
+            return `${errText}${logText}`;
+          }
+        }
+      ]);
+    }
+  }, [fatalError, logs, registerPanes]);
+
   // Log application startup
   useEffect(() => {
     logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, namespace=${targetNamespace}, nonInteractive=${nonInteractive}`);
@@ -63,7 +89,25 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
-    if (viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER') return;
+    // If inside a subview that has its own input handling, skip top-level keys except Tab
+    if (viewState === 'MENU' || viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER' || viewState === 'INSTANCES') {
+      if (key.tab) {
+        if (viewState === 'MENU') {
+          setViewState(previousViewState || 'DASHBOARD');
+        } else {
+          setPreviousViewState(viewState);
+          setViewState('MENU');
+        }
+      }
+      return;
+    }
+
+    // [Tab] -> Toggle Operations Hub Menu
+    if (key.tab) {
+      setPreviousViewState(viewState);
+      setViewState('MENU');
+      return;
+    }
 
     // In-flight active task: only allow exit/abort
     const isRunning = viewState === 'RUNNING' && !isDone;
@@ -198,8 +242,12 @@ const AppContent = ({
   // -------------------------------------------------------------
   // Command: UP
   // -------------------------------------------------------------
-  const runUpWorkflow = async (modulesToInstall) => {
-    logger.info('WORKFLOW:UP', `Starting UP workflow with modules: ${JSON.stringify(modulesToInstall)}`);
+  const runUpWorkflow = async (modulesToInstall, customNs = null) => {
+    const activeNs = customNs || targetNamespace || 'default';
+    if (activeNs !== targetNamespace) {
+      setTargetNamespace(activeNs);
+    }
+    logger.info('WORKFLOW:UP', `Starting UP workflow in namespace '${activeNs}' with modules: ${JSON.stringify(modulesToInstall)}`);
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -277,17 +325,20 @@ const AppContent = ({
       updateTask('cluster', { status: 'done' });
 
       // Step 5: Modules
+      addLog(`Ensuring target Kubernetes namespace '${activeNs}' exists...`);
+      await ensureNamespace(activeNs, { onLog: (msg) => addLog(msg) });
+
       const resolvedModules = globalModuleRegistry.resolveModules(modulesToInstall);
       for (const mod of resolvedModules) {
         const taskId = `mod-${mod.id}`;
         updateTask(taskId, { status: 'running' });
-        addLog(`Installing module ${mod.name} into namespace '${targetNamespace}'...`);
+        addLog(`Installing module ${mod.name} into namespace '${activeNs}'...`);
         await mod.install({
           domain,
           certPath: certs.certPath,
           keyPath: certs.keyPath,
           clusterName,
-          namespace: targetNamespace,
+          namespace: activeNs,
           onLog: (msg) => addLog(msg),
           options: {
             customValuesPath,
@@ -304,7 +355,7 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (m) => {
-          return await m.status({ domain, clusterName, namespace: targetNamespace });
+          return await m.status({ domain, clusterName, namespace: activeNs });
         })
       );
 
@@ -318,7 +369,7 @@ const AppContent = ({
       });
 
       // Save instance & namespace deployment metadata
-      await recordNamespaceDeployment(clusterName, targetNamespace, modulesToInstall, {
+      await recordNamespaceDeployment(clusterName, activeNs, modulesToInstall, {
         domain,
         ip
       });
@@ -432,8 +483,12 @@ const AppContent = ({
   // -------------------------------------------------------------
   // Command: APPLY MODULES (Incremental Install / Uninstall)
   // -------------------------------------------------------------
-  const runApplyModulesWorkflow = async ({ enabledIds, toInstall = [], toUninstall = [] }) => {
-    logger.info('WORKFLOW:APPLY_MODULES', `Applying module changes in namespace '${targetNamespace}': toInstall=[${toInstall.join(', ')}], toUninstall=[${toUninstall.join(', ')}]`);
+  const runApplyModulesWorkflow = async ({ enabledIds, toInstall = [], toUninstall = [], namespace: customNs = null }) => {
+    const activeNs = customNs || targetNamespace || 'default';
+    if (activeNs !== targetNamespace) {
+      setTargetNamespace(activeNs);
+    }
+    logger.info('WORKFLOW:APPLY_MODULES', `Applying module changes in namespace '${activeNs}': toInstall=[${toInstall.join(', ')}], toUninstall=[${toUninstall.join(', ')}]`);
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -465,10 +520,10 @@ const AppContent = ({
         const mod = globalModuleRegistry.get(id);
         if (mod) {
           updateTask(`uninst-${id}`, { status: 'running' });
-          addLog(`Uninstalling module '${mod.name}'...`);
+          addLog(`Uninstalling module '${mod.name}' from namespace '${activeNs}'...`);
           await mod.uninstall({
             clusterName,
-            namespace: targetNamespace,
+            namespace: activeNs,
             onLog: (msg) => addLog(msg)
           });
           updateTask(`uninst-${id}`, { status: 'done' });
@@ -479,6 +534,9 @@ const AppContent = ({
       let certs = null;
       if (toInstall.length > 0) {
         certs = await setupCertificates(domain, { clusterName, instanceName: clusterName });
+        // Ensure target namespace exists before deploying new modules
+        addLog(`Ensuring target Kubernetes namespace '${activeNs}' exists...`);
+        await ensureNamespace(activeNs, { onLog: (msg) => addLog(msg) });
       }
 
       // 3. Install newly enabled modules in dependency order
@@ -487,13 +545,13 @@ const AppContent = ({
         if (toInstall.includes(mod.id)) {
           const taskId = `inst-${mod.id}`;
           updateTask(taskId, { status: 'running' });
-          addLog(`Deploying security module '${mod.name}' into namespace '${targetNamespace}'...`);
+          addLog(`Deploying security module '${mod.name}' into namespace '${activeNs}'...`);
           await mod.install({
             domain,
             certPath: certs?.certPath,
             keyPath: certs?.keyPath,
             clusterName,
-            namespace: targetNamespace,
+            namespace: activeNs,
             onLog: (msg) => addLog(msg),
             options: {
               customValuesPath,
@@ -511,8 +569,8 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (m) => {
-          const st = await m.status({ domain, clusterName, namespace: targetNamespace });
-          const endpoints = await m.getEndpoints({ domain, namespace: targetNamespace });
+          const st = await m.status({ domain, clusterName, namespace: activeNs });
+          const endpoints = await m.getEndpoints({ domain, namespace: activeNs });
           return { ...st, endpoints };
         })
       );
@@ -532,7 +590,7 @@ const AppContent = ({
       });
 
       // Save namespace deployment state
-      await recordNamespaceDeployment(clusterName, targetNamespace, enabledIds, {
+      await recordNamespaceDeployment(clusterName, activeNs, enabledIds, {
         domain,
         ip
       });
@@ -725,7 +783,9 @@ const AppContent = ({
 
   // Bootstrap based on command
   useEffect(() => {
-    if (command === 'up') {
+    if (command === 'menu' || command === 'hub') {
+      setViewState('MENU');
+    } else if (command === 'up') {
       if (viewState !== 'SELECT_MODULES') {
         runUpWorkflow(chosenModules);
       }
@@ -768,19 +828,85 @@ const AppContent = ({
     { flexDirection: 'column', padding: 1 },
     React.createElement(Header, { command, domain, namespace: targetNamespace }),
 
+    // State 0: Overall Operations Hub & Workflow Dispatcher
+    viewState === 'MENU'
+      ? React.createElement(NavHub, {
+          clusterName,
+          namespace: targetNamespace,
+          domain,
+          activeView: previousViewState,
+          onSelect: (action) => {
+            setFatalError(null);
+            if (action === 'UP') {
+              setViewState('SELECT_MODULES');
+            } else if (action === 'MODULES') {
+              setViewState('MODULES');
+            } else if (action === 'VALUES') {
+              setViewState('VALUES');
+            } else if (action === 'INSTANCES') {
+              setViewState('INSTANCES');
+            } else if (action === 'DOWN') {
+              runDownWorkflow();
+            } else if (action === 'DASHBOARD') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else if (action === 'PODS') {
+              setViewState('PODS');
+            } else if (action === 'THREAT_SIM') {
+              setViewState('THREAT_SIM');
+            } else if (action === 'HOSTR') {
+              runHostsWorkflow();
+            } else if (action === 'NMAP') {
+              setViewState('NMAP');
+            } else if (action === 'XML_VISUALIZER') {
+              setViewState('XML_VISUALIZER');
+            } else if (action === 'CONFIG') {
+              setViewState('VALUES');
+            } else {
+              setViewState('DASHBOARD');
+            }
+          },
+          onClose: () => {
+            if (dashboardData) {
+              setViewState(previousViewState === 'MENU' ? 'DASHBOARD' : (previousViewState || 'DASHBOARD'));
+            } else if (command === 'up') {
+              setViewState('SELECT_MODULES');
+            } else {
+              setViewState('DASHBOARD');
+            }
+          }
+        })
+      : null,
+
     // State 1: Select Modules Screen
     viewState === 'SELECT_MODULES'
       ? React.createElement(SelectModules, {
           modules: globalModuleRegistry.getAll(),
           initialSelected: chosenModules,
           namespace: targetNamespace,
-          onConfirm: (selected) => {
+          onNamespaceChange: (newNs) => {
+            setTargetNamespace(newNs);
+          },
+          onNavigate: (target) => {
+            if (target === 'menu') {
+              setPreviousViewState('SELECT_MODULES');
+              setViewState('MENU');
+            }
+          },
+          onConfirm: (selected, selectedNs) => {
             if (selected.length === 0) {
               setFatalError('At least one security module must be selected.');
               return;
             }
+            const effectiveNs = selectedNs || targetNamespace;
+            if (effectiveNs !== targetNamespace) {
+              setTargetNamespace(effectiveNs);
+            }
             setChosenModules(selected);
-            runUpWorkflow(selected);
+            runUpWorkflow(selected, effectiveNs);
           }
         })
       : null,
@@ -807,11 +933,18 @@ const AppContent = ({
           clusterName,
           namespace: targetNamespace,
           initialSelected: chosenModules,
-          onApply: ({ enabledIds, toInstall, toUninstall, hasPendingChanges }) => {
+          onNamespaceChange: (newNs) => {
+            setTargetNamespace(newNs);
+          },
+          onApply: ({ enabledIds, toInstall, toUninstall, hasPendingChanges, namespace: appliedNs }) => {
+            const effectiveNs = appliedNs || targetNamespace;
+            if (effectiveNs !== targetNamespace) {
+              setTargetNamespace(effectiveNs);
+            }
             if (hasPendingChanges) {
-              runApplyModulesWorkflow({ enabledIds, toInstall, toUninstall });
+              runApplyModulesWorkflow({ enabledIds, toInstall, toUninstall, namespace: effectiveNs });
             } else {
-              runUpWorkflow(enabledIds);
+              runUpWorkflow(enabledIds, effectiveNs);
             }
           },
           onNavigate: (target, customPayload) => {
@@ -1066,7 +1199,12 @@ const AppContent = ({
       ? React.createElement(
           Box,
           { flexDirection: 'column', marginTop: 1, padding: 1, borderStyle: 'round', borderColor: 'red' },
-          React.createElement(Text, { bold: true, color: 'red' }, '✖ Execution Failed:'),
+          React.createElement(
+            Box,
+            { justifyContent: 'space-between', marginBottom: 1 },
+            React.createElement(Text, { bold: true, color: 'red' }, '✖ Execution Failed:'),
+            React.createElement(Text, { color: 'yellow', dimColor: true }, '[Click pane or press c to copy error & logs]')
+          ),
           React.createElement(Text, { color: 'white' }, fatalError)
         )
       : null,

@@ -241,6 +241,55 @@ export function openInSystemPager(content, filenameHint = 'output.txt') {
 }
 
 /**
+ * Programmatically fetch logs for a pod
+ * @param {Object} options
+ * @param {string} [options.clusterName]
+ * @param {string} [options.namespace]
+ * @param {string} options.podName
+ * @param {string} [options.container]
+ * @param {number} [options.tailLines]
+ * @returns {Promise<string>}
+ */
+export async function getPodLogs({ clusterName = 'vigilante-dev', namespace = 'default', podName, container = null, tailLines = 100 } = {}) {
+  if (!podName) return 'No pod specified';
+  const args = ['logs', podName, '-n', namespace, `--tail=${tailLines}`];
+  if (container) {
+    args.push('-c', container);
+  }
+  if (clusterName) {
+    args.push('--context', `k3d-${clusterName}`);
+  }
+  try {
+    const { stdout } = await execa('kubectl', args);
+    return stdout || '(No logs returned)';
+  } catch (err) {
+    return `Error retrieving logs for ${namespace}/${podName}: ${err.message}`;
+  }
+}
+
+/**
+ * Programmatically describe a pod
+ * @param {Object} options
+ * @param {string} [options.clusterName]
+ * @param {string} [options.namespace]
+ * @param {string} options.podName
+ * @returns {Promise<string>}
+ */
+export async function describePod({ clusterName = 'vigilante-dev', namespace = 'default', podName } = {}) {
+  if (!podName) return 'No pod specified';
+  const args = ['describe', 'pod', podName, '-n', namespace];
+  if (clusterName) {
+    args.push('--context', `k3d-${clusterName}`);
+  }
+  try {
+    const { stdout } = await execa('kubectl', args);
+    return stdout || '(No describe output returned)';
+  } catch (err) {
+    return `Error describing ${namespace}/${podName}: ${err.message}`;
+  }
+}
+
+/**
  * Interactively describe a pod with the system pager
  * @param {Object} options
  * @param {string} [options.clusterName]

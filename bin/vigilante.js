@@ -12,6 +12,7 @@ const cli = meow(`
     $ vigilante [command] [options]
 
   Commands
+    menu/hub    Central operations hub and interactive workflow dispatcher
     up          Provision k3d cluster, certificates, and deploy modules
     down        Tear down k3d cluster and clean up resources
     status      Check status of prerequisites, cluster, certificates, and DNS
@@ -24,6 +25,7 @@ const cli = meow(`
     hosts/hostr Sync local domain mappings into /etc/hosts
     values      Manage, list, or export customizable chart values.yaml files
     config      Inspect, initialize, or display $XDG_CONFIG_HOME/vigilante/config.yaml
+    mcp         Launch Model Context Protocol (MCP) server over stdio for LLMs
 
   Options
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
@@ -116,20 +118,29 @@ const subCommand = cli.input[1];
 const hostsAction = cli.flags.remove ? 'remove' : cli.flags.check ? 'check' : 'sync';
 const effectiveClusterName = cli.flags.instance || cli.flags.clusterName || config.defaults?.clusterName || 'vigilante-dev';
 
-render(
-  React.createElement(App, {
-    command,
-    subCommand,
-    domain: cli.flags.domain,
-    clusterName: effectiveClusterName,
-    namespace: cli.flags.namespace || null,
-    selectedModules: cli.flags.module ? cli.flags.module.split(',').map(m => m.trim()) : undefined,
-    customValuesPath: cli.flags.values,
-    customValuesDir: cli.flags.valuesDir || null,
-    theme: cli.flags.theme,
-    hostsAction,
-    ip: cli.flags.ip,
-    nonInteractive: cli.flags.nonInteractive,
-    skipPrereqs: cli.flags.skipPrereqs
-  })
-);
+if (command === 'mcp') {
+  import('../src/mcp/server.js').then(({ runMcpServer }) => {
+    runMcpServer().catch((err) => {
+      console.error('Fatal MCP Server error:', err);
+      process.exit(1);
+    });
+  });
+} else {
+  render(
+    React.createElement(App, {
+      command,
+      subCommand,
+      domain: cli.flags.domain,
+      clusterName: effectiveClusterName,
+      namespace: cli.flags.namespace || null,
+      selectedModules: cli.flags.module ? cli.flags.module.split(',').map(m => m.trim()) : undefined,
+      customValuesPath: cli.flags.values,
+      customValuesDir: cli.flags.valuesDir || null,
+      theme: cli.flags.theme,
+      hostsAction,
+      ip: cli.flags.ip,
+      nonInteractive: cli.flags.nonInteractive,
+      skipPrereqs: cli.flags.skipPrereqs
+    })
+  );
+}

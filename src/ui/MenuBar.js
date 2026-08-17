@@ -4,6 +4,7 @@ import { useTheme } from './theme.js';
 
 // The canonical Vigilante operational workflow stages
 export const WORKFLOW_STAGES = [
+  { id: 'MENU', label: '0. Hub [Tab]', key: 'Tab', view: 'MENU' },
   { id: 'UP', label: '1. UP', key: 'u', view: 'RUNNING' },
   { id: 'MODULES', label: '2. Modules', key: 'm', view: 'MODULES' },
   { id: 'STATUS', label: '3. Status', key: 's', view: 'DASHBOARD' },
@@ -17,6 +18,8 @@ export const WORKFLOW_STAGES = [
  */
 export function getActiveWorkflowStage(viewState) {
   switch (viewState) {
+    case 'MENU':
+      return 'MENU';
     case 'RUNNING':
     case 'SELECT_MODULES':
     case 'SUCCESS':
@@ -65,6 +68,20 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
     };
   }
 
+  // Central Navigation & Workflow Hub
+  if (viewState === 'MENU') {
+    return {
+      title: '🛡️  Vigilante Operations Hub & Workflow Dispatcher',
+      nextStepHint: null,
+      items: [
+        { key: '↑/↓', label: 'Select Item', color: theme.muted || 'gray' },
+        { key: 'Enter', label: 'Launch', color: theme.success || 'green' },
+        { key: '0-9 / Keys', label: 'Direct Hotkey', color: theme.warning || 'yellow' },
+        { key: 'Tab/Esc', label: 'Close Hub', color: theme.error || 'red' }
+      ]
+    };
+  }
+
   // Completed Task / Success View
   if (viewState === 'SUCCESS' || (viewState === 'RUNNING' && isDone)) {
     return {
@@ -81,12 +98,23 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
 
   // State: Modules Management
   if (viewState === 'MODULES' || viewState === 'SELECT_MODULES') {
+    if (isInputMode) {
+      return {
+        title: '🏷️ Set Target Kubernetes Namespace',
+        nextStepHint: null,
+        items: [
+          { key: 'Enter', label: 'Confirm Namespace', color: theme.success || 'green' },
+          { key: 'Esc', label: 'Cancel', color: theme.error || 'red' }
+        ]
+      };
+    }
     return {
       title: '📦 Security Modules & Packages',
       nextStepHint: { label: 'Deploy Modules', key: 'u' },
       items: [
         { key: '↑/↓', label: 'Navigate', color: theme.muted || 'gray' },
         { key: 'Space', label: 'Toggle', color: theme.accent || 'magenta' },
+        { key: 'n', label: 'Namespace', color: theme.warning || 'yellow' },
         { key: 'Enter', label: hasChanges ? 'Apply Changes' : 'Select', color: theme.success || 'green' },
         { key: 'u', label: '➔ Deploy (Up)', color: theme.success || 'green' },
         { key: 's', label: 'Status', color: theme.info || 'blue' },

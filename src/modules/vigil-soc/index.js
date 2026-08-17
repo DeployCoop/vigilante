@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { BaseModule } from '../base.js';
 import { execStream } from '../../utils/exec.js';
 import { applyK8sTlsSecret } from '../../engine/certs.js';
+import { ensureNamespace } from '../../engine/k8s.js';
 import { resolveChartValuesArgs } from '../../engine/helm.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,13 +46,8 @@ export class VigilSOCModule extends BaseModule {
 
     if (onLog) onLog(`[vigil-soc] Preparing namespace '${targetNamespace}' on cluster '${clusterName}'...`);
 
-    // 1. Ensure namespace exists
-    await execa('kubectl', [
-      'create', 'namespace', targetNamespace,
-      '--dry-run=client', '-o', 'yaml'
-    ], { stdout: 'pipe' }).then(({ stdout }) => {
-      return execa('kubectl', ['apply', '-f', '-'], { input: stdout });
-    });
+    // 1. Ensure namespace exists safely
+    await ensureNamespace(targetNamespace, { onLog });
 
     // 2. Inject mkcert TLS secret for Ingress into target namespace
     if (certPath && keyPath) {

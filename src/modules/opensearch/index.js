@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { BaseModule } from '../base.js';
 import { execStream } from '../../utils/exec.js';
 import { applyK8sTlsSecret } from '../../engine/certs.js';
+import { ensureNamespace } from '../../engine/k8s.js';
 import { resolveChartValuesArgs } from '../../engine/helm.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,10 +19,9 @@ export class OpenSearchModule extends BaseModule {
       description: 'OpenSearch Analytics Cluster, Security Dashboards & Threat Ingestion Pipeline',
       category: 'siem',
       version: '1.0.0',
+      dependencies: [],
       defaultEnabled: true
     });
-    this.namespace = 'opensearch';
-    this.tlsSecretName = 'opensearch-tls';
   }
 
   /**
@@ -29,10 +29,10 @@ export class OpenSearchModule extends BaseModule {
    */
   async install({
     domain = 'vigilante.local',
-    certPath,
-    keyPath,
+    certPath = null,
+    keyPath = null,
     clusterName = 'vigilante-dev',
-    namespace = null,
+    namespace = 'default',
     onLog = null,
     options = {}
   }) {
@@ -44,13 +44,8 @@ export class OpenSearchModule extends BaseModule {
 
     if (onLog) onLog(`[opensearch] Preparing namespace '${targetNamespace}' on cluster '${clusterName}'...`);
 
-    // 1. Ensure namespace exists
-    await execa('kubectl', [
-      'create', 'namespace', targetNamespace,
-      '--dry-run=client', '-o', 'yaml'
-    ], { stdout: 'pipe' }).then(({ stdout }) => {
-      return execa('kubectl', ['apply', '-f', '-'], { input: stdout });
-    });
+    // 1. Ensure namespace exists safely
+    await ensureNamespace(targetNamespace, { onLog });
 
     // 2. Inject mkcert TLS secret for Ingress into target namespace
     if (certPath && keyPath) {

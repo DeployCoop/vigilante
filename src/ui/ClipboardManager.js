@@ -91,12 +91,24 @@ export const ClipboardProvider = ({ children, isInteractive = true }) => {
         // Left button down event
         if (button === 0 && type === 'M') {
           const currentPanes = panesRef.current || [];
+          if (currentPanes.length === 0) return;
+
+          let matched = false;
           for (const pane of currentPanes) {
             if (pane.startRow && pane.endRow) {
               if (row >= pane.startRow && row <= pane.endRow) {
                 copyPane(pane);
+                matched = true;
                 break;
               }
+            }
+          }
+
+          // Fallback: If click was outside strict row bounds, prioritize active error/logs/focused pane
+          if (!matched) {
+            const prioritizedPane = currentPanes.find(p => p.id === 'fatal-error' || p.id === 'logs' || p.id === 'tasks') || currentPanes[0];
+            if (prioritizedPane) {
+              copyPane(prioritizedPane);
             }
           }
         }
@@ -124,11 +136,13 @@ export const ClipboardProvider = ({ children, isInteractive = true }) => {
     };
   }, [isInteractive, copyPane]);
 
-  // Keyboard shortcut support: Press number keys 1-9 to copy corresponding pane
+  // Keyboard shortcut support: Press number keys 1-9 or 'c' to copy corresponding pane
   useInput((input, key) => {
     if (!isInteractive) return;
 
     const currentPanes = panesRef.current || [];
+    if (currentPanes.length === 0) return;
+
     // Number key 1-9
     const num = parseInt(input, 10);
     if (!isNaN(num) && num >= 1 && num <= currentPanes.length) {
@@ -136,9 +150,9 @@ export const ClipboardProvider = ({ children, isInteractive = true }) => {
       if (targetPane) {
         copyPane(targetPane);
       }
-    } else if (input === 'c' && !key.ctrl && currentPanes.length > 0) {
-      // Copy primary pane
-      const primaryPane = currentPanes.find(p => p.id === 'all' || p.id === 'endpoints') || currentPanes[0];
+    } else if (input === 'c' && !key.ctrl) {
+      // Copy highest priority pane (error, logs, endpoints, or first)
+      const primaryPane = currentPanes.find(p => p.id === 'fatal-error' || p.id === 'logs' || p.id === 'all' || p.id === 'endpoints') || currentPanes[0];
       if (primaryPane) {
         copyPane(primaryPane);
       }

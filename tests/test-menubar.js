@@ -4,17 +4,18 @@ async function runTests() {
   console.log('🧪 Testing Globally Context-Sensitive Menu & Workflow Engine...');
 
   // Test 1: Workflow Stages mapping
-  if (WORKFLOW_STAGES.length !== 6) {
-    throw new Error(`Expected 6 workflow stages, got: ${WORKFLOW_STAGES.length}`);
+  if (WORKFLOW_STAGES.length !== 7) {
+    throw new Error(`Expected 7 workflow stages, got: ${WORKFLOW_STAGES.length}`);
   }
   const stages = WORKFLOW_STAGES.map(s => s.id);
-  const expectedStages = ['UP', 'MODULES', 'STATUS', 'PODS', 'NMAP', 'VISUALIZER'];
+  const expectedStages = ['MENU', 'UP', 'MODULES', 'STATUS', 'PODS', 'NMAP', 'VISUALIZER'];
   for (const exp of expectedStages) {
     if (!stages.includes(exp)) throw new Error(`Missing workflow stage: ${exp}`);
   }
-  console.log('✔ Test 1 passed: WORKFLOW_STAGES defined canonical progression (UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER).');
+  console.log('✔ Test 1 passed: WORKFLOW_STAGES defined canonical progression (MENU -> UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER).');
 
   // Test 2: getActiveWorkflowStage mapping
+  if (getActiveWorkflowStage('MENU') !== 'MENU') throw new Error('Expected MENU -> MENU');
   if (getActiveWorkflowStage('RUNNING') !== 'UP') throw new Error('Expected RUNNING -> UP');
   if (getActiveWorkflowStage('MODULES') !== 'MODULES') throw new Error('Expected MODULES -> MODULES');
   if (getActiveWorkflowStage('DASHBOARD') !== 'STATUS') throw new Error('Expected DASHBOARD -> STATUS');
@@ -75,10 +76,14 @@ async function runTests() {
 
   // Test 7: MODULES Contextual Action Keys
   const modConfig = getContextualMenuConfig('MODULES', {});
+  const modKeys = modConfig.items.map(i => i.key);
+  if (!modKeys.includes('n')) {
+    throw new Error('Expected [n] Namespace in MODULES menu');
+  }
   if (!modConfig.nextStepHint?.key.includes('u')) {
     throw new Error('Expected next step hint for MODULES to be Deploy [u]');
   }
-  console.log('✔ Test 7 passed: MODULES contextual menu guides user to [u] Deploy.');
+  console.log('✔ Test 7 passed: MODULES contextual menu maps [n] Namespace with next step [u] Deploy.');
 
   console.log('🎉 All Context-Sensitive Menu & Workflow Engine tests passed successfully!');
 }

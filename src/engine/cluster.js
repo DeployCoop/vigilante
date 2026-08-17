@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { execStream } from '../utils/exec.js';
+import { waitForApiServerReady } from './k8s.js';
 
 /**
  * List all k3d clusters
@@ -79,6 +80,9 @@ export async function createK3dCluster(clusterName = 'vigilante-dev', options = 
   } catch {
     // Non-fatal if timeout or condition isn't reached immediately
   }
+
+  // Ensure Kubernetes API server is fully warmed up and responsive
+  await waitForApiServerReady(clusterName, 60000, onLog);
 
   return {
     status: 'created',

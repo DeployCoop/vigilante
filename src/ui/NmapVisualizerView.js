@@ -345,6 +345,12 @@ export const NmapVisualizerView = ({
 
   // Keyboard navigation
   useInput((input, key) => {
+    // [Tab] -> Operations Hub Menu
+    if (key.tab && onNavigate) {
+      onNavigate('menu');
+      return;
+    }
+
     const keyChar = (input || '').toLowerCase();
 
     // If active diagnostic modal is open
