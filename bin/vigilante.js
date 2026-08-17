@@ -20,6 +20,7 @@ const cli = meow(`
     nmap/scan   Network reconnaissance & data collection saved to XDG nmaps dir
     xml/netmap  Interactive XML network topology & port matrix visualizer
     threat-sim  Trigger network threat simulation batch against SIEM
+    instances   List and inspect all k3d cluster instances and their directories
     hosts/hostr Sync local domain mappings into /etc/hosts
     values      Manage, list, or export customizable chart values.yaml files
     config      Inspect, initialize, or display $XDG_CONFIG_HOME/vigilante/config.yaml
@@ -27,6 +28,7 @@ const cli = meow(`
   Options
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
     --cluster-name, -c Cluster name (Default: ${config.defaults?.clusterName || 'vigilante-dev'})
+    --instance, -i     Instance name alias for --cluster-name
     --module, -m       Specific module(s) to install (comma-separated, Default: vigil-soc)
     --values, -f       Path to custom Helm values override file
     --values-dir       Path to directory containing custom values files (Default: ./values or XDG)
@@ -38,8 +40,9 @@ const cli = meow(`
     --skip-prereqs     Skip prerequisite verification
 
   Examples
-    $ vigilante up --domain dev.local
-    $ vigilante up --theme dracula
+    $ vigilante up --cluster-name soc-prod --domain prod.local
+    $ vigilante up --instance test-cluster
+    $ vigilante instances
     $ vigilante config path
     $ vigilante values export
     $ vigilante hostr
@@ -57,6 +60,10 @@ const cli = meow(`
       type: 'string',
       shortFlag: 'c',
       default: config.defaults?.clusterName || 'vigilante-dev'
+    },
+    instance: {
+      type: 'string',
+      shortFlag: 'i'
     },
     module: {
       type: 'string',
@@ -99,13 +106,14 @@ const cli = meow(`
 const command = cli.input[0] || 'up';
 const subCommand = cli.input[1];
 const hostsAction = cli.flags.remove ? 'remove' : cli.flags.check ? 'check' : 'sync';
+const effectiveClusterName = cli.flags.instance || cli.flags.clusterName || config.defaults?.clusterName || 'vigilante-dev';
 
 render(
   React.createElement(App, {
     command,
     subCommand,
     domain: cli.flags.domain,
-    clusterName: cli.flags.clusterName,
+    clusterName: effectiveClusterName,
     selectedModules: cli.flags.module ? cli.flags.module.split(',').map(m => m.trim()) : undefined,
     customValuesPath: cli.flags.values,
     customValuesDir: cli.flags.valuesDir || null,

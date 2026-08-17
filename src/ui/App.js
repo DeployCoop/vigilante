@@ -10,6 +10,7 @@ import { ModulesView } from './ModulesView.js';
 import { PodsView } from './PodsView.js';
 import { DataCollectionView } from './DataCollectionView.js';
 import { NmapVisualizerView } from './NmapVisualizerView.js';
+import { InstancesView } from './InstancesView.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { ThemeProvider } from './theme.js';
@@ -21,6 +22,7 @@ import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cl
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
+import { saveInstanceMetadata, deleteInstance } from '../engine/instances.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -236,8 +238,8 @@ const AppContent = ({
 
       // Step 2: Certs
       updateTask('certs', { status: 'running' });
-      addLog(`Setting up local CA and generating TLS certificates for *.${domain}...`);
-      const certs = await setupCertificates(domain);
+      addLog(`Setting up local CA and generating TLS certificates for *.${domain} in instance directory...`);
+      const certs = await setupCertificates(domain, { clusterName, instanceName: clusterName });
       addLog(`Certificates generated:\n  Cert: ${certs.certPath}\n  Key:  ${certs.keyPath}`);
       updateTask('certs', { status: 'done' });
 
@@ -306,6 +308,14 @@ const AppContent = ({
         hosts,
         modules: modulesStatus,
         domain
+      });
+
+      // Save instance metadata
+      await saveInstanceMetadata(clusterName, {
+        clusterName,
+        domain,
+        ip,
+        modules: modulesToInstall
       });
 
       setIsDone(true);
@@ -385,7 +395,7 @@ const AppContent = ({
       addLog('Gathering prerequisite checks, cluster status, and module health...');
       const prereqs = await checkPrereqs();
       const cluster = await getClusterInfo(clusterName);
-      const certs = await checkCertificates(domain);
+      const certs = await checkCertificates(domain, { clusterName, instanceName: clusterName });
       const hosts = await checkHosts({ domain, ip });
 
       const allModules = globalModuleRegistry.getAll();
@@ -462,7 +472,7 @@ const AppContent = ({
       // 2. Setup certs if needed for new installs
       let certs = null;
       if (toInstall.length > 0) {
-        certs = await setupCertificates(domain);
+        certs = await setupCertificates(domain, { clusterName, instanceName: clusterName });
       }
 
       // 3. Install newly enabled modules in dependency order
@@ -502,7 +512,7 @@ const AppContent = ({
 
       const clusterInfo = await getClusterInfo(clusterName);
       const hostsInfo = await checkHosts({ domain, ip });
-      const certsInfo = await checkCertificates(domain);
+      const certsInfo = await checkCertificates(domain, { clusterName, instanceName: clusterName });
       const prereqs = await checkPrereqs();
 
       setDashboardData({
@@ -724,6 +734,8 @@ const AppContent = ({
       setViewState('XML_VISUALIZER');
     } else if (command === 'threat-sim') {
       setViewState('THREAT_SIM');
+    } else if (command === 'instances' || command === 'instance') {
+      setViewState('INSTANCES');
     } else if (command === 'hosts' || command === 'hostr') {
       runHostsWorkflow();
     } else if (command === 'values' || command === 'config') {
@@ -940,6 +952,29 @@ const AppContent = ({
               setViewState('THREAT_SIM');
             } else if (target === 'hostr') {
               runHostsWorkflow();
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 10: Instances Manager View
+    viewState === 'INSTANCES'
+      ? React.createElement(InstancesView, {
+          onNavigate: (target, customCluster) => {
+            if (target === 'up') {
+              runUpWorkflow(chosenModules);
+            } else if (target === 'status') {
+              runStatusWorkflow();
+            } else if (target === 'pods') {
+              setViewState('PODS');
             } else if (target === 'dashboard') {
               if (dashboardData) {
                 setViewState('DASHBOARD');

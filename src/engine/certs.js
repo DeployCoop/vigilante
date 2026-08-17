@@ -1,18 +1,41 @@
 import { execa } from 'execa';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { getInstanceCertsDir, ensureVigilanteConfig } from './config.js';
+import { ensureInstanceDirs } from './instances.js';
+import { logger } from '../utils/logger.js';
 
 /**
- * Setup local certificates with mkcert
- * @param {string} domain - Base domain (e.g. 'vigilante.local')
- * @param {string} customCertDir - Optional custom directory to store certs
+ * Resolve target certificate directory from options or instance name
+ * @param {string|Object} [options]
+ * @returns {string}
  */
-export async function setupCertificates(domain = 'vigilante.local', customCertDir = null) {
-  const certDir = customCertDir || path.resolve(process.cwd(), '.certs');
+function resolveCertDir(options) {
+  if (typeof options === 'string' && options.trim()) {
+    return options.trim();
+  }
+  if (options && typeof options === 'object') {
+    if (options.certDir) return options.certDir;
+    const instance = options.instanceName || options.clusterName || 'vigilante-dev';
+    return getInstanceCertsDir(instance);
+  }
+  return getInstanceCertsDir('vigilante-dev');
+}
+
+/**
+ * Setup local certificates with mkcert in the instance certificates directory
+ * @param {string} [domain='vigilante.local'] - Base domain
+ * @param {string|Object} [options] - Custom directory or { certDir, instanceName, clusterName }
+ */
+export async function setupCertificates(domain = 'vigilante.local', options = null) {
+  await ensureVigilanteConfig();
+  const certDir = resolveCertDir(options);
   await fs.mkdir(certDir, { recursive: true });
 
   const certPath = path.join(certDir, `${domain}.pem`);
   const keyPath = path.join(certDir, `${domain}-key.pem`);
+
+  logger.info('CERTS:SETUP', `Generating certificates for *.${domain} in ${certDir}`);
 
   // 1. Ensure mkcert local CA is installed
   await execa('mkcert', ['-install']);
@@ -47,9 +70,11 @@ export async function setupCertificates(domain = 'vigilante.local', customCertDi
 
 /**
  * Check if certificates exist and are present on disk
+ * @param {string} [domain='vigilante.local']
+ * @param {string|Object} [options]
  */
-export async function checkCertificates(domain = 'vigilante.local', customCertDir = null) {
-  const certDir = customCertDir || path.resolve(process.cwd(), '.certs');
+export async function checkCertificates(domain = 'vigilante.local', options = null) {
+  const certDir = resolveCertDir(options);
   const certPath = path.join(certDir, `${domain}.pem`);
   const keyPath = path.join(certDir, `${domain}-key.pem`);
 

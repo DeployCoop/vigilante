@@ -400,6 +400,52 @@ The Visualizer automatically inspects and displays signature badges (`[🔏 GPG 
 
 ---
 
+## 📦 Multi-Instance k3d Orchestration & Instance Isolation
+
+All files associated with a Vigilante k3d cluster instance live in an isolated directory structure inside `$XDG_CONFIG_HOME/.vigilante/instances/<instance_name>/`:
+
+```
+$XDG_CONFIG_HOME/.vigilante/instances/
+├── vigilante-dev/                        # Default dev instance
+│   ├── certs/                            # Local TLS wildcard certs (*.vigilante.local)
+│   │   ├── vigilante.local.pem
+│   │   └── vigilante.local-key.pem
+│   ├── values/                           # Instance-specific Helm chart overrides
+│   ├── logs/                             # Instance deployment & lifecycle logs
+│   └── instance.json                     # Cluster metadata & deployed module state
+└── soc-prod/                             # Custom named cluster instance
+    ├── certs/                            # Isolated certs for *.soc-prod.local
+    │   ├── soc-prod.local.pem
+    │   └── soc-prod.local-key.pem
+    ├── values/
+    ├── logs/
+    └── instance.json
+```
+
+### Running and Managing Multiple Instances
+
+```bash
+# Launch a named instance
+$ vigilante up --cluster-name soc-prod --domain prod.local
+
+# Launch an instance using the -i alias
+$ vigilante up -i test-soc -d test.local
+
+# List all known instances, directories, and live k3d cluster states
+$ vigilante instances
+
+# Inspect status of a specific instance
+$ vigilante status -c soc-prod
+
+# Live pod monitor for a specific instance
+$ vigilante pods -c soc-prod
+
+# Tear down a specific instance and clean up its resources
+$ vigilante down -c soc-prod
+```
+
+---
+
 ## 🧩 Modular Package Architecture
 
 Every package extends `BaseModule` from `src/modules/base.js`:

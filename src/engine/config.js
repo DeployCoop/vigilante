@@ -15,10 +15,20 @@ export function getXdgConfigHome() {
 
 /**
  * Get the Vigilante config directory within XDG_CONFIG_HOME
+ * Supports both $XDG_CONFIG_HOME/.vigilante and $XDG_CONFIG_HOME/vigilante
  * @returns {string}
  */
 export function getVigilanteConfigDir() {
-  return path.join(getXdgConfigHome(), 'vigilante');
+  const xdg = getXdgConfigHome();
+  const dotVigilante = path.join(xdg, '.vigilante');
+  const vigilante = path.join(xdg, 'vigilante');
+  if (fsSync.existsSync(dotVigilante)) {
+    return dotVigilante;
+  }
+  if (fsSync.existsSync(vigilante)) {
+    return vigilante;
+  }
+  return vigilante;
 }
 
 /**
@@ -51,6 +61,55 @@ export function getVigilanteNmapsDir() {
  */
 export function getVigilanteEvidenceDir() {
   return path.join(getVigilanteConfigDir(), 'evidence');
+}
+
+/**
+ * Get the instances directory for all k3d cluster instances
+ * Structure: $XDG_CONFIG_HOME/.vigilante/instances/
+ * @returns {string}
+ */
+export function getVigilanteInstancesDir() {
+  return path.join(getVigilanteConfigDir(), 'instances');
+}
+
+/**
+ * Get the root directory for a specific k3d instance
+ * Structure: $XDG_CONFIG_HOME/.vigilante/instances/<instance_name>/
+ * @param {string} [instanceName='vigilante-dev']
+ * @returns {string}
+ */
+export function getInstanceDir(instanceName = 'vigilante-dev') {
+  return path.join(getVigilanteInstancesDir(), sanitizePathComponent(instanceName || 'vigilante-dev'));
+}
+
+/**
+ * Get the certificates directory for an instance
+ * Structure: $XDG_CONFIG_HOME/.vigilante/instances/<instance_name>/certs/
+ * @param {string} [instanceName='vigilante-dev']
+ * @returns {string}
+ */
+export function getInstanceCertsDir(instanceName = 'vigilante-dev') {
+  return path.join(getInstanceDir(instanceName), 'certs');
+}
+
+/**
+ * Get the values directory for an instance
+ * Structure: $XDG_CONFIG_HOME/.vigilante/instances/<instance_name>/values/
+ * @param {string} [instanceName='vigilante-dev']
+ * @returns {string}
+ */
+export function getInstanceValuesDir(instanceName = 'vigilante-dev') {
+  return path.join(getInstanceDir(instanceName), 'values');
+}
+
+/**
+ * Get the logs directory for an instance
+ * Structure: $XDG_CONFIG_HOME/.vigilante/instances/<instance_name>/logs/
+ * @param {string} [instanceName='vigilante-dev']
+ * @returns {string}
+ */
+export function getInstanceLogsDir(instanceName = 'vigilante-dev') {
+  return path.join(getInstanceDir(instanceName), 'logs');
 }
 
 /**
@@ -194,6 +253,7 @@ export async function ensureVigilanteConfig() {
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
   const evidenceDir = getVigilanteEvidenceDir();
+  const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
   let created = false;
 
@@ -201,6 +261,7 @@ export async function ensureVigilanteConfig() {
     await fs.mkdir(valuesDir, { recursive: true });
     await fs.mkdir(nmapsDir, { recursive: true });
     await fs.mkdir(evidenceDir, { recursive: true });
+    await fs.mkdir(instancesDir, { recursive: true });
     try {
       await fs.access(configFile);
     } catch {
@@ -212,7 +273,7 @@ export async function ensureVigilanteConfig() {
     logger.warn('CONFIG', `Failed to ensure config directories: ${err.message}`);
   }
 
-  return { configDir, valuesDir, nmapsDir, evidenceDir, configFile, created };
+  return { configDir, valuesDir, nmapsDir, evidenceDir, instancesDir, configFile, created };
 }
 
 /**
@@ -223,6 +284,7 @@ export function ensureVigilanteConfigSync() {
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
   const evidenceDir = getVigilanteEvidenceDir();
+  const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
   try {
@@ -235,6 +297,9 @@ export function ensureVigilanteConfigSync() {
     if (!fsSync.existsSync(evidenceDir)) {
       fsSync.mkdirSync(evidenceDir, { recursive: true });
     }
+    if (!fsSync.existsSync(instancesDir)) {
+      fsSync.mkdirSync(instancesDir, { recursive: true });
+    }
     if (!fsSync.existsSync(configFile)) {
       fsSync.writeFileSync(configFile, DEFAULT_CONFIG_YAML, 'utf8');
     }
@@ -242,7 +307,7 @@ export function ensureVigilanteConfigSync() {
     // Ignore sync fallback error
   }
 
-  return { configDir, valuesDir, nmapsDir, evidenceDir, configFile };
+  return { configDir, valuesDir, nmapsDir, evidenceDir, instancesDir, configFile };
 }
 
 /**

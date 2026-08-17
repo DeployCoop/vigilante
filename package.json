@@ -16,8 +16,8 @@
     "config": "node ./bin/vigilante.js config",
     "pods": "node ./bin/vigilante.js pods",
     "scan": "node ./bin/vigilante.js scan",
-    "xml": "node ./bin/vigilante.js xml",
-    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-pods.js && node tests/test-clipboard.js && node tests/test-config.js && node tests/test-nmap.js && node tests/test-nmap-xml.js && node tests/test-diagnostics.js && node tests/test-menubar.js && node tests/test-evidence.js && node tests/test-gpg.js"
+    "instances": "node ./bin/vigilante.js instances",
+    "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-pods.js && node tests/test-clipboard.js && node tests/test-config.js && node tests/test-nmap.js && node tests/test-nmap-xml.js && node tests/test-diagnostics.js && node tests/test-menubar.js && node tests/test-evidence.js && node tests/test-gpg.js && node tests/test-instances.js"
   },
   "packageManager": "pnpm@11.12.0",
   "dependencies": {
