@@ -26,32 +26,46 @@ export class VigilSOCModule extends BaseModule {
   }
 
   /**
-   * Install Vigil AI SOC Platform on k3d
+   * Install Vigil AI SOC Platform into target namespace
    */
-  async install({ domain = 'vigilante.local', certPath, keyPath, onLog = null, options = {} }) {
-    if (onLog) onLog(`[vigil-soc] Preparing namespace '${this.namespace}'...`);
+  async install({
+    domain = 'vigilante.local',
+    certPath,
+    keyPath,
+    clusterName = 'vigilante-dev',
+    namespace = null,
+    onLog = null,
+    options = {}
+  }) {
+    const targetNamespace = namespace || options?.namespace || this.namespace;
+    const targetTlsSecret = `${targetNamespace}-tls`;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'vigil-soc';
+    const releaseName = isStandardNs ? 'vigil' : `${targetNamespace}-vigil`;
+    const ingressHost = isStandardNs ? `vigil.${domain}` : `${targetNamespace}-vigil.${domain}`;
+
+    if (onLog) onLog(`[vigil-soc] Preparing namespace '${targetNamespace}' on cluster '${clusterName}'...`);
 
     // 1. Ensure namespace exists
     await execa('kubectl', [
-      'create', 'namespace', this.namespace,
+      'create', 'namespace', targetNamespace,
       '--dry-run=client', '-o', 'yaml'
     ], { stdout: 'pipe' }).then(({ stdout }) => {
       return execa('kubectl', ['apply', '-f', '-'], { input: stdout });
     });
 
-    // 2. Inject mkcert TLS secret for Ingress
+    // 2. Inject mkcert TLS secret for Ingress into target namespace
     if (certPath && keyPath) {
-      if (onLog) onLog(`[vigil-soc] Injecting mkcert TLS secret '${this.tlsSecretName}' into namespace '${this.namespace}'...`);
+      if (onLog) onLog(`[vigil-soc] Injecting mkcert TLS secret '${targetTlsSecret}' into namespace '${targetNamespace}'...`);
       await applyK8sTlsSecret({
-        namespace: this.namespace,
-        secretName: this.tlsSecretName,
+        namespace: targetNamespace,
+        secretName: targetTlsSecret,
         certPath,
         keyPath
       });
     }
 
     // 3. Install Vigil AI-Native SOC Platform (Backend, Daemon, LLM Worker, Agent Worker, Postgres, Redis)
-    if (onLog) onLog(`[vigil-soc] Deploying Vigil AI SOC Platform (Ingress: https://vigil.${domain})...`);
+    if (onLog) onLog(`[vigil-soc] Deploying Vigil AI SOC '${releaseName}' (Ingress: https://${ingressHost})...`);
     const vigilChartPath = path.join(__dirname, 'charts', 'vigil');
     const vigilDefaultValues = path.join(__dirname, 'values', 'vigil.yaml');
     const vigilValuesArgs = await resolveChartValuesArgs({
@@ -61,48 +75,57 @@ export class VigilSOCModule extends BaseModule {
       customValuesPath: options?.customValuesPath || options?.values,
       customValuesDir: options?.customValuesDir || options?.valuesDir,
       domain,
-      tlsSecretName: this.tlsSecretName,
-      namespace: this.namespace,
+      tlsSecretName: targetTlsSecret,
+      namespace: targetNamespace,
+      clusterName,
       onLog
     });
 
     const vigilArgs = [
-      'upgrade', '--install', 'vigil', vigilChartPath,
-      '--namespace', this.namespace,
+      'upgrade', '--install', releaseName, vigilChartPath,
+      '--namespace', targetNamespace,
       ...vigilValuesArgs
     ];
     await execStream('helm', vigilArgs, { onLog });
 
-    if (onLog) onLog(`[vigil-soc] Successfully deployed Vigil AI SOC! Ingress available at https://vigil.${domain}`);
+    if (onLog) onLog(`[vigil-soc] Successfully deployed Vigil AI SOC in namespace '${targetNamespace}'! Ingress: https://${ingressHost}`);
   }
 
   /**
    * Uninstall vigil-soc and delete its namespace
    */
-  async uninstall({ onLog = null }) {
-    if (onLog) onLog('[vigil-soc] Uninstalling Vigil AI SOC Platform...');
+  async uninstall({ clusterName = 'vigilante-dev', namespace = null, onLog = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'vigil-soc';
+    const releaseName = isStandardNs ? 'vigil' : `${targetNamespace}-vigil`;
+
+    if (onLog) onLog(`[vigil-soc] Uninstalling Vigil AI SOC from namespace '${targetNamespace}'...`);
     try {
-      await execa('helm', ['uninstall', 'vigil', '-n', this.namespace]);
+      await execa('helm', ['uninstall', releaseName, '-n', targetNamespace]);
     } catch {
       // Ignore if not present
     }
 
-    if (onLog) onLog(`[vigil-soc] Deleting namespace '${this.namespace}'...`);
-    try {
-      await execa('kubectl', ['delete', 'namespace', this.namespace, '--timeout=60s']);
-    } catch {
-      // Ignore if already deleted
+    if (targetNamespace !== 'default' && targetNamespace !== 'kube-system') {
+      if (onLog) onLog(`[vigil-soc] Deleting namespace '${targetNamespace}'...`);
+      try {
+        await execa('kubectl', ['delete', 'namespace', targetNamespace, '--timeout=60s']);
+      } catch {
+        // Ignore if already deleted
+      }
     }
   }
 
   /**
-   * Check status of vigil-soc components
+   * Check status of vigil-soc components in target namespace
    */
-  async status({ domain = 'vigilante.local', clusterName = 'vigilante-dev' } = {}) {
+  async status({ domain = 'vigilante.local', clusterName = 'vigilante-dev', namespace = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+
     try {
       const { stdout: podsJson } = await execa('kubectl', [
         'get', 'pods',
-        '-n', this.namespace,
+        '-n', targetNamespace,
         '--context', `k3d-${clusterName}`,
         '--request-timeout=3s',
         '-o', 'json'
@@ -110,6 +133,7 @@ export class VigilSOCModule extends BaseModule {
       const parsed = JSON.parse(podsJson);
       const pods = (parsed.items || []).map(p => ({
         name: p.metadata.name,
+        namespace: p.metadata.namespace || targetNamespace,
         phase: p.status.phase,
         ready: p.status.containerStatuses?.every(c => c.ready) || false,
         restarts: p.status.containerStatuses?.reduce((acc, c) => acc + c.restartCount, 0) || 0
@@ -121,15 +145,17 @@ export class VigilSOCModule extends BaseModule {
       return {
         id: this.id,
         name: this.name,
+        namespace: targetNamespace,
         installed: isInstalled,
         status: allReady ? 'Ready' : isInstalled ? 'Deploying / Degraded' : 'Not Installed',
         pods,
-        endpoints: await this.getEndpoints({ domain })
+        endpoints: await this.getEndpoints({ domain, namespace: targetNamespace })
       };
     } catch {
       return {
         id: this.id,
         name: this.name,
+        namespace: targetNamespace,
         installed: false,
         status: 'Not Installed',
         pods: [],
@@ -139,32 +165,38 @@ export class VigilSOCModule extends BaseModule {
   }
 
   /**
-   * List endpoints for vigil-soc
+   * List endpoints for vigil-soc in target namespace
    */
-  async getEndpoints({ domain = 'vigilante.local' }) {
+  async getEndpoints({ domain = 'vigilante.local', namespace = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'vigil-soc';
+    const webUrl = isStandardNs ? `https://vigil.${domain}` : `https://${targetNamespace}-vigil.${domain}`;
+
     return [
       {
-        name: 'Vigil AI SOC Platform',
-        url: `https://vigil.${domain}`,
+        name: `Vigil AI SOC Platform (${targetNamespace})`,
+        url: webUrl,
+        namespace: targetNamespace,
         description: 'Vigil autonomous AI SOC investigation & case management platform'
       },
       {
-        name: 'Vigil Backend API (Internal)',
-        url: `http://vigil-backend.${this.namespace}.svc.cluster.local:6987`,
+        name: `Vigil Backend API (Internal, ${targetNamespace})`,
+        url: `http://vigil-backend.${targetNamespace}.svc.cluster.local:6987`,
+        namespace: targetNamespace,
         description: 'Vigil REST API & real-time investigation endpoints'
       }
     ];
   }
 
   /**
-   * Run network threat simulation against OpenSearch SIEM
+   * Run network threat simulation against OpenSearch SIEM in target namespace
    */
-  async simulateThreats(options = {}) {
-    // Dynamic import to avoid circular dependency
+  async simulateThreats({ clusterName = 'vigilante-dev', namespace = null, onLog = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
     const { globalModuleRegistry } = await import('../registry.js');
     const osModule = globalModuleRegistry.get('opensearch');
     if (osModule && typeof osModule.simulateThreats === 'function') {
-      return osModule.simulateThreats(options);
+      return osModule.simulateThreats({ clusterName, namespace: targetNamespace, onLog });
     }
     throw new Error('OpenSearch module is required to simulate and ingest threat events.');
   }

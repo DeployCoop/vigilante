@@ -264,7 +264,7 @@ export const StatusDashboard = ({
                   { color: mod.installed ? 'green' : 'gray', bold: true },
                   mod.installed ? '✔ ' : '○ '
                 ),
-                React.createElement(Text, { bold: true }, `${mod.name}: `),
+                React.createElement(Text, { bold: true }, `${mod.name}${mod.namespace ? ` [ns: ${mod.namespace}]` : ''}: `),
                 React.createElement(
                   Text,
                   { color: mod.status === 'Ready' ? 'green' : 'yellow' },

@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { useTheme } from './theme.js';
 
-export const Header = ({ command = 'up', domain = 'vigilante.local' }) => {
+export const Header = ({ command = 'up', domain = 'vigilante.local', namespace = null }) => {
   const theme = useTheme();
 
   return React.createElement(
@@ -52,7 +52,7 @@ export const Header = ({ command = 'up', domain = 'vigilante.local' }) => {
         React.createElement(
           Text,
           { color: theme.muted },
-          `Command: [${command}] | Domain: ${domain}`
+          `Command: [${command}] | Domain: ${domain}${namespace ? ` | NS: ${namespace}` : ''}`
         )
       )
     )

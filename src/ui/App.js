@@ -22,7 +22,7 @@ import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cl
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
-import { saveInstanceMetadata, deleteInstance } from '../engine/instances.js';
+import { saveInstanceMetadata, deleteInstance, recordNamespaceDeployment } from '../engine/instances.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -30,6 +30,7 @@ const AppContent = ({
   subCommand = null,
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
+  namespace: cliNamespace = null,
   selectedModules: cliSelectedModules,
   customValuesPath = null,
   customValuesDir: cliCustomValuesDir = null,
@@ -40,6 +41,7 @@ const AppContent = ({
 }) => {
   const { exit } = useApp();
   const { copiedToast } = useClipboard();
+  const [targetNamespace, setTargetNamespace] = useState(cliNamespace || 'default');
   const [viewState, setViewState] = useState(
     command === 'up' && !cliSelectedModules && !nonInteractive ? 'SELECT_MODULES' : 'RUNNING'
   );
@@ -56,7 +58,7 @@ const AppContent = ({
 
   // Log application startup
   useEffect(() => {
-    logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, nonInteractive=${nonInteractive}`);
+    logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, namespace=${targetNamespace}, nonInteractive=${nonInteractive}`);
   }, []);
 
   // Keyboard navigation & interactive menu shortcuts
@@ -279,13 +281,18 @@ const AppContent = ({
       for (const mod of resolvedModules) {
         const taskId = `mod-${mod.id}`;
         updateTask(taskId, { status: 'running' });
-        addLog(`Installing module ${mod.name}...`);
+        addLog(`Installing module ${mod.name} into namespace '${targetNamespace}'...`);
         await mod.install({
           domain,
           certPath: certs.certPath,
           keyPath: certs.keyPath,
           clusterName,
-          onLog: (msg) => addLog(msg)
+          namespace: targetNamespace,
+          onLog: (msg) => addLog(msg),
+          options: {
+            customValuesPath,
+            customValuesDir
+          }
         });
         updateTask(taskId, { status: 'done' });
       }
@@ -297,7 +304,7 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (m) => {
-          return await m.status({ domain, clusterName });
+          return await m.status({ domain, clusterName, namespace: targetNamespace });
         })
       );
 
@@ -310,12 +317,10 @@ const AppContent = ({
         domain
       });
 
-      // Save instance metadata
-      await saveInstanceMetadata(clusterName, {
-        clusterName,
+      // Save instance & namespace deployment metadata
+      await recordNamespaceDeployment(clusterName, targetNamespace, modulesToInstall, {
         domain,
-        ip,
-        modules: modulesToInstall
+        ip
       });
 
       setIsDone(true);
@@ -401,7 +406,7 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (mod) => {
-          return await mod.status({ domain, clusterName });
+          return await mod.status({ domain, clusterName, namespace: targetNamespace });
         })
       );
 
@@ -428,7 +433,7 @@ const AppContent = ({
   // Command: APPLY MODULES (Incremental Install / Uninstall)
   // -------------------------------------------------------------
   const runApplyModulesWorkflow = async ({ enabledIds, toInstall = [], toUninstall = [] }) => {
-    logger.info('WORKFLOW:APPLY_MODULES', `Applying module changes: toInstall=[${toInstall.join(', ')}], toUninstall=[${toUninstall.join(', ')}]`);
+    logger.info('WORKFLOW:APPLY_MODULES', `Applying module changes in namespace '${targetNamespace}': toInstall=[${toInstall.join(', ')}], toUninstall=[${toUninstall.join(', ')}]`);
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -463,6 +468,7 @@ const AppContent = ({
           addLog(`Uninstalling module '${mod.name}'...`);
           await mod.uninstall({
             clusterName,
+            namespace: targetNamespace,
             onLog: (msg) => addLog(msg)
           });
           updateTask(`uninst-${id}`, { status: 'done' });
@@ -481,12 +487,13 @@ const AppContent = ({
         if (toInstall.includes(mod.id)) {
           const taskId = `inst-${mod.id}`;
           updateTask(taskId, { status: 'running' });
-          addLog(`Deploying security module '${mod.name}'...`);
+          addLog(`Deploying security module '${mod.name}' into namespace '${targetNamespace}'...`);
           await mod.install({
             domain,
             certPath: certs?.certPath,
             keyPath: certs?.keyPath,
             clusterName,
+            namespace: targetNamespace,
             onLog: (msg) => addLog(msg),
             options: {
               customValuesPath,
@@ -504,8 +511,8 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (m) => {
-          const st = await m.status({ domain, clusterName });
-          const endpoints = await m.getEndpoints({ domain });
+          const st = await m.status({ domain, clusterName, namespace: targetNamespace });
+          const endpoints = await m.getEndpoints({ domain, namespace: targetNamespace });
           return { ...st, endpoints };
         })
       );
@@ -522,6 +529,12 @@ const AppContent = ({
         prereqs,
         modules: modulesStatus,
         domain
+      });
+
+      // Save namespace deployment state
+      await recordNamespaceDeployment(clusterName, targetNamespace, enabledIds, {
+        domain,
+        ip
       });
 
       setIsDone(true);
@@ -550,8 +563,8 @@ const AppContent = ({
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
         allModules.map(async (mod) => {
-          const st = await mod.status({ domain, clusterName });
-          const endpoints = await mod.getEndpoints({ domain });
+          const st = await mod.status({ domain, clusterName, namespace: targetNamespace });
+          const endpoints = await mod.getEndpoints({ domain, namespace: targetNamespace });
           return { ...st, endpoints };
         })
       );
@@ -753,13 +766,14 @@ const AppContent = ({
   return React.createElement(
     Box,
     { flexDirection: 'column', padding: 1 },
-    React.createElement(Header, { command, domain }),
+    React.createElement(Header, { command, domain, namespace: targetNamespace }),
 
     // State 1: Select Modules Screen
     viewState === 'SELECT_MODULES'
       ? React.createElement(SelectModules, {
           modules: globalModuleRegistry.getAll(),
           initialSelected: chosenModules,
+          namespace: targetNamespace,
           onConfirm: (selected) => {
             if (selected.length === 0) {
               setFatalError('At least one security module must be selected.');
@@ -791,6 +805,7 @@ const AppContent = ({
       ? React.createElement(ModulesView, {
           domain,
           clusterName,
+          namespace: targetNamespace,
           initialSelected: chosenModules,
           onApply: ({ enabledIds, toInstall, toUninstall, hasPendingChanges }) => {
             if (hasPendingChanges) {
@@ -830,6 +845,7 @@ const AppContent = ({
       ? React.createElement(PodsView, {
           domain,
           clusterName,
+          namespace: targetNamespace,
           onNavigate: (target) => {
             if (target === 'status') {
               runStatusWorkflow();

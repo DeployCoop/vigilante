@@ -25,25 +25,39 @@ export class OpenSearchModule extends BaseModule {
   }
 
   /**
-   * Install OpenSearch SIEM & Security Dashboards on k3d
+   * Install OpenSearch SIEM & Security Dashboards into target namespace
    */
-  async install({ domain = 'vigilante.local', certPath, keyPath, onLog = null, options = {} }) {
-    if (onLog) onLog(`[opensearch] Preparing namespace '${this.namespace}'...`);
+  async install({
+    domain = 'vigilante.local',
+    certPath,
+    keyPath,
+    clusterName = 'vigilante-dev',
+    namespace = null,
+    onLog = null,
+    options = {}
+  }) {
+    const targetNamespace = namespace || options?.namespace || this.namespace;
+    const targetTlsSecret = `${targetNamespace}-tls`;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'opensearch';
+    const osRelease = isStandardNs ? 'opensearch' : `${targetNamespace}-opensearch`;
+    const dashboardsRelease = isStandardNs ? 'opensearch-dashboards' : `${targetNamespace}-opensearch-dashboards`;
+
+    if (onLog) onLog(`[opensearch] Preparing namespace '${targetNamespace}' on cluster '${clusterName}'...`);
 
     // 1. Ensure namespace exists
     await execa('kubectl', [
-      'create', 'namespace', this.namespace,
+      'create', 'namespace', targetNamespace,
       '--dry-run=client', '-o', 'yaml'
     ], { stdout: 'pipe' }).then(({ stdout }) => {
       return execa('kubectl', ['apply', '-f', '-'], { input: stdout });
     });
 
-    // 2. Inject mkcert TLS secret for Ingress
+    // 2. Inject mkcert TLS secret for Ingress into target namespace
     if (certPath && keyPath) {
-      if (onLog) onLog(`[opensearch] Injecting mkcert TLS secret '${this.tlsSecretName}' into namespace '${this.namespace}'...`);
+      if (onLog) onLog(`[opensearch] Injecting mkcert TLS secret '${targetTlsSecret}' into namespace '${targetNamespace}'...`);
       await applyK8sTlsSecret({
-        namespace: this.namespace,
-        secretName: this.tlsSecretName,
+        namespace: targetNamespace,
+        secretName: targetTlsSecret,
         certPath,
         keyPath
       });
@@ -55,7 +69,7 @@ export class OpenSearchModule extends BaseModule {
     await execa('helm', ['repo', 'update', 'opensearch']);
 
     // 4. Install OpenSearch Single-Node Dev Cluster
-    if (onLog) onLog('[opensearch] Deploying OpenSearch core analytics cluster...');
+    if (onLog) onLog(`[opensearch] Deploying OpenSearch cluster '${osRelease}' in namespace '${targetNamespace}'...`);
     const osDefaultValues = path.join(__dirname, 'values', 'opensearch.yaml');
     const osValuesArgs = await resolveChartValuesArgs({
       moduleId: this.id,
@@ -64,20 +78,22 @@ export class OpenSearchModule extends BaseModule {
       customValuesPath: options?.customValuesPath || options?.values,
       customValuesDir: options?.customValuesDir || options?.valuesDir,
       domain,
-      tlsSecretName: this.tlsSecretName,
-      namespace: this.namespace,
+      tlsSecretName: targetTlsSecret,
+      namespace: targetNamespace,
+      clusterName,
       onLog
     });
 
     const osArgs = [
-      'upgrade', '--install', 'opensearch', 'opensearch/opensearch',
-      '--namespace', this.namespace,
+      'upgrade', '--install', osRelease, 'opensearch/opensearch',
+      '--namespace', targetNamespace,
       ...osValuesArgs
     ];
     await execStream('helm', osArgs, { onLog });
 
     // 5. Install OpenSearch Dashboards with Ingress and TLS
-    if (onLog) onLog(`[opensearch] Deploying OpenSearch Dashboards (Ingress: https://siem.${domain})...`);
+    const dashboardHost = isStandardNs ? `siem.${domain}` : `${targetNamespace}-siem.${domain}`;
+    if (onLog) onLog(`[opensearch] Deploying Dashboards '${dashboardsRelease}' (Ingress: https://${dashboardHost})...`);
     const dashboardsDefaultValues = path.join(__dirname, 'values', 'opensearch-dashboards.yaml');
     const dashboardsValuesArgs = await resolveChartValuesArgs({
       moduleId: this.id,
@@ -86,14 +102,15 @@ export class OpenSearchModule extends BaseModule {
       customValuesPath: options?.customValuesPath || options?.values,
       customValuesDir: options?.customValuesDir || options?.valuesDir,
       domain,
-      tlsSecretName: this.tlsSecretName,
-      namespace: this.namespace,
+      tlsSecretName: targetTlsSecret,
+      namespace: targetNamespace,
+      clusterName,
       onLog
     });
 
     const dashboardsArgs = [
-      'upgrade', '--install', 'opensearch-dashboards', 'opensearch/opensearch-dashboards',
-      '--namespace', this.namespace,
+      'upgrade', '--install', dashboardsRelease, 'opensearch/opensearch-dashboards',
+      '--namespace', targetNamespace,
       ...dashboardsValuesArgs
     ];
     await execStream('helm', dashboardsArgs, { onLog });
@@ -102,49 +119,58 @@ export class OpenSearchModule extends BaseModule {
     const rulesManifestPath = path.join(__dirname, 'manifests', 'network-threat-pipeline.yaml');
     try {
       await fs.access(rulesManifestPath);
-      if (onLog) onLog('[opensearch] Applying SIGMA network threat detection rules ConfigMap...');
-      await execa('kubectl', ['apply', '-f', rulesManifestPath, '-n', this.namespace]);
+      if (onLog) onLog(`[opensearch] Applying SIGMA network threat detection rules ConfigMap to '${targetNamespace}'...`);
+      await execa('kubectl', ['apply', '-f', rulesManifestPath, '-n', targetNamespace]);
     } catch {
       // Manifest application error is non-fatal
     }
 
-    if (onLog) onLog(`[opensearch] Successfully deployed OpenSearch SIEM! Ingress available at https://siem.${domain}`);
+    if (onLog) onLog(`[opensearch] Successfully deployed OpenSearch SIEM in namespace '${targetNamespace}'! Ingress: https://${dashboardHost}`);
   }
 
   /**
    * Uninstall OpenSearch and delete its namespace
    */
-  async uninstall({ onLog = null }) {
-    if (onLog) onLog('[opensearch] Uninstalling OpenSearch Dashboards...');
+  async uninstall({ clusterName = 'vigilante-dev', namespace = null, onLog = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'opensearch';
+    const osRelease = isStandardNs ? 'opensearch' : `${targetNamespace}-opensearch`;
+    const dashboardsRelease = isStandardNs ? 'opensearch-dashboards' : `${targetNamespace}-opensearch-dashboards`;
+
+    if (onLog) onLog(`[opensearch] Uninstalling OpenSearch Dashboards from namespace '${targetNamespace}'...`);
     try {
-      await execa('helm', ['uninstall', 'opensearch-dashboards', '-n', this.namespace]);
+      await execa('helm', ['uninstall', dashboardsRelease, '-n', targetNamespace]);
     } catch {
       // Ignore if not present
     }
 
-    if (onLog) onLog('[opensearch] Uninstalling OpenSearch core cluster...');
+    if (onLog) onLog(`[opensearch] Uninstalling OpenSearch core cluster from namespace '${targetNamespace}'...`);
     try {
-      await execa('helm', ['uninstall', 'opensearch', '-n', this.namespace]);
+      await execa('helm', ['uninstall', osRelease, '-n', targetNamespace]);
     } catch {
       // Ignore if not present
     }
 
-    if (onLog) onLog(`[opensearch] Deleting namespace '${this.namespace}'...`);
-    try {
-      await execa('kubectl', ['delete', 'namespace', this.namespace, '--timeout=60s']);
-    } catch {
-      // Ignore if already deleted
+    if (targetNamespace !== 'default' && targetNamespace !== 'kube-system') {
+      if (onLog) onLog(`[opensearch] Deleting namespace '${targetNamespace}'...`);
+      try {
+        await execa('kubectl', ['delete', 'namespace', targetNamespace, '--timeout=60s']);
+      } catch {
+        // Ignore if already deleted
+      }
     }
   }
 
   /**
-   * Check status of OpenSearch components
+   * Check status of OpenSearch components in target namespace
    */
-  async status({ domain = 'vigilante.local', clusterName = 'vigilante-dev' } = {}) {
+  async status({ domain = 'vigilante.local', clusterName = 'vigilante-dev', namespace = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+
     try {
       const { stdout: podsJson } = await execa('kubectl', [
         'get', 'pods',
-        '-n', this.namespace,
+        '-n', targetNamespace,
         '--context', `k3d-${clusterName}`,
         '--request-timeout=3s',
         '-o', 'json'
@@ -152,6 +178,7 @@ export class OpenSearchModule extends BaseModule {
       const parsed = JSON.parse(podsJson);
       const pods = (parsed.items || []).map(p => ({
         name: p.metadata.name,
+        namespace: p.metadata.namespace || targetNamespace,
         phase: p.status.phase,
         ready: p.status.containerStatuses?.every(c => c.ready) || false,
         restarts: p.status.containerStatuses?.reduce((acc, c) => acc + c.restartCount, 0) || 0
@@ -163,15 +190,17 @@ export class OpenSearchModule extends BaseModule {
       return {
         id: this.id,
         name: this.name,
+        namespace: targetNamespace,
         installed: isInstalled,
         status: allReady ? 'Ready' : isInstalled ? 'Deploying / Degraded' : 'Not Installed',
         pods,
-        endpoints: await this.getEndpoints({ domain })
+        endpoints: await this.getEndpoints({ domain, namespace: targetNamespace })
       };
     } catch {
       return {
         id: this.id,
         name: this.name,
+        namespace: targetNamespace,
         installed: false,
         status: 'Not Installed',
         pods: [],
@@ -181,39 +210,46 @@ export class OpenSearchModule extends BaseModule {
   }
 
   /**
-   * List endpoints for OpenSearch
+   * List endpoints for OpenSearch in target namespace
    */
-  async getEndpoints({ domain = 'vigilante.local' }) {
+  async getEndpoints({ domain = 'vigilante.local', namespace = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+    const isStandardNs = targetNamespace === 'default' || targetNamespace === 'opensearch';
+    const webUrl = isStandardNs ? `https://siem.${domain}` : `https://${targetNamespace}-siem.${domain}`;
+
     return [
       {
-        name: 'OpenSearch SIEM Dashboard',
-        url: `https://siem.${domain}`,
+        name: `OpenSearch SIEM Dashboard (${targetNamespace})`,
+        url: webUrl,
+        namespace: targetNamespace,
         description: 'Web console for security event monitoring, MITRE threat mapping & dashboards'
       },
       {
-        name: 'OpenSearch REST API (Internal)',
-        url: `http://opensearch-cluster-master.${this.namespace}.svc.cluster.local:9200`,
+        name: `OpenSearch REST API (Internal, ${targetNamespace})`,
+        url: `http://opensearch-cluster-master.${targetNamespace}.svc.cluster.local:9200`,
+        namespace: targetNamespace,
         description: 'SIEM indices and ECS threat event ingestion API'
       }
     ];
   }
 
   /**
-   * Run the network threat simulator to inject test threat events
+   * Run the network threat simulator to inject test threat events into target namespace
    */
-  async simulateThreats({ onLog = null }) {
+  async simulateThreats({ clusterName = 'vigilante-dev', namespace = null, onLog = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
     const simulatorManifestPath = path.join(__dirname, 'manifests', 'threat-simulator.yaml');
-    if (onLog) onLog('[opensearch] Triggering network threat simulation batch (Port Scan, SSH Brute Force, DNS Tunneling)...');
+    if (onLog) onLog(`[opensearch] Triggering threat simulation batch in namespace '${targetNamespace}'...`);
 
     // Delete existing simulator job if present
     try {
-      await execa('kubectl', ['delete', 'job', 'opensearch-threat-injector', '-n', this.namespace, '--ignore-not-found=true']);
+      await execa('kubectl', ['delete', 'job', 'opensearch-threat-injector', '-n', targetNamespace, '--ignore-not-found=true']);
     } catch {
       // Ignore
     }
 
     // Apply simulation job
-    await execa('kubectl', ['apply', '-f', simulatorManifestPath, '-n', this.namespace]);
-    if (onLog) onLog('[opensearch] Threat simulation Job scheduled! Logs will be visible in OpenSearch SIEM index: vigilante-network-events');
+    await execa('kubectl', ['apply', '-f', simulatorManifestPath, '-n', targetNamespace]);
+    if (onLog) onLog(`[opensearch] Threat simulation Job scheduled in '${targetNamespace}'! Ingestion target: vigilante-network-events`);
   }
 }

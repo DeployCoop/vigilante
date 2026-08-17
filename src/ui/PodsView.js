@@ -15,12 +15,13 @@ import { logger } from '../utils/logger.js';
 export const PodsView = ({
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
+  namespace = null,
   onNavigate = null
 }) => {
   const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);
-  const [selectedNamespace, setSelectedNamespace] = useState('all');
+  const [selectedNamespace, setSelectedNamespace] = useState(namespace || 'all');
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const { registerPanes } = useClipboard();

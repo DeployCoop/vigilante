@@ -29,6 +29,7 @@ const cli = meow(`
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
     --cluster-name, -c Cluster name (Default: ${config.defaults?.clusterName || 'vigilante-dev'})
     --instance, -i     Instance name alias for --cluster-name
+    --namespace, -n    Target Kubernetes namespace (e.g. 'default', 'threat-lab', 'tenant-a')
     --module, -m       Specific module(s) to install (comma-separated, Default: vigil-soc)
     --values, -f       Path to custom Helm values override file
     --values-dir       Path to directory containing custom values files (Default: ./values or XDG)
@@ -41,12 +42,14 @@ const cli = meow(`
 
   Examples
     $ vigilante up --cluster-name soc-prod --domain prod.local
+    $ vigilante up -n tenant-alpha -m opensearch,vigil-soc
+    $ vigilante up -n tenant-beta -m vigil-soc
     $ vigilante up --instance test-cluster
     $ vigilante instances
     $ vigilante config path
     $ vigilante values export
     $ vigilante hostr
-    $ vigilante status
+    $ vigilante status -n tenant-alpha
     $ vigilante down
 `, {
   importMeta: import.meta,
@@ -64,6 +67,11 @@ const cli = meow(`
     instance: {
       type: 'string',
       shortFlag: 'i'
+    },
+    namespace: {
+      type: 'string',
+      shortFlag: 'n',
+      default: ''
     },
     module: {
       type: 'string',
@@ -114,6 +122,7 @@ render(
     subCommand,
     domain: cli.flags.domain,
     clusterName: effectiveClusterName,
+    namespace: cli.flags.namespace || null,
     selectedModules: cli.flags.module ? cli.flags.module.split(',').map(m => m.trim()) : undefined,
     customValuesPath: cli.flags.values,
     customValuesDir: cli.flags.valuesDir || null,

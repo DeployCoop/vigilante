@@ -107,6 +107,55 @@ export async function loadInstanceMetadata(instanceName = 'vigilante-dev') {
 }
 
 /**
+ * Record a deployment of modules to a specific namespace
+ * @param {string} [instanceName='vigilante-dev']
+ * @param {string} [namespace='default']
+ * @param {string[]} [modules=[]]
+ * @param {Object} [extra={}]
+ */
+export async function recordNamespaceDeployment(instanceName = 'vigilante-dev', namespace = 'default', modules = [], extra = {}) {
+  const meta = (await loadInstanceMetadata(instanceName)) || {};
+  const currentNamespaces = meta.namespaces || {};
+
+  currentNamespaces[namespace] = {
+    modules,
+    ...extra,
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveInstanceMetadata(instanceName, {
+    ...meta,
+    namespaces: currentNamespaces
+  });
+
+  logger.info('INSTANCES:NAMESPACE_DEPLOY', `Recorded deployment of [${modules.join(', ')}] in namespace '${namespace}' on instance '${instanceName}'`);
+}
+
+/**
+ * Get all namespaces and their installed modules on an instance
+ * @param {string} [instanceName='vigilante-dev']
+ * @returns {Promise<Record<string, { modules: string[], updatedAt?: string }>>}
+ */
+export async function getDeployedNamespaces(instanceName = 'vigilante-dev') {
+  const meta = await loadInstanceMetadata(instanceName);
+  return meta?.namespaces || {};
+}
+
+/**
+ * Remove a namespace record from instance metadata
+ * @param {string} [instanceName='vigilante-dev']
+ * @param {string} [namespace='default']
+ */
+export async function removeNamespaceDeployment(instanceName = 'vigilante-dev', namespace = 'default') {
+  const meta = (await loadInstanceMetadata(instanceName)) || {};
+  if (meta.namespaces && meta.namespaces[namespace]) {
+    delete meta.namespaces[namespace];
+    await saveInstanceMetadata(instanceName, meta);
+    logger.info('INSTANCES:NAMESPACE_REMOVE', `Removed namespace '${namespace}' metadata from instance '${instanceName}'`);
+  }
+}
+
+/**
  * List all Vigilante k3d instances and cross-reference with live clusters
  * @returns {Promise<Array<Object>>}
  */

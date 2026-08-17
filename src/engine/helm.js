@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { getVigilanteValuesDir } from './config.js';
+import { getVigilanteValuesDir, getInstanceValuesDir } from './config.js';
 
 /**
  * Replace template placeholders in values content
@@ -86,28 +86,67 @@ export async function resolveChartValuesArgs({
     candidatePaths.push(path.resolve(cwd, customValuesPath));
   }
 
-  // B. Explicit CLI directory passed
+  // B. Instance values dir: $XDG_CONFIG_HOME/.vigilante/instances/<clusterName>/values/<namespace>/<module>/<chart>.yaml
+  if (clusterName) {
+    const instValuesDir = getInstanceValuesDir(clusterName);
+    if (namespace && namespace !== 'default') {
+      candidatePaths.push(path.resolve(instValuesDir, namespace, moduleId, `${chartName}.yaml`));
+      candidatePaths.push(path.resolve(instValuesDir, namespace, moduleId, `${chartName}.yml`));
+      candidatePaths.push(path.resolve(instValuesDir, namespace, `${chartName}.yaml`));
+      candidatePaths.push(path.resolve(instValuesDir, namespace, `${chartName}.yml`));
+    }
+    candidatePaths.push(path.resolve(instValuesDir, moduleId, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(instValuesDir, moduleId, `${chartName}.yml`));
+    candidatePaths.push(path.resolve(instValuesDir, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(instValuesDir, `${chartName}.yml`));
+  }
+
+  // C. Explicit CLI directory passed
   if (customValuesDir) {
+    if (namespace && namespace !== 'default') {
+      candidatePaths.push(path.resolve(cwd, customValuesDir, namespace, moduleId, `${chartName}.yaml`));
+      candidatePaths.push(path.resolve(cwd, customValuesDir, namespace, moduleId, `${chartName}.yml`));
+      candidatePaths.push(path.resolve(cwd, customValuesDir, namespace, `${chartName}.yaml`));
+      candidatePaths.push(path.resolve(cwd, customValuesDir, namespace, `${chartName}.yml`));
+    }
     candidatePaths.push(path.resolve(cwd, customValuesDir, moduleId, `${chartName}.yaml`));
     candidatePaths.push(path.resolve(cwd, customValuesDir, moduleId, `${chartName}.yml`));
     candidatePaths.push(path.resolve(cwd, customValuesDir, `${chartName}.yaml`));
     candidatePaths.push(path.resolve(cwd, customValuesDir, `${chartName}.yml`));
   }
 
-  // C. Default workspace ./values/<module>/<chart>.yaml or ./values/<chart>.yaml
+  // D. Workspace ./values/<namespace>/<module>/<chart>.yaml or ./values/<module>/<chart>.yaml
+  if (namespace && namespace !== 'default') {
+    candidatePaths.push(path.resolve(cwd, 'values', namespace, moduleId, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(cwd, 'values', namespace, moduleId, `${chartName}.yml`));
+    candidatePaths.push(path.resolve(cwd, 'values', namespace, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(cwd, 'values', namespace, `${chartName}.yml`));
+  }
   candidatePaths.push(path.resolve(cwd, 'values', moduleId, `${chartName}.yaml`));
   candidatePaths.push(path.resolve(cwd, 'values', moduleId, `${chartName}.yml`));
   candidatePaths.push(path.resolve(cwd, 'values', `${chartName}.yaml`));
   candidatePaths.push(path.resolve(cwd, 'values', `${chartName}.yml`));
 
-  // D. Default workspace ./config/values/<module>/<chart>.yaml
+  // E. Workspace ./config/values/<namespace>/<module>/<chart>.yaml
+  if (namespace && namespace !== 'default') {
+    candidatePaths.push(path.resolve(cwd, 'config', 'values', namespace, moduleId, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(cwd, 'config', 'values', namespace, moduleId, `${chartName}.yml`));
+    candidatePaths.push(path.resolve(cwd, 'config', 'values', namespace, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(cwd, 'config', 'values', namespace, `${chartName}.yml`));
+  }
   candidatePaths.push(path.resolve(cwd, 'config', 'values', moduleId, `${chartName}.yaml`));
   candidatePaths.push(path.resolve(cwd, 'config', 'values', moduleId, `${chartName}.yml`));
   candidatePaths.push(path.resolve(cwd, 'config', 'values', `${chartName}.yaml`));
   candidatePaths.push(path.resolve(cwd, 'config', 'values', `${chartName}.yml`));
 
-  // E. XDG User Directory: $XDG_CONFIG_HOME/vigilante/values/<module>/<chart>.yaml
+  // F. XDG User Directory: $XDG_CONFIG_HOME/vigilante/values/<namespace>/<module>/<chart>.yaml
   const xdgValuesDir = getVigilanteValuesDir();
+  if (namespace && namespace !== 'default') {
+    candidatePaths.push(path.resolve(xdgValuesDir, namespace, moduleId, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(xdgValuesDir, namespace, moduleId, `${chartName}.yml`));
+    candidatePaths.push(path.resolve(xdgValuesDir, namespace, `${chartName}.yaml`));
+    candidatePaths.push(path.resolve(xdgValuesDir, namespace, `${chartName}.yml`));
+  }
   candidatePaths.push(path.resolve(xdgValuesDir, moduleId, `${chartName}.yaml`));
   candidatePaths.push(path.resolve(xdgValuesDir, moduleId, `${chartName}.yml`));
   candidatePaths.push(path.resolve(xdgValuesDir, `${chartName}.yaml`));

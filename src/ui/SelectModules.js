@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 
-export const SelectModules = ({ modules = [], onConfirm, initialSelected = [] }) => {
+export const SelectModules = ({ modules = [], onConfirm, initialSelected = [], namespace = 'default' }) => {
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState(() => {
     if (initialSelected.length > 0) {
@@ -42,9 +42,18 @@ export const SelectModules = ({ modules = [], onConfirm, initialSelected = [] })
     Box,
     { flexDirection: 'column', marginY: 1, borderStyle: 'round', borderColor: 'blue', padding: 1 },
     React.createElement(
-      Text,
-      { bold: true, color: 'cyan' },
-      '📦 Select Security Packages to Deploy:'
+      Box,
+      { justifyContent: 'space-between', marginBottom: 1 },
+      React.createElement(
+        Text,
+        { bold: true, color: 'cyan' },
+        '📦 Select Security Packages to Deploy:'
+      ),
+      React.createElement(
+        Text,
+        { color: 'yellow', bold: true },
+        `Target Namespace: [${namespace || 'default'}]`
+      )
     ),
     React.createElement(
       Text,

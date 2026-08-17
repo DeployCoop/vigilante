@@ -446,6 +446,37 @@ $ vigilante down -c soc-prod
 
 ---
 
+## 🏢 Namespaced Module Deployments & Multi-Tenant Replication
+
+Vigilante supports deploying sets of security packages into specific Kubernetes namespaces, and repeating deployments for multiple distinct namespaces on the same or different k3d cluster instances:
+
+```bash
+# Deploy OpenSearch & Vigil SOC into namespace 'tenant-alpha'
+$ vigilante up -n tenant-alpha -m opensearch,vigil-soc
+
+# Deploy another independent Vigil SOC stack into namespace 'tenant-beta'
+$ vigilante up -n tenant-beta -m vigil-soc
+
+# Deploy a threat simulation environment into namespace 'threat-lab'
+$ vigilante up -n threat-lab -m opensearch
+
+# Inspect status of packages in a specific namespace
+$ vigilante status -n tenant-alpha
+
+# Live pod monitor filtered to a specific namespace
+$ vigilante pods -n tenant-alpha
+```
+
+### Namespace-Aware Values Overrides
+
+When customizing Helm values, Vigilante prioritizes namespace-specific override files:
+- `$XDG_CONFIG_HOME/.vigilante/instances/<cluster>/values/<namespace>/<module>/<chart>.yaml`
+- `./values/<namespace>/<module>/<chart>.yaml`
+- `$XDG_CONFIG_HOME/vigilante/values/<namespace>/<module>/<chart>.yaml`
+- Defaulting smoothly to standard module values if no namespace override exists.
+
+---
+
 ## 🧩 Modular Package Architecture
 
 Every package extends `BaseModule` from `src/modules/base.js`:

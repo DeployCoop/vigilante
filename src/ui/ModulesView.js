@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 export const ModulesView = ({
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
+  namespace = 'default',
   initialSelected = null,
   onApply = null,
   onNavigate = null
@@ -26,8 +27,8 @@ export const ModulesView = ({
       const allMods = globalModuleRegistry.getAll();
       const statusList = await Promise.all(
         allMods.map(async (mod) => {
-          const st = await mod.status({ domain, clusterName });
-          const endpoints = await mod.getEndpoints({ domain });
+          const st = await mod.status({ domain, clusterName, namespace });
+          const endpoints = await mod.getEndpoints({ domain, namespace });
           return {
             id: mod.id,
             name: mod.name,
