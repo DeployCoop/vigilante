@@ -5,6 +5,10 @@
 > 🚨 **UNDER ACTIVE BREACH? READ THE EMERGENCY PLAYBOOK FIRST**:
 > If you suspect or have confirmed an active network intrusion, go immediately to **[FIRSTRESPONSE.md](FIRSTRESPONSE.md)** for the step-by-step incident response checklist to contain the breach, preserve volatile evidence with GPG chain-of-custody, and document root-cause initial access.
 
+## History
+
+This project is a reimagining of [vigilant-octo-waffle](https://github.com/DeployCoop/vigilant-octo-waffle).  Much of the methodology for spinning up the k3d cluster was taken directly from the lessons we learned there.  However, this is not meant to be a straight migration from bash to javascript, I am focusing a bit more on the bits I actually use while leaving [vigilant-octo-waffle](https://github.com/DeployCoop/vigilant-octo-waffle) in tact so I can continue to use it to test any kubernetes scenario, while focusing vigilante more on incident response and sandboxing the toolset I use to gather and analyze data in that scenario.
+
 ---
 
 ## Asciinema demo
@@ -171,6 +175,13 @@ The menu automatically highlights your active stage (e.g. `[● 4. Pods]`) and i
 ---
 
 ## 🎨 XDG Configuration & Theming (`config.yaml`)
+
+First make sure you have set the PAGER and EDITOR environment variables, as both variables are respected when paging and editing. e.g.
+
+```
+export PAGER="bat --paging=always"
+export EDITOR="/usr/bin/nvim"
+```
 
 Vigilante supports standard **XDG Base Directory** configurations at `$XDG_CONFIG_HOME/vigilante/` (defaulting to `~/.config/vigilante/`).
 
