@@ -238,6 +238,27 @@ gpg:
   detached: true        # Generate detached ASCII-armored signatures (.asc)
   gnupgHome: ""         # Optional custom GNUPGHOME directory path
 
+# AI Assistant & Security Forensics Analyst (Ollama, Claude, ChatGPT, Gemini)
+# Ollama works out-of-the-box first and foremost for local, private model inference.
+ai:
+  defaultProvider: "ollama"         # Default provider: ollama, anthropic, openai, gemini
+  ollama:
+    host: "http://localhost:11434"   # Local Ollama server address (or $OLLAMA_HOST)
+    defaultModel: "llama3.2"         # Default local model (auto-detected from ollama list)
+    temperature: 0.2
+  anthropic:
+    apiKey: ""                       # Anthropic API Key (or set $ANTHROPIC_API_KEY)
+    defaultModel: "claude-3-5-sonnet-20241022"
+    temperature: 0.2
+  openai:
+    apiKey: ""                       # OpenAI API Key (or set $OPENAI_API_KEY)
+    defaultModel: "gpt-4o"
+    temperature: 0.2
+  gemini:
+    apiKey: ""                       # Google Gemini API Key (or set $GEMINI_API_KEY / $GOOGLE_API_KEY)
+    defaultModel: "gemini-2.0-flash"
+    temperature: 0.2
+
 # Runtime Monitor Behavior
 behavior:
   autoWatchPods: true

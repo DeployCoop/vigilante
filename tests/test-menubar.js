@@ -4,15 +4,15 @@ async function runTests() {
   console.log('🧪 Testing Globally Context-Sensitive Menu & Workflow Engine...');
 
   // Test 1: Workflow Stages mapping
-  if (WORKFLOW_STAGES.length !== 7) {
-    throw new Error(`Expected 7 workflow stages, got: ${WORKFLOW_STAGES.length}`);
+  if (WORKFLOW_STAGES.length !== 8) {
+    throw new Error(`Expected 8 workflow stages, got: ${WORKFLOW_STAGES.length}`);
   }
   const stages = WORKFLOW_STAGES.map(s => s.id);
-  const expectedStages = ['MENU', 'UP', 'MODULES', 'STATUS', 'PODS', 'NMAP', 'VISUALIZER'];
+  const expectedStages = ['MENU', 'UP', 'MODULES', 'STATUS', 'PODS', 'NMAP', 'VISUALIZER', 'AI'];
   for (const exp of expectedStages) {
     if (!stages.includes(exp)) throw new Error(`Missing workflow stage: ${exp}`);
   }
-  console.log('✔ Test 1 passed: WORKFLOW_STAGES defined canonical progression (MENU -> UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER).');
+  console.log('✔ Test 1 passed: WORKFLOW_STAGES defined canonical progression (MENU -> UP -> MODULES -> STATUS -> PODS -> NMAP -> VISUALIZER -> AI).');
 
   // Test 2: getActiveWorkflowStage mapping
   if (getActiveWorkflowStage('MENU') !== 'MENU') throw new Error('Expected MENU -> MENU');
@@ -22,6 +22,7 @@ async function runTests() {
   if (getActiveWorkflowStage('PODS') !== 'PODS') throw new Error('Expected PODS -> PODS');
   if (getActiveWorkflowStage('NMAP') !== 'NMAP') throw new Error('Expected NMAP -> NMAP');
   if (getActiveWorkflowStage('XML_VISUALIZER') !== 'VISUALIZER') throw new Error('Expected XML_VISUALIZER -> VISUALIZER');
+  if (getActiveWorkflowStage('AI_ANALYST') !== 'AI') throw new Error('Expected AI_ANALYST -> AI');
   console.log('✔ Test 2 passed: getActiveWorkflowStage correctly resolved stages.');
 
   // Test 3: XML_VISUALIZER Contextual Action Keys

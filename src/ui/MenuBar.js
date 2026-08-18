@@ -10,7 +10,8 @@ export const WORKFLOW_STAGES = [
   { id: 'STATUS', label: '3. Status', key: 's', view: 'DASHBOARD' },
   { id: 'PODS', label: '4. Pods', key: 'p', view: 'PODS' },
   { id: 'NMAP', label: '5. Nmap', key: 'n', view: 'NMAP' },
-  { id: 'VISUALIZER', label: '6. Visualizer', key: 'x', view: 'XML_VISUALIZER' }
+  { id: 'VISUALIZER', label: '6. Visualizer', key: 'x', view: 'XML_VISUALIZER' },
+  { id: 'AI', label: '7. AI Analyst', key: 'a', view: 'AI_ANALYST' }
 ];
 
 /**
@@ -35,6 +36,10 @@ export function getActiveWorkflowStage(viewState) {
       return 'NMAP';
     case 'XML_VISUALIZER':
       return 'VISUALIZER';
+    case 'AI_ANALYST':
+    case 'AI':
+    case 'LLM':
+      return 'AI';
     case 'VALUES':
       return 'MODULES';
     case 'THREAT_SIM':
@@ -243,6 +248,23 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
     };
   }
 
+  // State: AI Security & Forensics Analyst (LLM)
+  if (viewState === 'AI_ANALYST' || viewState === 'AI' || viewState === 'LLM') {
+    return {
+      title: '🤖 AI Security & Forensics Analyst (LLM)',
+      nextStepHint: { label: 'Status Dashboard', key: 'q' },
+      items: [
+        { key: 'i/Space', label: 'Ask Query', color: theme.accent || 'yellow' },
+        { key: '1-5', label: 'Forensic Presets', color: theme.primary || 'cyan' },
+        { key: 'm', label: 'Switch Model', color: theme.secondary || 'magenta' },
+        { key: 'c', label: 'Copy Response', color: theme.info || 'blue' },
+        { key: 'x', label: 'Export Report', color: theme.success || 'green' },
+        { key: 'Tab', label: 'Hub Menu', color: theme.warning || 'yellow' },
+        { key: 'q', label: 'Return', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
   // Default: Main Status Dashboard
   return {
     title: '🎮 Global Dashboard & Environment Controls',
@@ -251,6 +273,7 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
       { key: 'p', label: '➔ Pods (Live)', color: theme.primary || 'cyan' },
       { key: 'n', label: 'Nmap (Scan)', color: theme.accent || 'cyan' },
       { key: 'x', label: 'XML Visualizer', color: theme.secondary || 'magenta' },
+      { key: 'a', label: 'AI Analyst', color: theme.accent || 'yellow' },
       { key: 't', label: 'Threat-Sim', color: theme.secondary || 'yellow' },
       { key: 'm', label: 'Modules', color: theme.text || 'white' },
       { key: 'v', label: 'Values', color: theme.accent || 'blue' },

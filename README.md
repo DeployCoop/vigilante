@@ -602,6 +602,97 @@ Once connected, your AI assistant can execute multi-step analysis and incident r
 
 ---
 
+## 🧠 Interactive AI Security & Forensics Analyst (`vigilante ai`)
+
+Vigilante features a dedicated, interactive terminal console (`LLMView.js`) that allows security operators to query, analyze, and correlate telemetry directly with Large Language Models.
+
+**Ollama is a first-class citizen working first and foremost out-of-the-box**, enabling completely offline, private analysis with local models (`llama3.2`, `mistral`, `deepseek-r1`, `qwen2.5-coder`), alongside seamless cloud support for **Anthropic (Claude)**, **OpenAI (ChatGPT)**, and **Google (Gemini)**.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ 🤖 AI SECURITY & FORENSICS ANALYST  [Provider: OLLAMA | Model: llama3.2] 🟢 Ollama Local│
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 💡 Welcome to Vigilante AI Analyst — Powered by Local Ollama & MCP Telemetry           │
+│                                                                                        │
+│ 👤 Analyst Query: [1] Recon & Open Ports Summary                                       │
+│ 🛡️ Vigilante AI (ollama/llama3.2) [10:45:12 PM]:                                      │
+│                                                                                        │
+│ ### Network Reconnaissance & Attack Surface Assessment                                │
+│ Based on live Nmap scans across `10.0.1.0/24`:                                         │
+│ • Host `10.0.1.5` (siem.vigilante.local) exposes:                                      │
+│   - Port `9200/tcp` (OpenSearch REST API) -> [MEDIUM RISK: Unauthenticated Ingress]   │
+│   - Port `5601/tcp` (OpenSearch Dashboards) -> [LOW RISK: HTTPS TLS Enabled]           │
+│ • Host `10.0.1.1` (Gateway Router):                                                    │
+│   - ARP cache indicates MAC `52:54:00:12:34:56` with consistent RTT (0.42ms).          │
+│                                                                                        │
+│ 🛡️ Recommended Hardening:                                                             │
+│ 1. Restrict TCP 9200 to cluster-internal pod network via NetworkPolicy.                │
+│ 2. Audit TLS certificate expiration on 5601 using `vigilante xml` or MCP probes.      │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 💬 [i/Space to type] Ask the AI analyst or press [1-5] for quick presets...            │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ [1] Recon  [2] CVEs  [3] Triage  [4] Pods  [5] Threats  │ [m] Model  [c] Copy  [x] Export │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Launching the AI Analyst
+```bash
+# Launch interactive AI Analyst console
+vigilante ai
+# or
+vigilante ask
+# or
+pnpm ai
+```
+- Or from any dashboard / Hub menu: Press **`[a]`**.
+- From the Central Operations Hub: Press **`[Tab]`** ➔ select `[a] AI Security & Forensics Analyst`.
+
+### 2. First-Class Ollama Integration
+- **Auto-Discovery**: Vigilante connects to your local Ollama daemon (`http://localhost:11434` or `$OLLAMA_HOST`) and automatically queries installed models (`/api/tags`).
+- **Dynamic Model Selection (`[m]`)**: Press `[m]` inside the console to open the Model & Provider Selector modal, displaying all local Ollama models with their disk sizes alongside cloud models.
+- **Offline & Private**: All prompt grounding and telemetry summaries remain completely on your local machine when using Ollama.
+
+### 3. Quick Forensic Presets (`[1-5]`)
+Trigger deep automated analysis with single-key shortcuts:
+
+| Shortcut | Preset Name | Purpose |
+| :--- | :--- | :--- |
+| `[1]` / `[r]` | **Recon & Open Ports** | Analyze all discovered network hosts, open ports, and services; highlight critical attack surfaces and unusual port exposures. |
+| `[2]` / `[v]` | **Vulnerability & CVEs** | Audit service software versions and Nmap CVE script findings (`--script=vuln`); identify high-severity exploits and generate remediation steps. |
+| `[3]` / `[e]` | **Incident Triage Review** | Examine Evidence Vault artifacts (`ping.json`, `mtr.txt`, `dns_records.json`, `tls_certificates.pem`, `arp_neighbors.json`) to detect anomalous network behavior. |
+| `[4]` / `[k]` | **Kubernetes Pod Audit** | Audit Kubernetes pod statuses across all namespaces (`-A -o wide`); detect `CrashLoopBackOff`, restart loops, and pending containers. |
+| `[5]` / `[t]` | **Threat Correlation** | Correlate live network topology with simulated threat vectors (SIGMA rules, port scans, brute force, DNS tunneling) and generate defensive hardening playbooks. |
+
+### 4. Interactive Console Features
+- **Prompt Input (`[i]` / `[/]` / `[Space]`)**: Type free-form natural language queries.
+- **Prompt History (`[↑]` / `[↓]`)**: Recall previous analyst queries.
+- **Click-to-Copy (`[c]`)**: Instantly copy the AI's response to your system clipboard.
+- **Export Signed Report (`[x]`)**: Save the full analysis as Markdown in `$XDG_CONFIG_HOME/vigilante/evidence/ai_reports/`, automatically signed with your **GPG key** if enabled.
+- **Clear Conversation (`[l]`)**: Reset the current chat session.
+
+### 5. Multi-Provider Cloud Configuration (`config.yaml`)
+You can configure cloud API keys in `$XDG_CONFIG_HOME/vigilante/config.yaml` or set environment variables:
+
+```yaml
+ai:
+  defaultProvider: "ollama"         # ollama, anthropic, openai, gemini
+  ollama:
+    host: "http://localhost:11434"   # Local Ollama address (or $OLLAMA_HOST)
+    defaultModel: "llama3.2"         # Auto-detected local model
+    temperature: 0.2
+  anthropic:
+    apiKey: ""                       # Or export ANTHROPIC_API_KEY
+    defaultModel: "claude-3-5-sonnet-20241022"
+  openai:
+    apiKey: ""                       # Or export OPENAI_API_KEY
+    defaultModel: "gpt-4o"
+  gemini:
+    apiKey: ""                       # Or export GEMINI_API_KEY / GOOGLE_API_KEY
+    defaultModel: "gemini-2.0-flash"
+```
+
+---
+
 ## 🧩 Modular Package Architecture
 
 Every package extends `BaseModule` from `src/modules/base.js`:

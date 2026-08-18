@@ -11,6 +11,7 @@ import { PodsView } from './PodsView.js';
 import { DataCollectionView } from './DataCollectionView.js';
 import { NmapVisualizerView } from './NmapVisualizerView.js';
 import { InstancesView } from './InstancesView.js';
+import { LLMView } from './LLMView.js';
 import { NavHub } from './NavHub.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
@@ -47,6 +48,7 @@ const AppContent = ({
   const [previousViewState, setPreviousViewState] = useState('DASHBOARD');
   const [viewState, setViewState] = useState(() => {
     if (command === 'menu' || command === 'hub') return 'MENU';
+    if (command === 'ai' || command === 'ask' || command === 'analyst' || command === 'llm') return 'AI_ANALYST';
     if (command === 'up' && !cliSelectedModules && !nonInteractive) return 'SELECT_MODULES';
     return 'RUNNING';
   });
@@ -90,7 +92,7 @@ const AppContent = ({
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
     // If inside a subview that has its own input handling, skip top-level keys except Tab
-    if (viewState === 'MENU' || viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER' || viewState === 'INSTANCES') {
+    if (viewState === 'MENU' || viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER' || viewState === 'INSTANCES' || viewState === 'AI_ANALYST') {
       if (key.tab) {
         if (viewState === 'MENU') {
           setViewState(previousViewState || 'DASHBOARD');
@@ -204,6 +206,14 @@ const AppContent = ({
       logger.info('UI:ACTION', 'User pressed [x] -> Switching to XML_VISUALIZER view');
       setFatalError(null);
       setViewState('XML_VISUALIZER');
+      return;
+    }
+
+    // Trigger AI Security & Forensics Analyst (LLM)
+    if (keyChar === 'a') {
+      logger.info('UI:ACTION', 'User pressed [a] -> Switching to AI_ANALYST view');
+      setFatalError(null);
+      setViewState('AI_ANALYST');
       return;
     }
 
@@ -863,6 +873,8 @@ const AppContent = ({
               setViewState('NMAP');
             } else if (action === 'XML_VISUALIZER') {
               setViewState('XML_VISUALIZER');
+            } else if (action === 'AI_ANALYST') {
+              setViewState('AI_ANALYST');
             } else if (action === 'CONFIG') {
               setViewState('VALUES');
             } else {
@@ -1124,6 +1136,31 @@ const AppContent = ({
               runStatusWorkflow();
             } else if (target === 'pods') {
               setViewState('PODS');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 11: AI Security & Forensics Analyst View (LLM)
+    viewState === 'AI_ANALYST'
+      ? React.createElement(LLMView, {
+          domain,
+          onNavigate: (target) => {
+            if (target === 'menu') {
+              setPreviousViewState('AI_ANALYST');
+              setViewState('MENU');
+            } else if (target === 'pods') {
+              setViewState('PODS');
+            } else if (target === 'nmap') {
+              setViewState('NMAP');
             } else if (target === 'dashboard') {
               if (dashboardData) {
                 setViewState('DASHBOARD');

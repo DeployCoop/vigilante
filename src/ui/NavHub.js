@@ -107,6 +107,15 @@ export const HUB_ITEMS = [
     altKey: null,
     action: 'XML_VISUALIZER'
   },
+  {
+    id: 'ai-analyst',
+    section: '🌐 Network Reconnaissance & Forensics',
+    title: 'AI Security & Forensics Analyst (LLM)',
+    subtitle: 'Ask local Ollama, Claude, or ChatGPT to analyze host data, trends & pods',
+    key: 'a',
+    altKey: 'l',
+    action: 'AI_ANALYST'
+  },
 
   // Section 4: Configuration & Settings
   {

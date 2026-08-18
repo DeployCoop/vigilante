@@ -25,6 +25,7 @@ const cli = meow(`
     hosts/hostr Sync local domain mappings into /etc/hosts
     values      Manage, list, or export customizable chart values.yaml files
     config      Inspect, initialize, or display $XDG_CONFIG_HOME/vigilante/config.yaml
+    ai/ask      Launch AI Security & Forensics Analyst console (Ollama/Claude/GPT)
     mcp         Launch Model Context Protocol (MCP) server over stdio for LLMs
 
   Options
