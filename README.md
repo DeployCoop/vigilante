@@ -20,6 +20,7 @@
 - **Modular Package Ecosystem & Custom Values**: Declarative `BaseModule` system with easy `values.yaml` customization (`vigilante values export`) to tweak chart configurations without modifying code.
 - **vigil-SOC (OpenSearch SIEM)**: Out-of-the-box OpenSearch and OpenSearch Dashboards configured for SIEM and network threat analysis at `https://siem.vigilante.local`.
 - **Network Threat Pipeline & Simulator**: Pre-packaged SIGMA threat detection rules and an automated threat injection simulator (Port Scanning, SSH Brute Force, DNS Tunneling) to validate SIEM alerts.
+- **Model Context Protocol (MCP) Server for LLMs**: Expose discovered host profiles, network topology maps, Incident Response Evidence Vaults, Kubernetes cluster telemetry, and live forensic diagnostic tools (`ping`, `mtr`, `curl`, `dns`, `tls`, `ab`, `arp`) directly to AI assistants (Claude, Antigravity, Cursor) via `@modelcontextprotocol/sdk`.
 
 ---
 
@@ -84,13 +85,20 @@ https://siem.vigilante.local
 $ vigilante [command] [options]
 
 Commands:
+  menu/hub    Central operations hub and interactive workflow dispatcher
   up          Provision k3d cluster, certificates, and deploy security modules
   down        Tear down k3d cluster and clean up resources
   status      Check status of prerequisites, cluster, certificates, and DNS
   modules     List available and installed security modules
+  pods        Live monitor of Kubernetes pods with -A -o wide details
+  nmap/scan   Network reconnaissance & data collection saved to XDG nmaps dir
+  xml/netmap  Interactive XML network topology & port matrix visualizer
   threat-sim  Trigger network threat simulation batch against SIEM
+  instances   List and inspect all k3d cluster instances and their directories
   hosts/hostr Sync or manage local domain mappings in /etc/hosts
   values      Inspect or export customizable Helm chart values.yaml files
+  config      Inspect, initialize, or display $XDG_CONFIG_HOME/vigilante/config.yaml
+  mcp         Launch Model Context Protocol (MCP) server over stdio for LLMs
 
 Options:
   --domain, -d       Local top-level domain (Default: vigilante.local)
@@ -477,6 +485,123 @@ When customizing Helm values, Vigilante prioritizes namespace-specific override 
 
 ---
 
+## 🤖 Model Context Protocol (MCP) Server for LLMs
+
+Vigilante includes a built-in **Model Context Protocol (MCP)** server built on `@modelcontextprotocol/sdk` (2024-11-05 standard specification) running over standard `stdio` transport. It enables AI assistants (such as **Claude Desktop**, **Antigravity**, **Cursor**, **Gemini**, and **ChatGPT**) to discover, query, and perform live incident response diagnostics across your local network and Kubernetes infrastructure.
+
+```
+┌─────────────────────────┐          JSON-RPC (stdio)          ┌────────────────────────────────────────┐
+│  AI Assistant / LLM     │ ◄────────────────────────────────► │  🛡️  Vigilante MCP Server               │
+│  (Claude, Cursor, AGY)  │                                    │  (src/mcp/server.js)                   │
+└─────────────────────────┘                                    └───────────────────┬────────────────────┘
+                                                                                   │
+                 ┌─────────────────────────────────┬───────────────────────────────┴───────────────────────────────┐
+                 ▼                                 ▼                                                               ▼
+       🌐 Network & Topology             📁 Evidence Vault & GPG                                         ☸️ Kubernetes & Modules
+  • vigilante://hosts               • vigilante://evidence                                          • vigilante://pods
+  • vigilante://topology            • vigilante://evidence/{net}/{host}                             • vigilante://clusters
+  • list_hosts / get_host_details   • list_evidence / verify_evidence_signature                     • vigilante://modules
+  • run_nmap_scan                   • run_diagnostic / run_triage_capture                          • get_pods / get_pod_logs
+```
+
+### 1. Launching the MCP Server
+```bash
+# Via CLI command
+vigilante mcp
+
+# Or via pnpm script
+pnpm mcp
+```
+
+### 2. LLM Client Configuration Examples
+
+#### A. Claude Desktop (`claude_desktop_config.json`)
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "vigilante": {
+      "command": "node",
+      "args": ["/home/djehauti/git/DeployCoop/vigilante/bin/vigilante.js", "mcp"]
+    }
+  }
+}
+```
+
+#### B. Antigravity / Cursor / VS Code (`settings.json`)
+```json
+{
+  "mcpServers": {
+    "vigilante": {
+      "command": "vigilante",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+---
+
+### 3. Exposed MCP Resources
+
+AI models can directly inspect real-time state and historical scan reports using standardized `vigilante://` resource URIs:
+
+| Resource URI | Description | MIME Type |
+| :--- | :--- | :--- |
+| `vigilante://hosts` | Aggregated list of all discovered hosts with IP addresses, hostnames, open ports, OS fingerprint guesses, and MAC hardware vendors. | `application/json` |
+| `vigilante://topology` | Hierarchical network topology map grouped by CIDR subnets with live host counts and service matrices. | `application/json` |
+| `vigilante://evidence` | Incident Response Evidence Vault hierarchy (`net/host/data.ext`) with triage artifacts, sizes, timestamps, and signature status. | `application/json` |
+| `vigilante://pods` | Real-time list of all Kubernetes pods across all namespaces matching `kubectl get pods -A -o wide`. | `application/json` |
+| `vigilante://clusters` | All configured k3d cluster instances, directory paths, and deployed namespaces. | `application/json` |
+| `vigilante://modules` | Security packages (OpenSearch SIEM, Vigil AI SOC) with their live ingress URLs and cluster DNS endpoints. | `application/json` |
+| `vigilante://scans` | List of all saved raw XML and text Nmap scan reports in `$XDG_CONFIG_HOME/vigilante/nmaps/`. | `application/json` |
+| `vigilante://config` | Active configuration settings, default domain, cluster name, hostr sync, and GPG signing identity. | `application/json` |
+
+#### Parameterized Resource Templates
+
+| Template URI | Description |
+| :--- | :--- |
+| `vigilante://hosts/{hostIp}` | Deep-dive profile for a specific host, including all open ports, version banners, OS matches, and NSE script outputs. |
+| `vigilante://evidence/{network}/{hostIp}` | All forensic evidence artifacts captured for a specific host within a subnet. |
+| `vigilante://evidence/{network}/{hostIp}/{filename}` | Raw text/PEM/JSON content of a specific forensic artifact file in the evidence vault. |
+| `vigilante://scans/{filename}` | Raw text or XML content of a saved Nmap scan report. |
+
+---
+
+### 4. 12 Interactive Tools for LLMs
+
+The MCP server provides 12 callable tools that allow LLMs to actively query infrastructure, trigger reconnaissance scans, and run non-destructive forensic diagnostics:
+
+| Tool Name | Parameters | Purpose |
+| :--- | :--- | :--- |
+| `list_hosts` | `subnet`, `port`, `service`, `state` (`up`/`down`/`all`) | Query discovered network hosts across Nmap XML scans with flexible attribute filtering. |
+| `get_host_details` | `host` *(required)* | Retrieve complete in-depth profile for a target host IP, including open ports, banners, OS match guesses, NSE vulnerability script outputs, and existing evidence artifacts. |
+| `query_topology` | *(none)* | Get structured network topology tree grouped by subnet CIDRs, live host IP addresses, and open service ports. |
+| `list_evidence` | `network`, `host` | Browse the Incident Response Evidence Vault (`net/host/data.ext`), listing all forensic artifacts, triage bundles, and cryptographic GPG signatures. |
+| `run_diagnostic` | `tool` (`ping`/`mtr`/`curl`/`dns`/`tls`/`ab`/`arp`), `host`, `port`, `path`, `count`, `network` | Execute live forensic network diagnostic probes against a target host, with optional automatic archiving into the Evidence Vault. |
+| `run_triage_capture` | `network`, `host`, `ports` | Execute a full parallel incident response forensic triage bundle against a host (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`), save all structured artifacts in `net/host/data.ext`, and sign with GPG if configured. |
+| `run_nmap_scan` | `target`, `profile` (`sweep`/`quick`/`service`/`vuln`/`full`/`custom`), `customArgs` | Launch an Nmap reconnaissance scan against a target IP or CIDR range, save results as XML and Nmap text, and return parsed host data. |
+| `verify_evidence_signature` | `filePath`, `signaturePath` | Verify the cryptographic GPG detached signature (`.asc`) for an artifact in the Evidence Vault to confirm evidence authenticity and non-repudiation. |
+| `get_pods` | `namespace`, `clusterName` | Query live Kubernetes pods across all namespaces (`-A -o wide`) with pod IP, node, status, restart count, and age. |
+| `get_pod_logs` | `podName`, `namespace`, `container`, `tailLines`, `clusterName` | Retrieve live log tails from a specific Kubernetes pod container. |
+| `describe_pod` | `podName`, `namespace`, `clusterName` | Fetch detailed Kubernetes pod description, containers, volumes, conditions, and lifecycle events. |
+| `get_cluster_status` | `clusterName`, `domain`, `namespace` | Check health and status of prerequisites, k3d clusters, TLS certificates, local DNS host mappings, and deployed security modules. |
+
+---
+
+### 5. Example LLM Prompt Scenarios
+
+Once connected, your AI assistant can execute multi-step analysis and incident response workflows autonomously:
+
+- *"What hosts are currently running HTTP services on subnet 10.0.1.0/24?"* ➔ The LLM invokes `list_hosts({ subnet: "10.0.1.0/24", service: "http" })`.
+- *"Perform a forensic triage on rogue host 10.0.1.15 and verify the cryptographic signature of the evidence."* ➔ The LLM calls `run_triage_capture({ network: "10.0.1.0/24", host: "10.0.1.15" })` followed by `verify_evidence_signature({ filePath: "..." })`.
+- *"Why is the OpenSearch pod crashing in namespace tenant-alpha?"* ➔ The LLM calls `get_pods({ namespace: "tenant-alpha" })` followed by `get_pod_logs({ podName: "opensearch-0", namespace: "tenant-alpha", tailLines: 50 })`.
+
+---
+
 ## 🧩 Modular Package Architecture
 
 Every package extends `BaseModule` from `src/modules/base.js`:
@@ -543,16 +668,26 @@ tail -f /tmp/.vigilante.log
 ```
 vigilante/
 ├── bin/
-│   └── vigilante.js              # Executable entry point (Meow CLI)
+│   └── vigilante.js              # Executable entry point (Meow CLI & MCP dispatcher)
 ├── src/
 │   ├── index.js                  # Programmatic library exports
+│   ├── mcp/
+│   │   └── server.js             # Model Context Protocol (MCP) Server for LLMs
 │   ├── engine/
 │   │   ├── prereqs.js            # Tooling verification (docker, k3d, mkcert, kubectl, helm)
 │   │   ├── certs.js              # mkcert CA & TLS certificates manager
 │   │   ├── cluster.js            # k3d cluster lifecycle provisioner
+│   │   ├── k8s.js                # Kubernetes safety apply & API readiness engine
 │   │   ├── hosts.js              # /etc/hosts domain resolution sync & cleanup (hostr)
 │   │   ├── pods.js               # Live Kubernetes pods querying & watch poller (-A -o wide)
-│   │   └── helm.js               # Dynamic Helm values resolver, renderer & exporter
+│   │   ├── helm.js               # Dynamic Helm values resolver, renderer & exporter
+│   │   ├── config.js             # XDG Base Directory configuration & theme resolver
+│   │   ├── instances.js          # Multi-instance k3d orchestration & metadata isolation
+│   │   ├── nmap.js               # Network reconnaissance & subnet scanner
+│   │   ├── nmap-xml.js           # Nmap XML parser & topology graph builder
+│   │   ├── evidence.js           # Incident Response Evidence Vault (net/host/data.ext)
+│   │   ├── gpg.js                # GPG cryptographic non-repudiation signing & verification
+│   │   └── diagnostics.js        # Host diagnostic probes (ping, ab, mtr, curl, dig, tls, arp)
 │   ├── modules/
 │   │   ├── base.js               # Abstract BaseModule contract
 │   │   ├── registry.js           # Module registry & dependency resolver
@@ -567,15 +702,20 @@ vigilante/
 │   ├── ui/                       # React & Ink UI Components
 │   │   ├── App.js                # Master terminal view controller & router
 │   │   ├── Header.js             # Terminal banner & ASCII styling
-│   │   ├── MenuBar.js            # Persistent interactive keyboard action menu
+│   │   ├── MenuBar.js            # Globally context-sensitive keyboard action menu
+│   │   ├── NavHub.js             # Central operations hub & workflow dispatcher ([Tab])
 │   │   ├── TaskRunner.js         # Animated task spinner & log viewer
-│   │   ├── SelectModules.js      # Interactive keyboard package selector
+│   │   ├── SelectModules.js      # Interactive package selector & namespace switcher ([n])
 │   │   ├── StatusDashboard.js    # Comprehensive diagnostics dashboard
 │   │   ├── ThreatSimView.js      # Network threat simulation runner
 │   │   ├── ValuesView.js         # Interactive Values & $EDITOR manager
 │   │   ├── ModulesView.js        # Interactive Security Modules & Package Manager
 │   │   ├── PodsView.js           # Live Kubernetes Pods Monitor (-A -o wide table)
-│   │   └── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
+│   │   ├── DataCollectionView.js # Interactive Nmap reconnaissance & subnet sweeper
+│   │   ├── NmapVisualizerView.js # Interactive XML network topology & port matrix visualizer
+│   │   ├── InstancesView.js      # Multi-instance k3d manager
+│   │   ├── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
+│   │   └── theme.js              # Theme context & color palette definitions
 │   └── utils/
 │       ├── exec.js               # Subprocess execution & streaming with debug logging
 │       ├── editor.js             # Terminal TTY suspension & $EDITOR launcher
@@ -586,7 +726,19 @@ vigilante/
 │   ├── test-editor.js            # Unit test suite for editor & starter file initialization
 │   ├── test-modules.js           # Unit test suite for module registry & dependency resolver
 │   ├── test-pods.js              # Unit test suite for pod status formatting & live watcher
-│   └── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
+│   ├── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
+│   ├── test-config.js            # Unit test suite for XDG config & themes
+│   ├── test-nmap.js              # Unit test suite for Nmap scanner & subnet calculation
+│   ├── test-nmap-xml.js          # Unit test suite for XML parser & topology graph
+│   ├── test-diagnostics.js       # Unit test suite for host diagnostic probes
+│   ├── test-menubar.js           # Unit test suite for context-sensitive menu bar
+│   ├── test-evidence.js          # Unit test suite for Evidence Vault hierarchy
+│   ├── test-gpg.js               # Unit test suite for GPG digital signing & verification
+│   ├── test-instances.js         # Unit test suite for multi-instance k3d isolation
+│   ├── test-namespaces.js        # Unit test suite for namespaced module deployments
+│   ├── test-k8s.js               # Unit test suite for safe kubectl apply pipeline
+│   ├── test-hub.js               # Unit test suite for operations hub & dispatcher
+│   └── test-mcp.js               # Unit test suite for Model Context Protocol (MCP) server
 ├── values/                       # Exported starter & custom user Helm values overrides
 ├── package.json
 └── README.md
