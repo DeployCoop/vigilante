@@ -67,6 +67,8 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
 
   const [messages, setMessages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [statusStage, setStatusStage] = useState('');
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [streamingText, setStreamingText] = useState('');
   const [inputPrompt, setInputPrompt] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -74,6 +76,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
   const [promptHistory, setPromptHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [feedback, setFeedback] = useState(null);
+  const abortControllerRef = useRef(null);
 
   // Auto-check Ollama health and local models on mount
   useEffect(() => {
@@ -99,6 +102,18 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
     return () => { isMounted = false; };
   }, []);
 
+  // Elapsed seconds timer during generation
+  useEffect(() => {
+    if (!isGenerating) {
+      setElapsedSec(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setElapsedSec(s => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isGenerating]);
+
   // Send a query to the active LLM engine
   const handleSendPrompt = async (promptText) => {
     if (!promptText || !promptText.trim() || isGenerating) return;
@@ -110,12 +125,17 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       timestamp: new Date().toLocaleTimeString()
     };
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setMessages(prev => [...prev, userMessage]);
     setPromptHistory(prev => [promptText.trim(), ...prev.filter(p => p !== promptText.trim())]);
     setHistoryIdx(-1);
     setInputPrompt('');
     setIsTyping(false);
     setIsGenerating(true);
+    setStatusStage('Compiling live MCP security context...');
+    setElapsedSec(0);
     setStreamingText('');
     setFeedback(null);
 
@@ -131,9 +151,13 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         model,
         messages: historyForInference,
         prompt: promptText.trim(),
+        onStatusUpdate: (stage) => {
+          setStatusStage(stage);
+        },
         onChunk: (_chunk, fullText) => {
           setStreamingText(fullText);
-        }
+        },
+        signal: controller.signal
       });
 
       const assistantMessage = {
@@ -148,18 +172,32 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       setMessages(prev => [...prev, assistantMessage]);
       setStreamingText('');
     } catch (err) {
-      setFeedback({ type: 'error', text: `✖ Inference error (${provider}/${model}): ${err.message}` });
-      const errorMessage = {
-        id: `msg-${Date.now()}-err`,
-        role: 'assistant',
-        text: `⚠️ **Inference Failed**: ${err.message}\n\n*Tip: Check that Ollama is running (\`ollama serve\`) or verify your API key in \`config.yaml\`.*`,
-        provider,
-        model,
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      if (err.name === 'AbortError') {
+        setFeedback({ type: 'info', text: '⚠️ Generation cancelled by user.' });
+        const cancelMessage = {
+          id: `msg-${Date.now()}-cancel`,
+          role: 'assistant',
+          text: '⚠️ *Analysis query cancelled by user.*',
+          provider,
+          model,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setMessages(prev => [...prev, cancelMessage]);
+      } else {
+        setFeedback({ type: 'error', text: `✖ Inference error (${provider}/${model}): ${err.message}` });
+        const errorMessage = {
+          id: `msg-${Date.now()}-err`,
+          role: 'assistant',
+          text: `⚠️ **Inference Failed**: ${err.message}\n\n*Tip: Check that Ollama is running (\`ollama serve\`) or verify your API key in \`config.yaml\`.*`,
+          provider,
+          model,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -284,7 +322,16 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       return;
     }
 
-    // Mode C: Normal Navigation & Hotkeys
+    // Mode C: When generating, allow Esc to abort
+    if (isGenerating) {
+      if (key.escape) {
+        abortControllerRef.current?.abort();
+        return;
+      }
+      return;
+    }
+
+    // Mode D: Normal Navigation & Hotkeys
     if (key.tab && onNavigate) {
       onNavigate('menu');
       return;
@@ -379,6 +426,14 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       React.createElement(
         Box,
         null,
+        isGenerating
+          ? React.createElement(
+              Box,
+              { marginRight: 2 },
+              React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+              React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, ` ${statusStage || 'Analyzing...'} (${elapsedSec}s)`)
+            )
+          : null,
         provider === 'ollama'
           ? ollamaStatus.ok
             ? React.createElement(Text, { color: theme.success || 'green', bold: true }, `🟢 Ollama Local (v${ollamaStatus.version || '0.x'})`)
@@ -445,8 +500,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           {
             key: m.id,
             flexDirection: 'column',
-            marginBottom: 1,
-            borderStyle: 'none'
+            marginBottom: 1
           },
           React.createElement(
             Box,
@@ -473,52 +527,93 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         )
       ),
 
-      // Live Streaming / Thinking Indicator
+      // Live Streaming / Thinking Indicator Card with Spinner & Timer
       isGenerating
         ? React.createElement(
             Box,
-            { flexDirection: 'column', marginTop: 1 },
+            {
+              flexDirection: 'column',
+              marginTop: 1,
+              padding: 1,
+              borderStyle: 'round',
+              borderColor: theme.warning || 'yellow'
+            },
             React.createElement(
               Box,
-              null,
-              React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
-              React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, ` Analyzing MCP Telemetry with ${provider}/${model}...`)
+              { justifyContent: 'space-between' },
+              React.createElement(
+                Box,
+                null,
+                React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+                React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, ` ${statusStage || `Analyzing with ${provider.toUpperCase()} (${model})...`}`)
+              ),
+              React.createElement(
+                Text,
+                { color: theme.accent || 'yellow', bold: true },
+                `⏱️  ${elapsedSec}s [Esc to cancel]`
+              )
             ),
             streamingText
               ? React.createElement(
-                  Text,
-                  { color: theme.text || 'white', marginTop: 1 },
-                  streamingText
+                  Box,
+                  { marginTop: 1, flexDirection: 'column' },
+                  React.createElement(Text, { color: theme.muted || 'gray', dimColor: true }, '--- Live Streaming Output ---'),
+                  React.createElement(Text, { color: theme.text || 'white' }, streamingText)
                 )
-              : null
+              : React.createElement(
+                  Text,
+                  { color: theme.muted || 'gray', dimColor: true, marginTop: 1 },
+                  elapsedSec >= 8
+                    ? `⏳ Local model (${model}) is evaluating prompt tokens and generating response. Please wait...`
+                    : `⏳ Initializing reasoning engine and compiling MCP telemetry context...`
+                )
           )
         : null
     ),
 
-    // Interactive Input Bar
+    // Interactive Input Bar with active status/spinner during generation
     React.createElement(
       Box,
       {
         marginTop: 1,
         paddingX: 1,
         borderStyle: 'round',
-        borderColor: isTyping ? (theme.accent || 'yellow') : (theme.muted || 'gray')
+        borderColor: isGenerating
+          ? (theme.warning || 'yellow')
+          : isTyping
+            ? (theme.accent || 'yellow')
+            : (theme.muted || 'gray')
       },
-      React.createElement(
-        Text,
-        { color: isTyping ? theme.accent : theme.muted, bold: true },
-        isTyping ? '❯ ' : '💬 [i/Space to type] '
-      ),
-      React.createElement(
-        Text,
-        { color: isTyping ? theme.text : theme.muted },
-        isTyping
-          ? inputPrompt || ''
-          : inputPrompt || 'Type your security query or press [1-5] for quick analysis presets...'
-      ),
-      isTyping
-        ? React.createElement(Text, { color: theme.accent, bold: true }, ' █')
-        : null
+      isGenerating
+        ? React.createElement(
+            Box,
+            null,
+            React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+            React.createElement(
+              Text,
+              { color: theme.warning || 'yellow', bold: true },
+              ` ⏳ Analysis in progress (${elapsedSec}s): ${statusStage || 'Processing...'} — Press [Esc] to abort`
+            )
+          )
+        : React.createElement(
+            React.Fragment,
+            null,
+            React.createElement(
+              Text,
+              { color: isTyping ? theme.accent : theme.muted, bold: true },
+              isTyping ? '❯ ' : '💬 [i/Space to type] '
+            ),
+            React.createElement(
+              Text,
+              { color: isTyping ? theme.text : theme.muted },
+              isTyping
+                ? inputPrompt || ''
+                : inputPrompt || 'Type your security query or press [1-5] for quick analysis presets...'
+            ),
+            isTyping
+              ? React.createElement(Text, { color: theme.accent, bold: true }, ' █')
+              : null
+          )
     ),
 
     // Quick Presets Bar

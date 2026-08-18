@@ -133,7 +133,8 @@ export async function chatOllama({
   model = 'llama3.2',
   messages = [],
   temperature = 0.2,
-  onChunk = null
+  onChunk = null,
+  signal = null
 }) {
   const targetHost = host || getOllamaHost();
   const isStreaming = typeof onChunk === 'function';
@@ -143,6 +144,7 @@ export async function chatOllama({
   const response = await fetch(`${targetHost}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       model,
       messages,
@@ -210,7 +212,8 @@ export async function chatAnthropic({
   messages = [],
   system = DEFAULT_SYSTEM_PROMPT,
   temperature = 0.2,
-  onChunk = null
+  onChunk = null,
+  signal = null
 }) {
   const cfg = loadConfig();
   const key = apiKey || process.env.ANTHROPIC_API_KEY || cfg.ai?.anthropic?.apiKey;
@@ -224,6 +227,7 @@ export async function chatAnthropic({
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': key,
@@ -263,7 +267,8 @@ export async function chatOpenAI({
   model = 'gpt-4o',
   messages = [],
   temperature = 0.2,
-  onChunk = null
+  onChunk = null,
+  signal = null
 }) {
   const cfg = loadConfig();
   const key = apiKey || process.env.OPENAI_API_KEY || cfg.ai?.openai?.apiKey;
@@ -274,6 +279,7 @@ export async function chatOpenAI({
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${key}`
@@ -310,7 +316,8 @@ export async function chatGemini({
   model = 'gemini-2.0-flash',
   messages = [],
   temperature = 0.2,
-  onChunk = null
+  onChunk = null,
+  signal = null
 }) {
   const cfg = loadConfig();
   const key = apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || cfg.ai?.gemini?.apiKey;
@@ -345,6 +352,7 @@ export async function chatGemini({
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const response = await fetch(url, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
@@ -503,10 +511,15 @@ export async function runAnalystInference({
   messages = [],
   prompt = null,
   customContext = null,
-  onChunk = null
+  onChunk = null,
+  onStatusUpdate = null,
+  signal = null
 }) {
   const cfg = loadConfig();
   const effectiveProvider = provider || cfg.ai?.defaultProvider || 'ollama';
+
+  // Report status
+  onStatusUpdate?.('Compiling live MCP security context (hosts, subnets, pods, evidence vault)...');
 
   // Gather and compile live context
   const telemetryContext = customContext || await compileMcpSecurityContext();
@@ -534,46 +547,66 @@ export async function runAnalystInference({
     case 'ollama': {
       effectiveModel = model || cfg.ai?.ollama?.defaultModel || 'llama3.2';
       const host = getOllamaHost(cfg);
+      onStatusUpdate?.(`Connecting to Ollama (${effectiveModel}) at ${host}...`);
       responseText = await chatOllama({
         host,
         model: effectiveModel,
         messages: conversationMessages,
         temperature: cfg.ai?.ollama?.temperature || 0.2,
-        onChunk
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with Ollama (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
       });
       break;
     }
     case 'anthropic': {
       effectiveModel = model || cfg.ai?.anthropic?.defaultModel || 'claude-3-5-sonnet-20241022';
+      onStatusUpdate?.(`Sending request to Anthropic (${effectiveModel})...`);
       responseText = await chatAnthropic({
         apiKey: cfg.ai?.anthropic?.apiKey,
         model: effectiveModel,
         messages: conversationMessages,
         system: systemContent,
         temperature: cfg.ai?.anthropic?.temperature || 0.2,
-        onChunk
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with Claude (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
       });
       break;
     }
     case 'openai': {
       effectiveModel = model || cfg.ai?.openai?.defaultModel || 'gpt-4o';
+      onStatusUpdate?.(`Sending request to OpenAI (${effectiveModel})...`);
       responseText = await chatOpenAI({
         apiKey: cfg.ai?.openai?.apiKey,
         model: effectiveModel,
         messages: conversationMessages,
         temperature: cfg.ai?.openai?.temperature || 0.2,
-        onChunk
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with OpenAI (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
       });
       break;
     }
     case 'gemini': {
       effectiveModel = model || cfg.ai?.gemini?.defaultModel || 'gemini-2.0-flash';
+      onStatusUpdate?.(`Sending request to Google Gemini (${effectiveModel})...`);
       responseText = await chatGemini({
         apiKey: cfg.ai?.gemini?.apiKey,
         model: effectiveModel,
         messages: conversationMessages,
         temperature: cfg.ai?.gemini?.temperature || 0.2,
-        onChunk
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with Gemini (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
       });
       break;
     }

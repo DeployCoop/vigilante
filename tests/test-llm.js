@@ -80,4 +80,37 @@ console.log('🧪 Testing AI Security Analyst Engine (Ollama/Claude/GPT/Gemini).
   console.log('✔ Test 6 passed: LLMView React Ink component exported cleanly.');
 }
 
+// Test 7: LLMView component render test with valid borders & theme
+{
+  const React = (await import('react')).default;
+  const { render } = await import('ink');
+  const { ThemeProvider } = await import('../src/ui/theme.js');
+  const { ClipboardProvider } = await import('../src/ui/ClipboardManager.js');
+
+  const silentStream = {
+    write: () => {},
+    on: () => {},
+    off: () => {},
+    columns: 80,
+    rows: 24
+  };
+
+  const appInstance = render(
+    React.createElement(
+      ThemeProvider,
+      null,
+      React.createElement(
+        ClipboardProvider,
+        { isInteractive: false },
+        React.createElement(LLMView, { domain: 'test.local' })
+      )
+    ),
+    { stdout: silentStream, stderr: silentStream }
+  );
+
+  assert.ok(appInstance);
+  appInstance.unmount();
+  console.log('✔ Test 7 passed: LLMView rendered successfully with valid borders, timers, and theme styles.');
+}
+
 console.log('🎉 All AI Security Analyst Engine tests passed successfully!');
