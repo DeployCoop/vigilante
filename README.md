@@ -2,6 +2,9 @@
 
 **Vigilante** is a modern, modular terminal CLI application built with **React** and **Ink** designed to orchestrate local Kubernetes environments using **k3d**, automatically issue and trust local TLS certificates via **mkcert**, and dynamically deploy modular security and SOC packages like **OpenSearch SIEM** for network threat analysis.
 
+> 🚨 **UNDER ACTIVE BREACH? READ THE EMERGENCY PLAYBOOK FIRST**:
+> If you suspect or have confirmed an active network intrusion, go immediately to **[FIRSTRESPONSE.md](FIRSTRESPONSE.md)** for the step-by-step incident response checklist to contain the breach, preserve volatile evidence with GPG chain-of-custody, and document root-cause initial access.
+
 ---
 
 ## Asciinema demo
@@ -12,6 +15,7 @@
 
 ## 🌟 Features
 
+- **🚨 Emergency Breach First Response Playbook**: Built-in, battle-tested operational guide ([`FIRSTRESPONSE.md`](FIRSTRESPONSE.md)) for rapid triage, evidence collection, and root-cause determination.
 - **Ink Terminal UI**: Interactive dashboards, step spinners, dynamic logs, and keyboard-driven module selectors.
 - **Interactive Click-to-Copy & Quick Shortcuts**: Click on any pane in interactive mode (or press `[1-6]`) to copy text/URLs to your system clipboard, and press `[t]` anytime from the status dashboard to trigger threat simulations.
 - **Automated k3d Orchestration**: Spin up lightweight K3s clusters in Docker with Ingress port bindings (`80` / `443`), defaulting straight to the live status dashboard on completion.
@@ -20,7 +24,9 @@
 - **Modular Package Ecosystem & Custom Values**: Declarative `BaseModule` system with easy `values.yaml` customization (`vigilante values export`) to tweak chart configurations without modifying code.
 - **vigil-SOC (OpenSearch SIEM)**: Out-of-the-box OpenSearch and OpenSearch Dashboards configured for SIEM and network threat analysis at `https://siem.vigilante.local`.
 - **Network Threat Pipeline & Simulator**: Pre-packaged SIGMA threat detection rules and an automated threat injection simulator (Port Scanning, SSH Brute Force, DNS Tunneling) to validate SIEM alerts.
-- **Model Context Protocol (MCP) Server for LLMs**: Expose discovered host profiles, network topology maps, Incident Response Evidence Vaults, Kubernetes cluster telemetry, and live forensic diagnostic tools (`ping`, `mtr`, `curl`, `dns`, `tls`, `ab`, `arp`) directly to AI assistants (Claude, Antigravity, Cursor) via `@modelcontextprotocol/sdk`.
+- **Incident Response Evidence Vault (`net/host/data.ext`)**: Parallel forensic triage capture (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`, `bench`) with cryptographic GPG detached signatures (`.asc`) for legal chain-of-custody.
+- **Model Context Protocol (MCP) Server for LLMs**: Expose discovered host profiles, network topology maps, Incident Response Evidence Vaults, Kubernetes cluster telemetry, and live forensic diagnostic tools directly to AI assistants (Claude, Antigravity, Cursor) via `@modelcontextprotocol/sdk`.
+- **Interactive AI Forensics Analyst (`vigilante ai`)**: Private offline incident reasoning powered by local **Ollama** (`llama3.2`, `mistral`, `deepseek-r1`) and cloud models (Claude, ChatGPT, Gemini).
 
 ---
 
@@ -829,8 +835,10 @@ vigilante/
 │   ├── test-namespaces.js        # Unit test suite for namespaced module deployments
 │   ├── test-k8s.js               # Unit test suite for safe kubectl apply pipeline
 │   ├── test-hub.js               # Unit test suite for operations hub & dispatcher
-│   └── test-mcp.js               # Unit test suite for Model Context Protocol (MCP) server
+│   ├── test-mcp.js               # Unit test suite for Model Context Protocol (MCP) server
+│   └── test-llm.js               # Unit test suite for AI Security Analyst engine
 ├── values/                       # Exported starter & custom user Helm values overrides
+├── FIRSTRESPONSE.md              # Emergency Incident Response Playbook for breaches
 ├── package.json
 └── README.md
 ```
