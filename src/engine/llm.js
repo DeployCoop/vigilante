@@ -24,6 +24,143 @@ Your role:
 
 Format your analysis clearly using Markdown with sections, bullet points, severity tags ([CRITICAL], [HIGH], [MEDIUM], [LOW]), and code blocks.`;
 
+/**
+ * Authoritative registry of all supported AI providers and their models
+ */
+export const SUPPORTED_PROVIDERS = [
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    label: 'Ollama (Local & Offline)',
+    icon: '🟢',
+    type: 'local',
+    envKey: 'OLLAMA_HOST',
+    defaultModel: 'llama3.2',
+    models: ['llama3.2', 'llama3.3', 'mistral', 'deepseek-r1', 'qwen2.5-coder', 'phi3']
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    label: 'Anthropic (Claude)',
+    icon: '☁️',
+    type: 'cloud',
+    envKey: 'ANTHROPIC_API_KEY',
+    defaultModel: 'claude-3-5-sonnet-20241022',
+    models: [
+      'claude-3-5-sonnet-20241022',
+      'claude-3-5-haiku-20241022',
+      'claude-3-7-sonnet',
+      'claude-3-opus-20240229'
+    ]
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    label: 'OpenAI (ChatGPT)',
+    icon: '☁️',
+    type: 'cloud',
+    envKey: 'OPENAI_API_KEY',
+    defaultModel: 'gpt-4o',
+    models: [
+      'gpt-4o',
+      'gpt-4o-mini',
+      'o3-mini',
+      'o1',
+      'gpt-4-turbo'
+    ]
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    label: 'Google Gemini',
+    icon: '☁️',
+    type: 'cloud',
+    envKey: 'GEMINI_API_KEY',
+    defaultModel: 'gemini-2.0-flash',
+    models: [
+      'gemini-2.0-flash',
+      'gemini-1.5-pro',
+      'gemini-1.5-flash',
+      'gemini-2.0-pro-exp-02-05'
+    ]
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    label: 'DeepSeek AI',
+    icon: '☁️',
+    type: 'cloud',
+    envKey: 'DEEPSEEK_API_KEY',
+    defaultModel: 'deepseek-chat',
+    models: [
+      'deepseek-chat',
+      'deepseek-reasoner'
+    ]
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    label: 'Groq (Fast Cloud)',
+    icon: '⚡',
+    type: 'cloud',
+    envKey: 'GROQ_API_KEY',
+    defaultModel: 'llama-3.3-70b-versatile',
+    models: [
+      'llama-3.3-70b-versatile',
+      'deepseek-r1-distill-llama-70b',
+      'llama-3.1-8b-instant'
+    ]
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    label: 'OpenRouter (Multi-Model)',
+    icon: '🌐',
+    type: 'cloud',
+    envKey: 'OPENROUTER_API_KEY',
+    defaultModel: 'anthropic/claude-3.5-sonnet',
+    models: [
+      'anthropic/claude-3.5-sonnet',
+      'openai/gpt-4o',
+      'deepseek/deepseek-r1',
+      'meta-llama/llama-3.3-70b-instruct'
+    ]
+  }
+];
+
+/**
+ * Inspect configured status for an AI provider
+ * @param {string} providerId
+ * @param {Object} [customCfg]
+ * @returns {Object}
+ */
+export function getProviderStatus(providerId, customCfg = null) {
+  const cfg = customCfg || loadConfig();
+  const provider = SUPPORTED_PROVIDERS.find(p => p.id === providerId);
+  if (!provider) return { id: providerId, isConfigured: false, statusText: 'Unknown Provider' };
+
+  if (provider.id === 'ollama') {
+    const host = getOllamaHost(cfg);
+    return {
+      ...provider,
+      isConfigured: true,
+      configuredKey: host,
+      statusText: 'Local Offline'
+    };
+  }
+
+  const keyFromEnv = provider.envKey ? process.env[provider.envKey] : null;
+  const keyFromCfg = cfg.ai?.[provider.id]?.apiKey;
+  const isConfigured = Boolean(keyFromEnv || keyFromCfg);
+
+  return {
+    ...provider,
+    isConfigured,
+    configuredKey: keyFromEnv ? `$${provider.envKey}` : keyFromCfg ? 'config.yaml' : null,
+    statusText: isConfigured ? 'Ready (Key Configured)' : `Missing ($${provider.envKey})`
+  };
+}
+
 // -------------------------------------------------------------
 // 1. Ollama Provider (First-Class Local Engine)
 // -------------------------------------------------------------
@@ -162,7 +299,14 @@ export async function chatOllama({
 
   if (!isStreaming) {
     const data = await response.json();
-    return data.message?.content || '';
+    if (data.error) {
+      throw new Error(`Ollama error: ${data.error}`);
+    }
+    const content = data.message?.content || '';
+    if (!content || !content.trim()) {
+      throw new Error(`Empty response received from Ollama (${model}). The model produced no output (check VRAM or context length).`);
+    }
+    return content;
   }
 
   // Handle streaming reader
@@ -183,15 +327,44 @@ export async function chatOllama({
       if (!line.trim()) continue;
       try {
         const parsed = JSON.parse(line);
+        if (parsed.error) {
+          throw new Error(`Ollama streaming error: ${parsed.error}`);
+        }
         const chunk = parsed.message?.content || '';
         if (chunk) {
           fullContent += chunk;
           onChunk(chunk, fullContent);
         }
-      } catch {
+      } catch (err) {
+        if (err.message && err.message.startsWith('Ollama streaming error:')) {
+          throw err;
+        }
         // Ignore incomplete JSON chunks in buffer
       }
     }
+  }
+
+  // Flush remaining buffer if any
+  if (buffer.trim()) {
+    try {
+      const parsed = JSON.parse(buffer);
+      if (parsed.error) {
+        throw new Error(`Ollama streaming error: ${parsed.error}`);
+      }
+      const chunk = parsed.message?.content || '';
+      if (chunk) {
+        fullContent += chunk;
+        onChunk(chunk, fullContent);
+      }
+    } catch (err) {
+      if (err.message && err.message.startsWith('Ollama streaming error:')) {
+        throw err;
+      }
+    }
+  }
+
+  if (!fullContent || !fullContent.trim()) {
+    throw new Error(`Empty response stream received from Ollama (${model}). The model terminated without producing any text (possible VRAM exhaustion, model crash, or prompt limit).`);
   }
 
   return fullContent;
@@ -248,7 +421,15 @@ export async function chatAnthropic({
   }
 
   const data = await response.json();
+  if (data.error) {
+    throw new Error(`Anthropic error: ${data.error?.message || JSON.stringify(data.error)}`);
+  }
+
   const content = data.content?.[0]?.text || '';
+  if (!content || !content.trim()) {
+    throw new Error(`Empty response received from Anthropic (${model}). The model returned no text content.`);
+  }
+
   if (onChunk) onChunk(content, content);
   return content;
 }
@@ -297,7 +478,15 @@ export async function chatOpenAI({
   }
 
   const data = await response.json();
+  if (data.error) {
+    throw new Error(`OpenAI error: ${data.error?.message || JSON.stringify(data.error)}`);
+  }
+
   const content = data.choices?.[0]?.message?.content || '';
+  if (!content || !content.trim()) {
+    throw new Error(`Empty response received from OpenAI (${model}). The model returned no text content.`);
+  }
+
   if (onChunk) onChunk(content, content);
   return content;
 }
@@ -363,13 +552,124 @@ export async function chatGemini({
   }
 
   const data = await response.json();
+  if (data.error) {
+    throw new Error(`Gemini error: ${data.error?.message || JSON.stringify(data.error)}`);
+  }
+
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if (!content || !content.trim()) {
+    const finishReason = data.candidates?.[0]?.finishReason;
+    throw new Error(`Empty response received from Google Gemini (${model})${finishReason ? ` (Finish reason: ${finishReason})` : ''}.`);
+  }
+
   if (onChunk) onChunk(content, content);
   return content;
 }
 
 // -------------------------------------------------------------
-// 5. MCP Telemetry Context Compiler
+// 5. OpenAI-Compatible Generic Provider (DeepSeek, Groq, OpenRouter, Custom)
+// -------------------------------------------------------------
+
+/**
+ * Generic OpenAI-compatible chat completion caller
+ * @param {Object} options
+ * @returns {Promise<string>}
+ */
+export async function chatOpenAICompatible({
+  baseUrl,
+  apiKey = null,
+  envKey = null,
+  providerName = 'API',
+  model,
+  messages = [],
+  temperature = 0.2,
+  onChunk = null,
+  signal = null
+}) {
+  const cfg = loadConfig();
+  const providerLower = providerName.toLowerCase();
+  const key = apiKey || (envKey ? process.env[envKey] : null) || cfg.ai?.[providerLower]?.apiKey;
+
+  if (!key) {
+    throw new Error(`${providerName} API key missing. Set $${envKey || 'API_KEY'} or configure in config.yaml under ai.${providerLower}.apiKey`);
+  }
+
+  const cleanUrl = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
+
+  const response = await fetch(cleanUrl, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature
+    })
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`${providerName} API error (${response.status}): ${errBody}`);
+  }
+
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(`${providerName} error: ${data.error?.message || JSON.stringify(data.error)}`);
+  }
+
+  const content = data.choices?.[0]?.message?.content || '';
+  if (!content || !content.trim()) {
+    throw new Error(`Empty response received from ${providerName} (${model}). The model returned no text content.`);
+  }
+
+  if (onChunk) onChunk(content, content);
+  return content;
+}
+
+/**
+ * Execute chat completion against DeepSeek API
+ */
+export async function chatDeepSeek(opts) {
+  return chatOpenAICompatible({
+    baseUrl: 'https://api.deepseek.com',
+    envKey: 'DEEPSEEK_API_KEY',
+    providerName: 'DeepSeek',
+    model: opts.model || 'deepseek-chat',
+    ...opts
+  });
+}
+
+/**
+ * Execute chat completion against Groq Cloud API
+ */
+export async function chatGroq(opts) {
+  return chatOpenAICompatible({
+    baseUrl: 'https://api.groq.com/openai/v1',
+    envKey: 'GROQ_API_KEY',
+    providerName: 'Groq',
+    model: opts.model || 'llama-3.3-70b-versatile',
+    ...opts
+  });
+}
+
+/**
+ * Execute chat completion against OpenRouter API
+ */
+export async function chatOpenRouter(opts) {
+  return chatOpenAICompatible({
+    baseUrl: 'https://openrouter.ai/api/v1',
+    envKey: 'OPENROUTER_API_KEY',
+    providerName: 'OpenRouter',
+    model: opts.model || 'anthropic/claude-3.5-sonnet',
+    ...opts
+  });
+}
+
+// -------------------------------------------------------------
+// 6. MCP Telemetry Context Compiler
 // -------------------------------------------------------------
 
 /**
@@ -610,8 +910,56 @@ export async function runAnalystInference({
       });
       break;
     }
+    case 'deepseek': {
+      effectiveModel = model || cfg.ai?.deepseek?.defaultModel || 'deepseek-chat';
+      onStatusUpdate?.(`Sending request to DeepSeek AI (${effectiveModel})...`);
+      responseText = await chatDeepSeek({
+        apiKey: cfg.ai?.deepseek?.apiKey,
+        model: effectiveModel,
+        messages: conversationMessages,
+        temperature: cfg.ai?.deepseek?.temperature || 0.2,
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with DeepSeek (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
+      });
+      break;
+    }
+    case 'groq': {
+      effectiveModel = model || cfg.ai?.groq?.defaultModel || 'llama-3.3-70b-versatile';
+      onStatusUpdate?.(`Sending request to Groq (${effectiveModel})...`);
+      responseText = await chatGroq({
+        apiKey: cfg.ai?.groq?.apiKey,
+        model: effectiveModel,
+        messages: conversationMessages,
+        temperature: cfg.ai?.groq?.temperature || 0.2,
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with Groq (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
+      });
+      break;
+    }
+    case 'openrouter': {
+      effectiveModel = model || cfg.ai?.openrouter?.defaultModel || 'anthropic/claude-3.5-sonnet';
+      onStatusUpdate?.(`Sending request to OpenRouter (${effectiveModel})...`);
+      responseText = await chatOpenRouter({
+        apiKey: cfg.ai?.openrouter?.apiKey,
+        model: effectiveModel,
+        messages: conversationMessages,
+        temperature: cfg.ai?.openrouter?.temperature || 0.2,
+        onChunk: (chunk, full) => {
+          onStatusUpdate?.(`Generating response with OpenRouter (${effectiveModel})...`);
+          if (onChunk) onChunk(chunk, full);
+        },
+        signal
+      });
+      break;
+    }
     default:
-      throw new Error(`Unsupported AI provider: '${effectiveProvider}'. Supported: ollama, anthropic, openai, gemini`);
+      throw new Error(`Unsupported AI provider: '${effectiveProvider}'. Supported: ollama, anthropic, openai, gemini, deepseek, groq, openrouter`);
   }
 
   return {

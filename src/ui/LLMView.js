@@ -8,7 +8,9 @@ import {
   listOllamaModels,
   runAnalystInference,
   saveAnalysisReport,
-  getOllamaHost
+  getOllamaHost,
+  SUPPORTED_PROVIDERS,
+  getProviderStatus
 } from '../engine/llm.js';
 import { loadConfig } from '../engine/config.js';
 
@@ -62,8 +64,10 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
 
   const [ollamaStatus, setOllamaStatus] = useState({ ok: false, checking: true });
   const [ollamaModels, setOllamaModels] = useState([]);
+  const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
+  const [providerModalCursor, setProviderModalCursor] = useState(0);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
-  const [modalCursor, setModalCursor] = useState(0);
+  const [modelModalCursor, setModelModalCursor] = useState(0);
 
   const [messages, setMessages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -76,6 +80,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
   const [promptHistory, setPromptHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [feedback, setFeedback] = useState(null);
+  const [errorAlert, setErrorAlert] = useState(null);
   const abortControllerRef = useRef(null);
 
   // Auto-check Ollama health and local models on mount
@@ -138,6 +143,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
     setElapsedSec(0);
     setStreamingText('');
     setFeedback(null);
+    setErrorAlert(null);
 
     try {
       // Build conversation history for API call
@@ -159,6 +165,10 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         },
         signal: controller.signal
       });
+
+      if (!res?.content || !res.content.trim()) {
+        throw new Error(`Empty response received from ${provider.toUpperCase()} (${model}). The model returned no text output.`);
+      }
 
       const assistantMessage = {
         id: `msg-${Date.now()}-a`,
@@ -184,11 +194,23 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         };
         setMessages(prev => [...prev, cancelMessage]);
       } else {
-        setFeedback({ type: 'error', text: `✖ Inference error (${provider}/${model}): ${err.message}` });
+        const errMsg = err.message || 'Unknown error occurred during AI inference';
+        const isMemoryOrContext = errMsg.includes('Empty response') || errMsg.includes('memory') || errMsg.includes('context');
+
+        setFeedback({ type: 'error', text: `✖ ${errMsg}` });
+        setErrorAlert({
+          title: isMemoryOrContext ? 'AI Empty Response / Resource Limit' : 'AI Inference Failed',
+          message: errMsg,
+          provider,
+          model,
+          timestamp: new Date().toLocaleTimeString()
+        });
+
         const errorMessage = {
           id: `msg-${Date.now()}-err`,
           role: 'assistant',
-          text: `⚠️ **Inference Failed**: ${err.message}\n\n*Tip: Check that Ollama is running (\`ollama serve\`) or verify your API key in \`config.yaml\`.*`,
+          isError: true,
+          text: `🚨 **Inference Failed / Empty Response**: ${errMsg}\n\n*Diagnostics & Next Steps:*\n• **Ollama**: Verify daemon is active (\`ollama serve\`) or test in terminal (\`ollama run ${model}\`).\n• **Memory / Context Limit**: The local model may have run out of VRAM or exceeded token limits. Try a smaller model (Press \`[m]\` to select e.g. \`llama3.2:1b\` or \`qwen2.5:3b\`).\n• **Cloud Providers**: Check API keys in \`config.yaml\` or environment variables.`,
           provider,
           model,
           timestamp: new Date().toLocaleTimeString()
@@ -240,36 +262,105 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
     }
   };
 
+  // Dynamic list of models for the active provider
+  const activeProviderModels = (() => {
+    if (provider === 'ollama') {
+      if (ollamaModels && ollamaModels.length > 0) {
+        return ollamaModels.map(m => ({
+          model: m.name,
+          label: `🟢 Ollama (Local): ${m.name} (${m.size || 'ready'})`
+        }));
+      }
+      return [
+        { model: 'llama3.2', label: '🟢 Ollama (Local): llama3.2 (default)' },
+        { model: 'llama3.3', label: '🟢 Ollama (Local): llama3.3' },
+        { model: 'mistral', label: '🟢 Ollama (Local): mistral' },
+        { model: 'deepseek-r1', label: '🟢 Ollama (Local): deepseek-r1' },
+        { model: 'qwen2.5-coder', label: '🟢 Ollama (Local): qwen2.5-coder' },
+        { model: 'phi3', label: '🟢 Ollama (Local): phi3' }
+      ];
+    }
+
+    const provObj = SUPPORTED_PROVIDERS.find(p => p.id === provider);
+    if (provObj && provObj.models) {
+      return provObj.models.map(m => ({
+        model: m,
+        label: `${provObj.icon} ${provObj.name}: ${m}`
+      }));
+    }
+
+    return [{ model, label: `${provider}: ${model}` }];
+  })();
+
   // Keyboard navigation
   useInput((input, key) => {
-    // Mode A: Model & Provider Selection Modal
-    if (isModelModalOpen) {
-      const modalOptions = [
-        ...ollamaModels.map(m => ({ provider: 'ollama', model: m.name, label: `Ollama: ${m.name} (${m.size})` })),
-        { provider: 'ollama', model: 'llama3.2', label: 'Ollama: llama3.2 (default)' },
-        { provider: 'ollama', model: 'mistral', label: 'Ollama: mistral' },
-        { provider: 'ollama', model: 'deepseek-r1', label: 'Ollama: deepseek-r1' },
-        { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', label: 'Claude: claude-3-5-sonnet' },
-        { provider: 'anthropic', model: 'claude-3-5-haiku-20241022', label: 'Claude: claude-3-5-haiku' },
-        { provider: 'openai', model: 'gpt-4o', label: 'OpenAI: gpt-4o' },
-        { provider: 'openai', model: 'gpt-4o-mini', label: 'OpenAI: gpt-4o-mini' },
-        { provider: 'gemini', model: 'gemini-2.0-flash', label: 'Gemini: gemini-2.0-flash' }
-      ];
+    // Mode A0: Error Alert Modal Dismissal
+    if (errorAlert) {
+      if (key.return || key.escape || input === ' ' || input === 'q') {
+        setErrorAlert(null);
+        return;
+      }
+      return;
+    }
 
+    // Mode A1: Provider Selection Modal
+    if (isProviderModalOpen) {
       if (key.upArrow || input === 'k') {
-        setModalCursor(c => (c > 0 ? c - 1 : modalOptions.length - 1));
+        setProviderModalCursor(c => (c > 0 ? c - 1 : SUPPORTED_PROVIDERS.length - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setModalCursor(c => (c < modalOptions.length - 1 ? c + 1 : 0));
+        setProviderModalCursor(c => (c < SUPPORTED_PROVIDERS.length - 1 ? c + 1 : 0));
         return;
       }
       if (key.return) {
-        const selectedOpt = modalOptions[modalCursor];
+        const chosenProvider = SUPPORTED_PROVIDERS[providerModalCursor];
+        if (chosenProvider) {
+          setProvider(chosenProvider.id);
+          const nextModel = chosenProvider.id === 'ollama'
+            ? (ollamaModels[0]?.name || chosenProvider.defaultModel)
+            : chosenProvider.defaultModel;
+          setModel(nextModel);
+
+          const status = getProviderStatus(chosenProvider.id, cfg);
+          if (!status.isConfigured && chosenProvider.type === 'cloud') {
+            setFeedback({
+              type: 'warning',
+              text: `Switched to ${chosenProvider.label} (${nextModel}). ⚠️ Set $${chosenProvider.envKey} in environment or config.yaml before querying.`
+            });
+          } else {
+            setFeedback({
+              type: 'success',
+              text: `✔ Switched AI Provider to ${chosenProvider.label} (${nextModel})`
+            });
+          }
+          setTimeout(() => setFeedback(null), 3500);
+        }
+        setIsProviderModalOpen(false);
+        return;
+      }
+      if (key.escape || input === 'q') {
+        setIsProviderModalOpen(false);
+        return;
+      }
+      return;
+    }
+
+    // Mode A2: Model Selection Modal for Active Provider
+    if (isModelModalOpen) {
+      if (key.upArrow || input === 'k') {
+        setModelModalCursor(c => (c > 0 ? c - 1 : activeProviderModels.length - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setModelModalCursor(c => (c < activeProviderModels.length - 1 ? c + 1 : 0));
+        return;
+      }
+      if (key.return) {
+        const selectedOpt = activeProviderModels[modelModalCursor];
         if (selectedOpt) {
-          setProvider(selectedOpt.provider);
           setModel(selectedOpt.model);
-          setFeedback({ type: 'success', text: `Switched AI Provider to ${selectedOpt.provider.toUpperCase()} (${selectedOpt.model})` });
+          setFeedback({ type: 'success', text: `✔ Model set to ${selectedOpt.model} for ${provider.toUpperCase()}` });
           setTimeout(() => setFeedback(null), 3000);
         }
         setIsModelModalOpen(false);
@@ -339,15 +430,25 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
 
     const keyChar = (input || '').toLowerCase();
 
-    // [i] or [/] or [Space] -> Enter Prompt Typing Mode
-    if (keyChar === 'i' || keyChar === '/' || input === ' ') {
-      setIsTyping(true);
+    // [p] -> Open Provider Switcher Modal
+    if (keyChar === 'p') {
+      const currentIdx = SUPPORTED_PROVIDERS.findIndex(p => p.id === provider);
+      setProviderModalCursor(currentIdx >= 0 ? currentIdx : 0);
+      setIsProviderModalOpen(true);
       return;
     }
 
     // [m] -> Open Model Switcher Modal
     if (keyChar === 'm') {
+      const currentModelIdx = activeProviderModels.findIndex(m => m.model === model);
+      setModelModalCursor(currentModelIdx >= 0 ? currentModelIdx : 0);
       setIsModelModalOpen(true);
+      return;
+    }
+
+    // [i] or [/] or [Space] -> Enter Prompt Typing Mode
+    if (keyChar === 'i' || keyChar === '/' || input === ' ') {
+      setIsTyping(true);
       return;
     }
 
@@ -386,10 +487,6 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
     }
     if (keyChar === 'n' && onNavigate) {
       onNavigate('nmap');
-      return;
-    }
-    if (keyChar === 'p' && onNavigate) {
-      onNavigate('pods');
       return;
     }
 
@@ -438,7 +535,12 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           ? ollamaStatus.ok
             ? React.createElement(Text, { color: theme.success || 'green', bold: true }, `🟢 Ollama Local (v${ollamaStatus.version || '0.x'})`)
             : React.createElement(Text, { color: theme.error || 'red', bold: true }, `🔴 Ollama Offline (Run 'ollama serve')`)
-          : React.createElement(Text, { color: theme.secondary || 'magenta', bold: true }, `☁️ Cloud API`)
+          : (() => {
+              const status = getProviderStatus(provider, cfg);
+              return status.isConfigured
+                ? React.createElement(Text, { color: theme.success || 'green', bold: true }, `${status.icon} ${status.name} (Key: Configured)`)
+                : React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, `⚠️ ${status.name} (Missing $${status.envKey})`);
+            })()
       )
     ),
 
@@ -449,7 +551,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           { marginBottom: 1 },
           React.createElement(
             Text,
-            { color: feedback.type === 'error' ? theme.error : feedback.type === 'success' ? theme.success : theme.info },
+            { color: feedback.type === 'error' ? theme.error : feedback.type === 'warning' ? (theme.warning || 'yellow') : feedback.type === 'success' ? theme.success : theme.info },
             feedback.text
           )
         )
@@ -473,7 +575,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
             React.createElement(
               Text,
               { color: theme.accent || 'yellow', bold: true },
-              '💡 Welcome to Vigilante AI Analyst — Powered by Local Ollama & MCP Telemetry'
+              '💡 Welcome to Vigilante AI Analyst — Multi-Provider Security & Forensics Intelligence'
             ),
             React.createElement(
               Text,
@@ -488,7 +590,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
             React.createElement(
               Text,
               { color: theme.muted || 'gray' },
-              'Custom Query: Press [i] or [/] to type a prompt. Press [m] to switch AI model / provider.'
+              'Switch AI Engine: Press [p] for Provider (Ollama/Claude/ChatGPT/Gemini/DeepSeek/Groq), [m] for Model, [i] to type a prompt.'
             )
           )
         : null,
@@ -500,7 +602,10 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           {
             key: m.id,
             flexDirection: 'column',
-            marginBottom: 1
+            marginBottom: 1,
+            padding: m.isError ? 1 : 0,
+            borderStyle: m.isError ? 'round' : undefined,
+            borderColor: m.isError ? (theme.error || 'red') : undefined
           },
           React.createElement(
             Box,
@@ -508,10 +613,18 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
             React.createElement(
               Text,
               {
-                color: m.role === 'user' ? (theme.accent || 'yellow') : (theme.primary || 'cyan'),
+                color: m.isError
+                  ? (theme.error || 'red')
+                  : m.role === 'user'
+                    ? (theme.accent || 'yellow')
+                    : (theme.primary || 'cyan'),
                 bold: true
               },
-              m.role === 'user' ? '👤 Analyst Query' : `🛡️ Vigilante AI (${m.provider}/${m.model})`
+              m.isError
+                ? `🚨 Error (${m.provider}/${m.model})`
+                : m.role === 'user'
+                  ? '👤 Analyst Query'
+                  : `🛡️ Vigilante AI (${m.provider}/${m.model})`
             ),
             React.createElement(
               Text,
@@ -521,7 +634,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           ),
           React.createElement(
             Text,
-            { color: theme.text || 'white' },
+            { color: m.isError ? (theme.error || 'red') : (theme.text || 'white') },
             m.text
           )
         )
@@ -564,7 +677,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
                   Text,
                   { color: theme.muted || 'gray', dimColor: true, marginTop: 1 },
                   elapsedSec >= 8
-                    ? `⏳ Local model (${model}) is evaluating prompt tokens and generating response. Please wait...`
+                    ? `⏳ AI Engine (${provider}/${model}) is evaluating prompt tokens and compiling response. Please wait...`
                     : `⏳ Initializing reasoning engine and compiling MCP telemetry context...`
                 )
           )
@@ -637,6 +750,8 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       React.createElement(
         Box,
         null,
+        React.createElement(Text, { color: theme.primary, bold: true }, '[p] '),
+        React.createElement(Text, { color: theme.text }, 'Provider  '),
         React.createElement(Text, { color: theme.secondary, bold: true }, '[m] '),
         React.createElement(Text, { color: theme.text }, 'Model  '),
         React.createElement(Text, { color: theme.secondary, bold: true }, '[c] '),
@@ -650,7 +765,125 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
       )
     ),
 
-    // Modal: Model & Provider Selector
+    // Modal 1: Error Alert Popup Modal
+    errorAlert
+      ? React.createElement(
+          Box,
+          {
+            flexDirection: 'column',
+            marginTop: 1,
+            padding: 1,
+            borderStyle: 'double',
+            borderColor: theme.error || 'red'
+          },
+          React.createElement(
+            Box,
+            { justifyContent: 'space-between', marginBottom: 1 },
+            React.createElement(
+              Text,
+              { color: theme.error || 'red', bold: true },
+              `🚨 ${errorAlert.title.toUpperCase()}`
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray', dimColor: true },
+              `[${errorAlert.provider}/${errorAlert.model} @ ${errorAlert.timestamp}]`
+            )
+          ),
+          React.createElement(
+            Text,
+            { color: theme.text || 'white', bold: true },
+            `Error: ${errorAlert.message}`
+          ),
+          React.createElement(
+            Box,
+            { flexDirection: 'column', marginTop: 1 },
+            React.createElement(
+              Text,
+              { color: theme.warning || 'yellow', bold: true },
+              '💡 Troubleshooting Tips:'
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray' },
+              ` • Ollama: Verify 'ollama serve' is running or test with 'ollama run ${errorAlert.model}'.`
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray' },
+              ` • Cloud Providers: Check API key in config.yaml or set environment variable (e.g. $OPENAI_API_KEY, $ANTHROPIC_API_KEY).`
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray' },
+              ` • Switch Provider/Model: Press [p] to switch provider or [m] to choose a different model.`
+            )
+          ),
+          React.createElement(
+            Box,
+            { marginTop: 1 },
+            React.createElement(
+              Text,
+              { color: theme.accent || 'yellow', bold: true },
+              '👉 Press [Enter], [Space], or [Esc] to dismiss this alert'
+            )
+          )
+        )
+      : null,
+
+    // Modal 2: Dedicated AI Provider Selector Modal ([p])
+    isProviderModalOpen
+      ? React.createElement(
+          Box,
+          {
+            flexDirection: 'column',
+            marginTop: 1,
+            padding: 1,
+            borderStyle: 'double',
+            borderColor: theme.accent || 'yellow'
+          },
+          React.createElement(
+            Box,
+            { justifyContent: 'space-between', marginBottom: 1 },
+            React.createElement(
+              Text,
+              { color: theme.accent || 'yellow', bold: true },
+              '🎯 SELECT AI INFERENCE PROVIDER (Use ↑/↓ and Enter):'
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray' },
+              '[Esc to close]'
+            )
+          ),
+          SUPPORTED_PROVIDERS.map((p, idx) => {
+            const status = getProviderStatus(p.id, cfg);
+            const isSelected = idx === providerModalCursor;
+            const isActive = p.id === provider;
+            return React.createElement(
+              Box,
+              { key: p.id, justifyContent: 'space-between' },
+              React.createElement(
+                Text,
+                { color: isSelected ? theme.accent : theme.text, bold: isSelected },
+                `${isSelected ? '❯ ' : '  '}${p.icon} ${p.label}${isActive ? ' [ACTIVE]' : ''}`
+              ),
+              React.createElement(
+                Text,
+                {
+                  color: status.isConfigured
+                    ? (theme.success || 'green')
+                    : (theme.warning || 'yellow'),
+                  dimColor: !isSelected
+                },
+                status.isConfigured ? `✔ ${status.configuredKey || 'Ready'}` : `⚠️ ${status.statusText}`
+              )
+            );
+          })
+        )
+      : null,
+
+    // Modal 3: Model Selector Modal for Active Provider ([m])
     isModelModalOpen
       ? React.createElement(
           Box,
@@ -662,30 +895,29 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
             borderColor: theme.accent || 'yellow'
           },
           React.createElement(
-            Text,
-            { color: theme.accent || 'yellow', bold: true, marginBottom: 1 },
-            '🎯 SELECT AI PROVIDER & MODEL (Use ↑/↓ and Enter):'
+            Box,
+            { justifyContent: 'space-between', marginBottom: 1 },
+            React.createElement(
+              Text,
+              { color: theme.accent || 'yellow', bold: true },
+              `🎯 SELECT MODEL FOR ${provider.toUpperCase()} (Use ↑/↓ and Enter):`
+            ),
+            React.createElement(
+              Text,
+              { color: theme.muted || 'gray' },
+              '[Esc to close]'
+            )
           ),
-          [
-            ...ollamaModels.map(m => ({ provider: 'ollama', model: m.name, label: `🟢 Ollama (Local): ${m.name} (${m.size})` })),
-            { provider: 'ollama', model: 'llama3.2', label: '🟢 Ollama (Local): llama3.2' },
-            { provider: 'ollama', model: 'mistral', label: '🟢 Ollama (Local): mistral' },
-            { provider: 'ollama', model: 'deepseek-r1', label: '🟢 Ollama (Local): deepseek-r1' },
-            { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', label: '☁️ Anthropic: claude-3-5-sonnet' },
-            { provider: 'anthropic', model: 'claude-3-5-haiku-20241022', label: '☁️ Anthropic: claude-3-5-haiku' },
-            { provider: 'openai', model: 'gpt-4o', label: '☁️ OpenAI: gpt-4o' },
-            { provider: 'openai', model: 'gpt-4o-mini', label: '☁️ OpenAI: gpt-4o-mini' },
-            { provider: 'gemini', model: 'gemini-2.0-flash', label: '☁️ Google Gemini: gemini-2.0-flash' }
-          ].map((opt, idx) => {
-            const isSelected = idx === modalCursor;
-            const isActiveCurrent = opt.provider === provider && opt.model === model;
+          activeProviderModels.map((opt, idx) => {
+            const isSelected = idx === modelModalCursor;
+            const isActive = opt.model === model;
             return React.createElement(
               Box,
-              { key: `${opt.provider}-${opt.model}-${idx}` },
+              { key: `${provider}-${opt.model}-${idx}` },
               React.createElement(
                 Text,
                 { color: isSelected ? theme.accent : theme.text, bold: isSelected },
-                `${isSelected ? '❯ ' : '  '}${opt.label}${isActiveCurrent ? ' [ACTIVE]' : ''}`
+                `${isSelected ? '❯ ' : '  '}${opt.label}${isActive ? ' [ACTIVE]' : ''}`
               )
             );
           })

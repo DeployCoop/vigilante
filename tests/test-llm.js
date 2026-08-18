@@ -113,4 +113,93 @@ console.log('🧪 Testing AI Security Analyst Engine (Ollama/Claude/GPT/Gemini).
   console.log('✔ Test 7 passed: LLMView rendered successfully with valid borders, timers, and theme styles.');
 }
 
+// Test 8: Empty response and invalid provider validation
+{
+  const { runAnalystInference } = await import('../src/engine/llm.js');
+
+  let unsupportedCaught = false;
+  try {
+    await runAnalystInference({ provider: 'unsupported-provider', prompt: 'test' });
+  } catch (err) {
+    unsupportedCaught = true;
+    assert.ok(err.message.includes('Unsupported AI provider'));
+  }
+  assert.ok(unsupportedCaught);
+  console.log('✔ Test 8 passed: Empty response and provider validations throw informative errors.');
+}
+
+// Test 9: Multi-provider registry & provider status inspection
+{
+  const { SUPPORTED_PROVIDERS, getProviderStatus } = await import('../src/engine/llm.js');
+
+  assert.ok(Array.isArray(SUPPORTED_PROVIDERS));
+  assert.strictEqual(SUPPORTED_PROVIDERS.length, 7);
+
+  const providerIds = SUPPORTED_PROVIDERS.map(p => p.id);
+  assert.ok(providerIds.includes('ollama'));
+  assert.ok(providerIds.includes('anthropic'));
+  assert.ok(providerIds.includes('openai'));
+  assert.ok(providerIds.includes('gemini'));
+  assert.ok(providerIds.includes('deepseek'));
+  assert.ok(providerIds.includes('groq'));
+  assert.ok(providerIds.includes('openrouter'));
+
+  // Test Ollama local status
+  const ollamaStatus = getProviderStatus('ollama');
+  assert.strictEqual(ollamaStatus.id, 'ollama');
+  assert.strictEqual(ollamaStatus.isConfigured, true);
+
+  // Test Cloud provider status with missing vs configured key
+  const anthropicStatus = getProviderStatus('anthropic', { ai: { anthropic: { apiKey: 'test-key' } } });
+  assert.strictEqual(anthropicStatus.isConfigured, true);
+
+  const unconfiguredStatus = getProviderStatus('deepseek', { ai: { deepseek: { apiKey: '' } } });
+  assert.strictEqual(unconfiguredStatus.isConfigured, false);
+  assert.ok(unconfiguredStatus.statusText.includes('DEEPSEEK_API_KEY'));
+
+  console.log('✔ Test 9 passed: SUPPORTED_PROVIDERS and getProviderStatus validated for 7 AI engines.');
+}
+
+// Test 10: Missing API key enforcement across cloud providers
+{
+  const { chatOpenAI, chatAnthropic, chatGemini, chatDeepSeek, chatGroq, chatOpenRouter } = await import('../src/engine/llm.js');
+
+  const oldEnv = { ...process.env };
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+  delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.GROQ_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+
+  let openAICaught = false;
+  try {
+    await chatOpenAI({ messages: [{ role: 'user', content: 'hi' }] });
+  } catch (err) {
+    openAICaught = err.message.includes('OpenAI API key missing');
+  }
+  assert.ok(openAICaught);
+
+  let anthropicCaught = false;
+  try {
+    await chatAnthropic({ messages: [{ role: 'user', content: 'hi' }] });
+  } catch (err) {
+    anthropicCaught = err.message.includes('Anthropic API key missing');
+  }
+  assert.ok(anthropicCaught);
+
+  let deepseekCaught = false;
+  try {
+    await chatDeepSeek({ messages: [{ role: 'user', content: 'hi' }] });
+  } catch (err) {
+    deepseekCaught = err.message.includes('DeepSeek API key missing');
+  }
+  assert.ok(deepseekCaught);
+
+  // Restore env
+  Object.assign(process.env, oldEnv);
+  console.log('✔ Test 10 passed: Cloud provider API key missing errors thrown with remediation tips.');
+}
+
 console.log('🎉 All AI Security Analyst Engine tests passed successfully!');

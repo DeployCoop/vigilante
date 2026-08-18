@@ -618,7 +618,7 @@ Vigilante features a dedicated, interactive terminal console (`LLMView.js`) that
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ 🤖 AI SECURITY & FORENSICS ANALYST  [Provider: OLLAMA | Model: llama3.2] 🟢 Ollama Local│
 ├────────────────────────────────────────────────────────────────────────────────────────┤
-│ 💡 Welcome to Vigilante AI Analyst — Powered by Local Ollama & MCP Telemetry           │
+│ 💡 Welcome to Vigilante AI Analyst — Multi-Provider Security & Forensics Intelligence  │
 │                                                                                        │
 │ 👤 Analyst Query: [1] Recon & Open Ports Summary                                       │
 │ 🛡️ Vigilante AI (ollama/llama3.2) [10:45:12 PM]:                                      │
@@ -637,7 +637,7 @@ Vigilante features a dedicated, interactive terminal console (`LLMView.js`) that
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ 💬 [i/Space to type] Ask the AI analyst or press [1-5] for quick presets...            │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
-│ [1] Recon  [2] CVEs  [3] Triage  [4] Pods  [5] Threats  │ [m] Model  [c] Copy  [x] Export │
+│ [1] Recon  [2] CVEs  [3] Triage  [4] Pods  [5] Threats  │ [p] Provider  [m] Model  [c] │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -653,10 +653,21 @@ pnpm ai
 - Or from any dashboard / Hub menu: Press **`[a]`**.
 - From the Central Operations Hub: Press **`[Tab]`** ➔ select `[a] AI Security & Forensics Analyst`.
 
-### 2. First-Class Ollama Integration
-- **Auto-Discovery**: Vigilante connects to your local Ollama daemon (`http://localhost:11434` or `$OLLAMA_HOST`) and automatically queries installed models (`/api/tags`).
-- **Dynamic Model Selection (`[m]`)**: Press `[m]` inside the console to open the Model & Provider Selector modal, displaying all local Ollama models with their disk sizes alongside cloud models.
-- **Offline & Private**: All prompt grounding and telemetry summaries remain completely on your local machine when using Ollama.
+### 2. Instant AI Provider Switching (`[p]`)
+Press **`[p]`** at any time in the console to open the **Provider Selector Modal** and seamlessly switch between 7 supported AI inference engines:
+
+| Provider | Type | Supported Models | Environment Variable / Config |
+| :--- | :--- | :--- | :--- |
+| **🟢 Ollama** | Local & Offline | `llama3.2`, `llama3.3`, `mistral`, `deepseek-r1`, `qwen2.5-coder`, `phi3` | Auto-detects local daemon (`http://localhost:11434` or `$OLLAMA_HOST`) |
+| **☁️ Anthropic** | Cloud | `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`, `claude-3-7-sonnet`, `claude-3-opus-20240229` | `$ANTHROPIC_API_KEY` |
+| **☁️ OpenAI** | Cloud | `gpt-4o`, `gpt-4o-mini`, `o3-mini`, `o1`, `gpt-4-turbo` | `$OPENAI_API_KEY` |
+| **☁️ Google Gemini** | Cloud | `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-2.0-pro-exp` | `$GEMINI_API_KEY` or `$GOOGLE_API_KEY` |
+| **☁️ DeepSeek** | Cloud | `deepseek-chat`, `deepseek-reasoner` (R1) | `$DEEPSEEK_API_KEY` |
+| **⚡ Groq** | Fast Cloud | `llama-3.3-70b-versatile`, `deepseek-r1-distill-llama-70b`, `llama-3.1-8b-instant` | `$GROQ_API_KEY` |
+| **🌐 OpenRouter** | Multi-Model Gateway | `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `deepseek/deepseek-r1` | `$OPENROUTER_API_KEY` |
+
+- **Live Status & Key Verification**: The modal inspects whether your API keys are actively configured in environment variables or `config.yaml`, marking them with green badges (`✔ Ready`) or warnings (`⚠️ Missing Key`).
+- **Model Selector Modal (`[m]`)**: Press **`[m]`** to dynamically pick a specific model tailored to your active provider (including all local Ollama models with their on-disk sizes).
 
 ### 3. Quick Forensic Presets (`[1-5]`)
 Trigger deep automated analysis with single-key shortcuts:
@@ -670,8 +681,11 @@ Trigger deep automated analysis with single-key shortcuts:
 | `[5]` / `[t]` | **Threat Correlation** | Correlate live network topology with simulated threat vectors (SIGMA rules, port scans, brute force, DNS tunneling) and generate defensive hardening playbooks. |
 
 ### 4. Interactive Console Features
+- **Provider Switcher (`[p]`)**: Switch active AI engine on the fly.
+- **Model Switcher (`[m]`)**: Select model for the current provider.
 - **Prompt Input (`[i]` / `[/]` / `[Space]`)**: Type free-form natural language queries.
 - **Prompt History (`[↑]` / `[↓]`)**: Recall previous analyst queries.
+- **Immediate Abort (`[Esc]`)**: Cancel in-progress inference cleanly.
 - **Click-to-Copy (`[c]`)**: Instantly copy the AI's response to your system clipboard.
 - **Export Signed Report (`[x]`)**: Save the full analysis as Markdown in `$XDG_CONFIG_HOME/vigilante/evidence/ai_reports/`, automatically signed with your **GPG key** if enabled.
 - **Clear Conversation (`[l]`)**: Reset the current chat session.
@@ -681,7 +695,7 @@ You can configure cloud API keys in `$XDG_CONFIG_HOME/vigilante/config.yaml` or 
 
 ```yaml
 ai:
-  defaultProvider: "ollama"         # ollama, anthropic, openai, gemini
+  defaultProvider: "ollama"         # Default: ollama, anthropic, openai, gemini, deepseek, groq, openrouter
   ollama:
     host: "http://localhost:11434"   # Local Ollama address (or $OLLAMA_HOST)
     defaultModel: "llama3.2"         # Auto-detected local model
@@ -695,6 +709,15 @@ ai:
   gemini:
     apiKey: ""                       # Or export GEMINI_API_KEY / GOOGLE_API_KEY
     defaultModel: "gemini-2.0-flash"
+  deepseek:
+    apiKey: ""                       # Or export DEEPSEEK_API_KEY
+    defaultModel: "deepseek-chat"
+  groq:
+    apiKey: ""                       # Or export GROQ_API_KEY
+    defaultModel: "llama-3.3-70b-versatile"
+  openrouter:
+    apiKey: ""                       # Or export OPENROUTER_API_KEY
+    defaultModel: "anthropic/claude-3.5-sonnet"
 ```
 
 ---

@@ -238,10 +238,10 @@ gpg:
   detached: true        # Generate detached ASCII-armored signatures (.asc)
   gnupgHome: ""         # Optional custom GNUPGHOME directory path
 
-# AI Assistant & Security Forensics Analyst (Ollama, Claude, ChatGPT, Gemini)
+# AI Assistant & Security Forensics Analyst (Ollama, Claude, ChatGPT, Gemini, DeepSeek, Groq, OpenRouter)
 # Ollama works out-of-the-box first and foremost for local, private model inference.
 ai:
-  defaultProvider: "ollama"         # Default provider: ollama, anthropic, openai, gemini
+  defaultProvider: "ollama"         # Default provider: ollama, anthropic, openai, gemini, deepseek, groq, openrouter
   ollama:
     host: "http://localhost:11434"   # Local Ollama server address (or $OLLAMA_HOST)
     defaultModel: "llama3.2"         # Default local model (auto-detected from ollama list)
@@ -257,6 +257,18 @@ ai:
   gemini:
     apiKey: ""                       # Google Gemini API Key (or set $GEMINI_API_KEY / $GOOGLE_API_KEY)
     defaultModel: "gemini-2.0-flash"
+    temperature: 0.2
+  deepseek:
+    apiKey: ""                       # DeepSeek API Key (or set $DEEPSEEK_API_KEY)
+    defaultModel: "deepseek-chat"
+    temperature: 0.2
+  groq:
+    apiKey: ""                       # Groq API Key (or set $GROQ_API_KEY)
+    defaultModel: "llama-3.3-70b-versatile"
+    temperature: 0.2
+  openrouter:
+    apiKey: ""                       # OpenRouter API Key (or set $OPENROUTER_API_KEY)
+    defaultModel: "anthropic/claude-3.5-sonnet"
     temperature: 0.2
 
 # Runtime Monitor Behavior
