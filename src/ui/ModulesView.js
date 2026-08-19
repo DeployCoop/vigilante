@@ -14,7 +14,7 @@ export const ModulesView = memo(function ModulesView({
   onNamespaceChange = null,
   onApply = null,
   onNavigate = null
-}) => {
+}) {
   const theme = useTheme();
   const [currentTargetNamespace, setCurrentTargetNamespace] = useState(namespace || 'default');
   const [isEditingNamespace, setIsEditingNamespace] = useState(false);

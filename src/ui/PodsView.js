@@ -17,7 +17,7 @@ export const PodsView = memo(function PodsView({
   clusterName = 'vigilante-dev',
   namespace = null,
   onNavigate = null
-}) => {
+}) {
   const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(0);

@@ -13,7 +13,7 @@ export const ValuesView = memo(function ValuesView({
   domain = 'vigilante.local',
   customValuesDir = null,
   onNavigate = null
-}) => {
+}) {
   const theme = useTheme();
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(0);
