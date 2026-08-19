@@ -13,7 +13,7 @@ export const BLOCK_END = '### END VIGILANTE MANAGED HOSTS ###';
 /**
  * Generate standard list of domain hostnames for Vigilante
  */
-export function getDomainHosts({ domain = 'vigilante.local', subdomains = ['siem', 'vigil'] } = {}) {
+export function getDomainHosts({ domain = 'vigilante.local', subdomains = ['siem', 'vigil', 'vigil-local'] } = {}) {
   const hosts = new Set([domain]);
   for (const sub of subdomains) {
     if (sub) {

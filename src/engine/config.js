@@ -185,6 +185,11 @@ export const DEFAULT_CONFIG = {
     armor: true,
     gnupgHome: ''
   },
+  modules: {
+    vigilLocal: {
+      chartPath: '/home/djehauti/git/vigil/infra/helm/vigil'
+    }
+  },
   behavior: {
     autoWatchPods: true,
     podsPollIntervalMs: 2000
@@ -278,6 +283,12 @@ ai:
     apiKey: ""                       # OpenRouter API Key (or set $OPENROUTER_API_KEY)
     defaultModel: "anthropic/claude-3.5-sonnet"
     temperature: 0.2
+
+# Modular Package Configuration & Local Repositories
+modules:
+  vigilLocal:
+    # Path to local checkout of Vigil SOC repository helm chart
+    chartPath: "/home/djehauti/git/vigil/infra/helm/vigil"
 
 # Runtime Monitor Behavior
 behavior:

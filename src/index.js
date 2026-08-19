@@ -1,5 +1,6 @@
 export { BaseModule } from './modules/base.js';
 export { VigilSOCModule } from './modules/vigil-soc/index.js';
+export { VigilLocalModule } from './modules/vigil-local/index.js';
 export { ModuleRegistry, globalModuleRegistry } from './modules/registry.js';
 export { checkPrereqs, REQUIRED_TOOLS } from './engine/prereqs.js';
 export { setupCertificates, checkCertificates, applyK8sTlsSecret } from './engine/certs.js';
