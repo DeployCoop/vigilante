@@ -64,6 +64,14 @@ export function getVigilanteEvidenceDir() {
 }
 
 /**
+ * Get the playbooks directory within XDG_CONFIG_HOME for modular threat simulations
+ * @returns {string}
+ */
+export function getVigilantePlaybooksDir() {
+  return path.join(getVigilanteConfigDir(), 'playbooks');
+}
+
+/**
  * Get the instances directory for all k3d cluster instances
  * Structure: $XDG_CONFIG_HOME/.vigilante/instances/
  * @returns {string}
@@ -286,6 +294,7 @@ export async function ensureVigilanteConfig() {
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
   const evidenceDir = getVigilanteEvidenceDir();
+  const playbooksDir = getVigilantePlaybooksDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
   let created = false;
@@ -294,6 +303,7 @@ export async function ensureVigilanteConfig() {
     await fs.mkdir(valuesDir, { recursive: true });
     await fs.mkdir(nmapsDir, { recursive: true });
     await fs.mkdir(evidenceDir, { recursive: true });
+    await fs.mkdir(playbooksDir, { recursive: true });
     await fs.mkdir(instancesDir, { recursive: true });
     try {
       await fs.access(configFile);
@@ -306,7 +316,7 @@ export async function ensureVigilanteConfig() {
     logger.warn('CONFIG', `Failed to ensure config directories: ${err.message}`);
   }
 
-  return { configDir, valuesDir, nmapsDir, evidenceDir, instancesDir, configFile, created };
+  return { configDir, valuesDir, nmapsDir, evidenceDir, playbooksDir, instancesDir, configFile, created };
 }
 
 /**
@@ -317,6 +327,7 @@ export function ensureVigilanteConfigSync() {
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
   const evidenceDir = getVigilanteEvidenceDir();
+  const playbooksDir = getVigilantePlaybooksDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
@@ -329,6 +340,9 @@ export function ensureVigilanteConfigSync() {
     }
     if (!fsSync.existsSync(evidenceDir)) {
       fsSync.mkdirSync(evidenceDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(playbooksDir)) {
+      fsSync.mkdirSync(playbooksDir, { recursive: true });
     }
     if (!fsSync.existsSync(instancesDir)) {
       fsSync.mkdirSync(instancesDir, { recursive: true });

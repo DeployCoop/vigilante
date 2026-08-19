@@ -21,6 +21,7 @@ const cli = meow(`
     nmap/scan   Network reconnaissance & data collection saved to XDG nmaps dir
     xml/netmap  Interactive XML network topology & port matrix visualizer
     threat-sim  Trigger network threat simulation batch against SIEM
+    playbooks   List all built-in and custom threat simulation scenarios
     instances   List and inspect all k3d cluster instances and their directories
     hosts/hostr Sync local domain mappings into /etc/hosts
     values      Manage, list, or export customizable chart values.yaml files
@@ -34,6 +35,11 @@ const cli = meow(`
     --instance, -i     Instance name alias for --cluster-name
     --namespace, -n    Target Kubernetes namespace (e.g. 'default', 'threat-lab', 'tenant-a')
     --module, -m       Specific module(s) to install (comma-separated, Default: vigil-soc)
+    --scenario, -s     Threat simulation scenario ID (e.g. 'credential-bruteforce', 'dns-tunneling-exfil')
+    --playbook, -p     Path to custom YAML/JSON threat playbook file
+    --playbooks-dir    Path to custom directory containing threat playbooks
+    --all              Execute all available threat simulation scenarios in sequence
+    --list             List available threat simulation playbooks and exit
     --values, -f       Path to custom Helm values override file
     --values-dir       Path to directory containing custom values files (Default: ./values or XDG)
     --theme            UI theme (default, cyberpunk, dracula, nord, matrix, monokai)
@@ -45,14 +51,12 @@ const cli = meow(`
 
   Examples
     $ vigilante up --cluster-name soc-prod --domain prod.local
+    $ vigilante threat-sim --scenario credential-bruteforce
+    $ vigilante threat-sim --playbook ./playbooks/my-custom-exploit.yaml
+    $ vigilante playbooks
     $ vigilante up -n tenant-alpha -m opensearch,vigil-soc
-    $ vigilante up -n tenant-beta -m vigil-soc
-    $ vigilante up --instance test-cluster
     $ vigilante instances
     $ vigilante config path
-    $ vigilante values export
-    $ vigilante hostr
-    $ vigilante status -n tenant-alpha
     $ vigilante down
 `, {
   importMeta: import.meta,
@@ -79,6 +83,25 @@ const cli = meow(`
     module: {
       type: 'string',
       shortFlag: 'm'
+    },
+    scenario: {
+      type: 'string',
+      shortFlag: 's'
+    },
+    playbook: {
+      type: 'string',
+      shortFlag: 'p'
+    },
+    playbooksDir: {
+      type: 'string'
+    },
+    all: {
+      type: 'boolean',
+      default: false
+    },
+    list: {
+      type: 'boolean',
+      default: false
     },
     values: {
       type: 'string',
@@ -125,6 +148,22 @@ if (command === 'mcp') {
       console.error('Fatal MCP Server error:', err);
       process.exit(1);
     });
+  });
+} else if (command === 'playbooks' || (command === 'threat-sim' && cli.flags.list)) {
+  import('../src/engine/threats.js').then(async ({ listAvailablePlaybooks }) => {
+    const playbooks = await listAvailablePlaybooks({ customDir: cli.flags.playbooksDir });
+    console.log('\n🛡️  AVAILABLE THREAT SIMULATION PLAYBOOKS:');
+    console.log('='.repeat(70));
+    playbooks.forEach((p, idx) => {
+      const typeBadge = p.isCustom ? '[CUSTOM]' : '[BUILT-IN]';
+      const mitreTags = (p.mitreTechniques || []).map(t => t.id).join(', ');
+      console.log(`[${idx + 1}] ${p.name} (${p.id}) ${typeBadge}`);
+      console.log(`    Category: ${p.category} | Severity: ${p.severity} | MITRE: ${mitreTags || 'N/A'}`);
+      console.log(`    ${p.description} (${p.events?.length || 0} events)`);
+      if (p.filePath) console.log(`    Path: ${p.filePath}`);
+      console.log();
+    });
+    process.exit(0);
   });
 } else {
   render(

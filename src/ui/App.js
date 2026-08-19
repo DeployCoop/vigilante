@@ -930,7 +930,27 @@ const AppContent = ({
 
     // State 3: Threat Simulation
     viewState === 'THREAT_SIM'
-      ? React.createElement(ThreatSimView, { domain, onDone: () => setIsDone(true) })
+      ? React.createElement(ThreatSimView, {
+          domain,
+          onDone: () => setIsDone(true),
+          onNavigate: (target) => {
+            if (target === 'menu') {
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else if (target === 'pods') {
+              setViewState('PODS');
+            } else if (target === 'ai') {
+              setViewState('AI');
+            } else {
+              setViewState('DASHBOARD');
+            }
+          }
+        })
       : null,
 
     // State 4: Status Dashboard

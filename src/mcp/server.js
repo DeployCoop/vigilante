@@ -20,6 +20,7 @@ import { listK3dClusters, getClusterInfo } from '../engine/cluster.js';
 import { checkCertificates } from '../engine/certs.js';
 import { loadConfig } from '../engine/config.js';
 import { globalModuleRegistry } from '../modules/registry.js';
+import { listAvailablePlaybooks, executeThreatPlaybook } from '../engine/threats.js';
 
 /**
  * Creates and configures the Vigilante MCP Server
@@ -90,6 +91,12 @@ export function createVigilanteMcpServer() {
           uri: 'vigilante://config',
           name: 'Vigilante Configuration & Settings',
           description: 'Current configuration settings, default domain, cluster name, hostr sync, and GPG signing identity.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://threats',
+          name: 'Threat Simulation Playbooks',
+          description: 'List of all available built-in and custom attack simulation playbooks with MITRE techniques, severity, and event metadata.',
           mimeType: 'application/json'
         }
       ]
@@ -301,6 +308,20 @@ export function createVigilanteMcpServer() {
             uri,
             mimeType: 'application/json',
             text: JSON.stringify({ config: cfg, availableGpgKeys: gpgKeys }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // I. Threat Simulation Playbooks
+    if (uri === 'vigilante://threats' || uri === 'vigilante://playbooks') {
+      const playbooks = await listAvailablePlaybooks();
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ count: playbooks.length, playbooks }, null, 2)
           }
         ]
       };
@@ -667,6 +688,41 @@ export function createVigilanteMcpServer() {
                 description: 'Target namespace to check module status in (default: default)'
               }
             }
+          }
+        },
+        {
+          name: 'list_threat_playbooks',
+          description: 'List all built-in and custom threat simulation scenarios with descriptions, MITRE ATT&CK techniques, severity levels, and event counts.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              customDir: {
+                type: 'string',
+                description: 'Optional custom directory path to scan for user-defined YAML/JSON playbooks'
+              }
+            }
+          }
+        },
+        {
+          name: 'run_threat_simulation',
+          description: 'Inject a simulated network threat scenario or custom playbook into OpenSearch SIEM within the Kubernetes cluster.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenario: {
+                type: 'string',
+                description: 'Scenario ID or custom playbook file path (e.g. recon-sweep, credential-bruteforce, dns-tunneling-exfil, ransomware-lateral, k8s-pod-escape, web-cve-rce, arp-poison-mitm)'
+              },
+              namespace: {
+                type: 'string',
+                description: 'Target Kubernetes namespace containing OpenSearch SIEM (default: opensearch)'
+              },
+              clusterName: {
+                type: 'string',
+                description: 'Target k3d cluster instance name (default: vigilante-dev)'
+              }
+            },
+            required: ['scenario']
           }
         }
       ]
@@ -1062,6 +1118,48 @@ export function createVigilanteMcpServer() {
               namespace,
               deployedNamespaces,
               modules: moduleStatuses
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: list_threat_playbooks
+    if (name === 'list_threat_playbooks') {
+      const { customDir } = args;
+      const playbooks = await listAvailablePlaybooks({ customDir });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ count: playbooks.length, playbooks }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_threat_simulation
+    if (name === 'run_threat_simulation') {
+      const { scenario, namespace = 'opensearch', clusterName = 'vigilante-dev' } = args;
+      const logs = [];
+      const result = await executeThreatPlaybook({
+        playbook: scenario,
+        namespace,
+        clusterName,
+        onLog: (msg) => logs.push(msg)
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: result.success,
+              scenarioId: result.playbook?.id,
+              scenarioName: result.playbook?.name,
+              eventsIngested: result.eventsCount,
+              namespace: result.namespace,
+              logs
             }, null, 2)
           }
         ]

@@ -19,8 +19,8 @@ async function runTests() {
   // Test 1: List Resources
   const resourcesRes = await client.listResources();
   const resources = resourcesRes.resources || [];
-  if (resources.length < 8) {
-    throw new Error(`Expected at least 8 resources, got: ${resources.length}`);
+  if (resources.length < 9) {
+    throw new Error(`Expected at least 9 resources, got: ${resources.length}`);
   }
   const resourceUris = resources.map(r => r.uri);
   const expectedUris = [
@@ -31,14 +31,15 @@ async function runTests() {
     'vigilante://clusters',
     'vigilante://modules',
     'vigilante://scans',
-    'vigilante://config'
+    'vigilante://config',
+    'vigilante://threats'
   ];
   for (const exp of expectedUris) {
     if (!resourceUris.includes(exp)) {
       throw new Error(`Missing expected resource: ${exp}`);
     }
   }
-  console.log(`✔ Test 1 passed: Discovered ${resources.length} MCP resources (hosts, topology, evidence, pods, clusters, modules, scans, config).`);
+  console.log(`✔ Test 1 passed: Discovered ${resources.length} MCP resources (hosts, topology, evidence, pods, clusters, modules, scans, config, threats).`);
 
   // Test 2: List Resource Templates
   const templatesRes = await client.listResourceTemplates();
@@ -68,8 +69,8 @@ async function runTests() {
   // Test 4: List Available Tools
   const toolsRes = await client.listTools();
   const tools = toolsRes.tools || [];
-  if (tools.length < 12) {
-    throw new Error(`Expected at least 12 MCP tools, got: ${tools.length}`);
+  if (tools.length < 14) {
+    throw new Error(`Expected at least 14 MCP tools, got: ${tools.length}`);
   }
   const toolNames = tools.map(t => t.name);
   const expectedTools = [
@@ -84,7 +85,9 @@ async function runTests() {
     'get_pods',
     'get_pod_logs',
     'describe_pod',
-    'get_cluster_status'
+    'get_cluster_status',
+    'list_threat_playbooks',
+    'run_threat_simulation'
   ];
   for (const exp of expectedTools) {
     if (!toolNames.includes(exp)) {
@@ -148,6 +151,17 @@ async function runTests() {
     throw new Error('get_cluster_status did not return domain/modules');
   }
   console.log(`✔ Test 9 passed: get_cluster_status returned cluster metadata and ${parsedCluster.modules.length} module states.`);
+
+  // Test 10: Call Tool: list_threat_playbooks
+  const playbooksRes = await client.callTool({
+    name: 'list_threat_playbooks',
+    arguments: {}
+  });
+  const parsedPlaybooks = JSON.parse(playbooksRes.content[0].text);
+  if (!Array.isArray(parsedPlaybooks.playbooks) || parsedPlaybooks.playbooks.length < 7) {
+    throw new Error('list_threat_playbooks did not return expected scenarios');
+  }
+  console.log(`✔ Test 10 passed: list_threat_playbooks returned ${parsedPlaybooks.playbooks.length} modular attack scenarios.`);
 
   await client.close();
   console.log('🎉 All Model Context Protocol (MCP) Server tests passed successfully!');

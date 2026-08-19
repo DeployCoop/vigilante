@@ -502,6 +502,131 @@ When customizing Helm values, Vigilante prioritizes namespace-specific override 
 
 ---
 
+## ⚡ Modular Threat Simulation & Custom Playbooks (`vigilante threat-sim`)
+
+Vigilante features a fully modular **Network Threat Simulation & Intrusion Emulation Engine** that allows security operators, red teams, and SOC engineers to test detection rules against realistic attack scenarios or execute user-written custom playbooks.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ⚡ MODULAR NETWORK THREAT SIMULATOR  [Namespace: opensearch] 8 Scenarios Available│
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Select an attack scenario to inject into OpenSearch SIEM (Use ↑/↓ and Enter): │
+│                                                                              │
+│ ❯ [1] Network Reconnaissance & Port Scan Sweep [MEDIUM] [T1595.001] [T1046] │
+│     Simulates active network discovery and horizontal TCP SYN scanning       │
+│   [2] High-Velocity SSH & RDP Credential Brute Force [HIGH] [T1110.001]      │
+│     Simulates automated password spraying against management endpoints       │
+│   [3] C2 DNS Tunneling & High-Entropy Data Exfiltration [CRITICAL] [T1071]  │
+│     Simulates covert command-and-control and Base64 encoded TXT payloads     │
+│   [4] Ransomware Infiltration & Lateral SMB Spread [CRITICAL] [T1021.002]    │
+│     Simulates PsExec lateral spreading, vssadmin shadow deletion & locks     │
+│   [5] Kubernetes Compromised Pod & Host Node Escape [CRITICAL] [T1611]       │
+│     Simulates service account enumeration and container host-mount breakout  │
+│   [6] Web Application Exploitation & Reverse Shell RCE [HIGH] [T1190]        │
+│     Simulates JNDI Log4j injection payload spawning interactive /bin/bash    │
+│   [7] ARP Gateway Poisoning & Man-In-The-Middle [HIGH] [T1557.002]           │
+│     Simulates gratuitous ARP broadcast flooding claiming default gateway     │
+│   [8] Custom Zero-Day Playbook [CRITICAL] ⭐ [CUSTOM] [T1190] [T1068]         │
+│     User-authored custom YAML scenario from ~/.config/vigilante/playbooks/   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ [Enter] Run Selected  [a] Run All  [c] New Playbook  [e] Edit in $EDITOR      │
+│ [n] Namespace  [/] Filter  [Tab] Operations Hub  [q] Return to Dashboard     │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Built-in Attack Scenarios
+
+| Scenario ID | Name & Description | Severity | MITRE ATT&CK Techniques |
+| :--- | :--- | :--- | :--- |
+| **`recon-sweep`** | **Network Reconnaissance & Port Scan Sweep**<br>Horizontal SYN scanning, stealth FIN/NULL scans, OS banner probing. | `MEDIUM` | `T1595.001`, `T1046` |
+| **`credential-bruteforce`** | **High-Velocity SSH & RDP Credential Brute Force**<br>Password spraying and authentication failure bursts across root, admin, deploy. | `HIGH` | `T1110.001`, `T1110.003` |
+| **`dns-tunneling-exfil`** | **C2 DNS Tunneling & Data Exfiltration**<br>High-entropy Base64 DNS queries, C2 beaconing, and TXT chunked exfiltration. | `CRITICAL` | `T1071.004`, `T1048.003` |
+| **`ransomware-lateral`** | **Ransomware Infiltration & Lateral Movement**<br>SMB PsExec lateral movement, volume shadow copy destruction (`vssadmin`), mass file encryption (`.locked`). | `CRITICAL` | `T1021.002`, `T1490`, `T1486` |
+| **`k8s-pod-escape`** | **Kubernetes Compromised Pod & Host Escape**<br>Stolen service account API enumeration, `/host` chroot mount traversal, and cryptominer spawning (`xmrig`). | `CRITICAL` | `T1611`, `T1609`, `T1613`, `T1496` |
+| **`web-cve-rce`** | **Web Application Exploitation & Reverse Shell**<br>Log4j / JNDI injection payload delivery, spawning outbound interactive `/bin/bash` reverse shell. | `HIGH` | `T1190`, `T1059.004` |
+| **`arp-poison-mitm`** | **ARP Gateway Poisoning & Man-In-The-Middle**<br>Gratuitous ARP broadcast flooding claiming ownership of gateway IP `10.0.0.1`. | `HIGH` | `T1557.002`, `T1040` |
+
+### 2. Creating Custom User Playbooks (`.yaml` / `.json`)
+
+You can author your own custom threat playbooks and place them in either:
+- **Global User Directory**: `$XDG_CONFIG_HOME/vigilante/playbooks/<your-scenario>.yaml`
+- **Local Workspace Directory**: `./playbooks/<your-scenario>.yaml`
+- **Command-Line Path**: `--playbook /path/to/custom-playbook.yaml`
+
+#### Custom Playbook YAML Specification
+```yaml
+# ~/.config/vigilante/playbooks/zero-day-sql-injection.yaml
+id: zero-day-sql-injection
+name: Zero-Day SQL Injection & Database Exfiltration
+category: initial-access
+severity: CRITICAL
+author: Internal Threat Intel Team
+description: Simulates an unauthenticated blind SQL injection on /api/v1/auth followed by database dump.
+mitreTechniques:
+  - id: T1190
+    name: Exploit Public-Facing Application
+    tactic: Initial Access
+  - id: T1048
+    name: Exfiltration Over Alternative Protocol
+    tactic: Exfiltration
+tags:
+  - sqli
+  - database
+  - custom
+events:
+  - timestampOffsetSec: 0
+    eventKind: alert
+    eventCategory: network
+    action: sql_injection_attempt
+    severity: 9
+    source:
+      ip: "198.51.100.200"
+      port: 51234
+    destination:
+      ip: "10.0.0.10"
+      port: 443
+    network:
+      transport: tcp
+      protocol: https
+    http:
+      request:
+        method: POST
+        body: "' OR 1=1 UNION SELECT null, username, password_hash FROM users--"
+    threat:
+      framework: "MITRE ATT&CK"
+      technique:
+        id: "T1190"
+        name: "Exploit Public-Facing Application"
+    message: "SQL injection pattern detected in authentication POST body from 198.51.100.200"
+```
+
+### 3. Running Threat Simulations via CLI
+```bash
+# Launch interactive Threat Simulation TUI
+vigilante threat-sim
+# or
+vigilante threat
+
+# List all available built-in and custom scenarios
+vigilante playbooks
+# or
+vigilante threat-sim --list
+
+# Execute a specific scenario against default OpenSearch namespace
+vigilante threat-sim --scenario credential-bruteforce
+
+# Execute against a specific target namespace
+vigilante threat-sim -s dns-tunneling-exfil -n threat-lab
+
+# Run a custom playbook file
+vigilante threat-sim --playbook ./playbooks/zero-day-sql-injection.yaml
+
+# Run ALL scenarios sequentially in a full attack campaign
+vigilante threat-sim --all
+```
+
+---
+
 ## 🤖 Model Context Protocol (MCP) Server for LLMs
 
 Vigilante includes a built-in **Model Context Protocol (MCP)** server built on `@modelcontextprotocol/sdk` (2024-11-05 standard specification) running over standard `stdio` transport. It enables AI assistants (such as **Claude Desktop**, **Antigravity**, **Cursor**, **Gemini**, and **ChatGPT**) to discover, query, and perform live incident response diagnostics across your local network and Kubernetes infrastructure.
@@ -576,6 +701,7 @@ AI models can directly inspect real-time state and historical scan reports using
 | `vigilante://modules` | Security packages (OpenSearch SIEM, Vigil AI SOC) with their live ingress URLs and cluster DNS endpoints. | `application/json` |
 | `vigilante://scans` | List of all saved raw XML and text Nmap scan reports in `$XDG_CONFIG_HOME/vigilante/nmaps/`. | `application/json` |
 | `vigilante://config` | Active configuration settings, default domain, cluster name, hostr sync, and GPG signing identity. | `application/json` |
+| `vigilante://threats` | List of all available built-in and custom attack simulation playbooks with MITRE techniques, severity, and event metadata. | `application/json` |
 
 #### Parameterized Resource Templates
 
@@ -588,9 +714,9 @@ AI models can directly inspect real-time state and historical scan reports using
 
 ---
 
-### 4. 12 Interactive Tools for LLMs
+### 4. 14 Interactive Tools for LLMs
 
-The MCP server provides 12 callable tools that allow LLMs to actively query infrastructure, trigger reconnaissance scans, and run non-destructive forensic diagnostics:
+The MCP server provides 14 callable tools that allow LLMs to actively query infrastructure, trigger reconnaissance scans, and run non-destructive forensic diagnostics:
 
 | Tool Name | Parameters | Purpose |
 | :--- | :--- | :--- |
@@ -606,6 +732,8 @@ The MCP server provides 12 callable tools that allow LLMs to actively query infr
 | `get_pod_logs` | `podName`, `namespace`, `container`, `tailLines`, `clusterName` | Retrieve live log tails from a specific Kubernetes pod container. |
 | `describe_pod` | `podName`, `namespace`, `clusterName` | Fetch detailed Kubernetes pod description, containers, volumes, conditions, and lifecycle events. |
 | `get_cluster_status` | `clusterName`, `domain`, `namespace` | Check health and status of prerequisites, k3d clusters, TLS certificates, local DNS host mappings, and deployed security modules. |
+| `list_threat_playbooks` | `customDir` | List all available built-in and custom attack simulation playbooks with descriptions, MITRE techniques, and event counts. |
+| `run_threat_simulation` | `scenario` *(required)*, `namespace`, `clusterName` | Inject a simulated network threat scenario or custom playbook into OpenSearch SIEM within the Kubernetes cluster. |
 
 ---
 

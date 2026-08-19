@@ -10,3 +10,13 @@ export { TaskRunner } from './ui/TaskRunner.js';
 export { SelectModules } from './ui/SelectModules.js';
 export { StatusDashboard } from './ui/StatusDashboard.js';
 export { ThreatSimView } from './ui/ThreatSimView.js';
+export {
+  BUILTIN_PLAYBOOKS,
+  listAvailablePlaybooks,
+  loadPlaybook,
+  validatePlaybook,
+  executeThreatPlaybook,
+  createCustomPlaybookTemplate,
+  generateThreatJobManifest
+} from './engine/threats.js';
+

@@ -229,22 +229,26 @@ export class OpenSearchModule extends BaseModule {
   }
 
   /**
-   * Run the network threat simulator to inject test threat events into target namespace
+   * Run the network threat simulator with modular playbooks
    */
-  async simulateThreats({ clusterName = 'vigilante-dev', namespace = null, onLog = null } = {}) {
+  async simulateThreats({
+    clusterName = 'vigilante-dev',
+    namespace = null,
+    scenarioId = null,
+    playbook = null,
+    customDir = null,
+    onLog = null
+  } = {}) {
     const targetNamespace = namespace || this.namespace;
-    const simulatorManifestPath = path.join(__dirname, 'manifests', 'threat-simulator.yaml');
-    if (onLog) onLog(`[opensearch] Triggering threat simulation batch in namespace '${targetNamespace}'...`);
+    const { executeThreatPlaybook } = await import('../../engine/threats.js');
 
-    // Delete existing simulator job if present
-    try {
-      await execa('kubectl', ['delete', 'job', 'opensearch-threat-injector', '-n', targetNamespace, '--ignore-not-found=true']);
-    } catch {
-      // Ignore
-    }
-
-    // Apply simulation job
-    await execa('kubectl', ['apply', '-f', simulatorManifestPath, '-n', targetNamespace]);
-    if (onLog) onLog(`[opensearch] Threat simulation Job scheduled in '${targetNamespace}'! Ingestion target: vigilante-network-events`);
+    const targetPlaybook = playbook || scenarioId || 'recon-sweep';
+    return executeThreatPlaybook({
+      playbook: targetPlaybook,
+      namespace: targetNamespace,
+      clusterName,
+      customDir,
+      onLog
+    });
   }
 }
