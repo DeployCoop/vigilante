@@ -6,15 +6,18 @@ import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
 import { execStream, exec } from '../utils/exec.js';
 import { getVigilantePlaybooksDir, loadConfig } from './config.js';
+import { NIST_ATTACK_VECTORS } from './nist.js';
 
 /**
- * Built-in standard threat simulation playbooks representing major MITRE ATT&CK categories
+ * Built-in standard threat simulation playbooks representing major MITRE ATT&CK & NIST SP 800-61 categories
  */
 export const BUILTIN_PLAYBOOKS = [
   {
     id: 'recon-sweep',
     name: 'Network Reconnaissance & Port Scan Sweep',
     category: 'reconnaissance',
+    nistVector: 'OTHER',
+    signType: 'PRECURSOR',
     severity: 'MEDIUM',
     author: 'Vigilante Threat Research',
     description: 'Simulates active network service discovery, horizontal TCP SYN scanning, and OS banner probing across the subnet.',
@@ -22,7 +25,7 @@ export const BUILTIN_PLAYBOOKS = [
       { id: 'T1595.001', name: 'Active Scanning: Scanning IP Blocks', tactic: 'Reconnaissance' },
       { id: 'T1046', name: 'Network Service Discovery', tactic: 'Discovery' }
     ],
-    tags: ['recon', 'nmap', 'port-scan', 'discovery'],
+    tags: ['recon', 'nmap', 'port-scan', 'discovery', 'precursor'],
     events: [
       {
         timestampOffsetSec: 0,
@@ -66,6 +69,8 @@ export const BUILTIN_PLAYBOOKS = [
     id: 'credential-bruteforce',
     name: 'High-Velocity SSH & RDP Credential Brute Force',
     category: 'credential-access',
+    nistVector: 'ATTRITION',
+    signType: 'INDICATOR',
     severity: 'HIGH',
     author: 'Vigilante Threat Research',
     description: 'Simulates automated password spraying and high-frequency authentication failure bursts against SSH and RDP management services.',
@@ -73,7 +78,7 @@ export const BUILTIN_PLAYBOOKS = [
       { id: 'T1110.001', name: 'Brute Force: Password Guessing', tactic: 'Credential Access' },
       { id: 'T1110.003', name: 'Brute Force: Password Spraying', tactic: 'Credential Access' }
     ],
-    tags: ['ssh', 'rdp', 'brute-force', 'auth-failure', 'passwords'],
+    tags: ['ssh', 'rdp', 'brute-force', 'auth-failure', 'passwords', 'attrition'],
     events: [
       {
         timestampOffsetSec: 0,
@@ -120,6 +125,8 @@ export const BUILTIN_PLAYBOOKS = [
     id: 'dns-tunneling-exfil',
     name: 'C2 DNS Tunneling & High-Entropy Data Exfiltration',
     category: 'exfiltration',
+    nistVector: 'IMPROPER_USAGE',
+    signType: 'INDICATOR',
     severity: 'CRITICAL',
     author: 'Vigilante Threat Research',
     description: 'Simulates covert command-and-control communication and encoded data exfiltration concealed within anomalous DNS TXT/NULL queries.',
@@ -159,7 +166,7 @@ export const BUILTIN_PLAYBOOKS = [
           resolved_ip: '198.51.100.99'
         },
         threat: { framework: 'MITRE ATT&CK', technique: { id: 'T1071.004', name: 'DNS Application Layer Protocol' } },
-        message: 'Repeated periodic DNS beaconing (interval: 30s) to newly registered malicious domain'
+        message: 'Periodic C2 beaconing pattern detected communicating with unknown domain c2.attacker-c2.net'
       },
       {
         timestampOffsetSec: 2,
@@ -177,74 +184,79 @@ export const BUILTIN_PLAYBOOKS = [
   },
   {
     id: 'ransomware-lateral',
-    name: 'Ransomware Infiltration, Lateral SMB Spread & Shadow Copy Deletion',
+    name: 'Ransomware Infiltration & Lateral SMB Spread',
     category: 'impact',
+    nistVector: 'IMPROPER_USAGE',
+    signType: 'INDICATOR',
     severity: 'CRITICAL',
     author: 'Vigilante Threat Research',
-    description: 'Simulates multi-stage ransomware execution including SMB PsExec lateral spreading, volume shadow copy destruction, and mass encryption.',
+    description: 'Simulates ransomware lateral movement via SMB PsExec, Volume Shadow Copy destruction (vssadmin), and mass file encryption indicators.',
     mitreTechniques: [
       { id: 'T1021.002', name: 'Remote Services: SMB/Windows Admin Shares', tactic: 'Lateral Movement' },
-      { id: 'T1490', name: 'Inhibit System Recovery: Delete Volume Shadow Copies', tactic: 'Impact' },
+      { id: 'T1490', name: 'Inhibit System Recovery', tactic: 'Impact' },
       { id: 'T1486', name: 'Data Encrypted for Impact', tactic: 'Impact' }
     ],
-    tags: ['ransomware', 'smb', 'psexec', 'shadow-copy', 'lateral-movement', 'encryption'],
+    tags: ['ransomware', 'smb', 'psexec', 'shadow-copies', 'encryption'],
     events: [
       {
         timestampOffsetSec: 0,
         eventKind: 'alert',
         eventCategory: 'network',
-        action: 'smb_psexec_lateral_movement',
+        action: 'smb_psexec_lateral_spread',
         severity: 9,
-        source: { ip: '10.0.0.40', port: 49200 },
-        destination: { ip: '10.0.0.45', port: 445 },
-        network: { transport: 'tcp', protocol: 'smb', direction: 'internal' },
-        process: { name: 'psexesvc.exe', command_line: 'psexesvc.exe -accepteula -s' },
+        source: { ip: '10.0.0.12', port: 49821 },
+        destination: { ip: '10.0.0.15', port: 445 },
+        network: { transport: 'tcp', protocol: 'smb' },
+        process: { name: 'psexesvc.exe', command_line: 'psexec \\\\10.0.0.15 -u admin -p **** cmd.exe' },
         threat: { framework: 'MITRE ATT&CK', technique: { id: 'T1021.002', name: 'SMB/Windows Admin Shares' } },
-        message: 'Suspicious SMB named pipe connection and remote service creation (ADMIN$ share access)'
+        message: 'Suspicious remote service creation (PsExec) detected over SMB share ADMIN$'
       },
       {
         timestampOffsetSec: 1,
         eventKind: 'alert',
         eventCategory: 'process',
-        action: 'volume_shadow_copy_deleted',
+        action: 'vssadmin_shadow_deletion',
         severity: 10,
-        source: { ip: '10.0.0.45' },
+        source: { ip: '10.0.0.15' },
         process: { name: 'vssadmin.exe', command_line: 'vssadmin.exe delete shadows /all /quiet' },
         threat: { framework: 'MITRE ATT&CK', technique: { id: 'T1490', name: 'Inhibit System Recovery' } },
-        message: 'CRITICAL: Volume shadow copies deleted quietly via vssadmin.exe (Ransomware precursor)'
+        message: 'CRITICAL: Volume Shadow Copy deletion attempted via vssadmin.exe to prevent system restore'
       },
       {
         timestampOffsetSec: 2,
         eventKind: 'alert',
         eventCategory: 'file',
-        action: 'mass_file_extension_change',
+        action: 'mass_file_modification_ransom',
         severity: 10,
-        source: { ip: '10.0.0.45' },
-        file: { extension: '.locked', count: 450, rate_per_sec: 150 },
+        source: { ip: '10.0.0.15' },
+        file: { path: '/var/data/finance/reports.locked', extension: 'locked' },
         threat: { framework: 'MITRE ATT&CK', technique: { id: 'T1486', name: 'Data Encrypted for Impact' } },
-        message: 'High-velocity mass file modification and encryption pattern detected (450 files/.locked)'
+        message: 'High frequency file modification and rename burst (>500 files/sec with extension .locked)'
       }
     ]
   },
   {
     id: 'k8s-pod-escape',
-    name: 'Kubernetes Compromised Pod & Node Host Escape',
+    name: 'Kubernetes Compromised Pod & Host Escape',
     category: 'privilege-escalation',
+    nistVector: 'IMPROPER_USAGE',
+    signType: 'INDICATOR',
     severity: 'CRITICAL',
     author: 'Vigilante Threat Research',
-    description: 'Simulates a container breakout utilizing stolen service account tokens, mounted host filesystems (/host), and cryptominer spawning.',
+    description: 'Simulates token theft from a compromised pod, API authorization abuse, container host filesystem breakout, and cryptominer spawning.',
     mitreTechniques: [
       { id: 'T1611', name: 'Escape to Host', tactic: 'Privilege Escalation' },
       { id: 'T1609', name: 'Container Administration Command', tactic: 'Execution' },
-      { id: 'T1613', name: 'Container and Resource Discovery', tactic: 'Discovery' }
+      { id: 'T1613', name: 'Container and Resource Discovery', tactic: 'Discovery' },
+      { id: 'T1496', name: 'Resource Hijacking', tactic: 'Impact' }
     ],
-    tags: ['k8s', 'kubernetes', 'container-breakout', 'host-mount', 'service-account'],
+    tags: ['k8s', 'container-escape', 'cryptominer', 'chroot', 'cloud-native'],
     events: [
       {
         timestampOffsetSec: 0,
         eventKind: 'alert',
         eventCategory: 'authentication',
-        action: 'k8s_service_account_token_enumeration',
+        action: 'k8s_service_account_token_theft',
         severity: 8,
         source: { ip: '10.42.0.15' },
         destination: { ip: '10.43.0.1', port: 443 },
@@ -281,6 +293,8 @@ export const BUILTIN_PLAYBOOKS = [
     id: 'web-cve-rce',
     name: 'Web Application Exploitation & Reverse Shell RCE',
     category: 'initial-access',
+    nistVector: 'WEB_APPLICATION',
+    signType: 'INDICATOR',
     severity: 'HIGH',
     author: 'Vigilante Threat Research',
     description: 'Simulates an unauthenticated Remote Code Execution attack against a public web application spawning an interactive reverse shell.',
@@ -321,6 +335,8 @@ export const BUILTIN_PLAYBOOKS = [
     id: 'arp-poison-mitm',
     name: 'ARP Gateway Poisoning & Man-In-The-Middle',
     category: 'defense-evasion',
+    nistVector: 'IMPERSONATION',
+    signType: 'INDICATOR',
     severity: 'HIGH',
     author: 'Vigilante Threat Research',
     description: 'Simulates ARP cache poisoning flooding gratuitous ARP responses to re-route subnet traffic through an unauthorized attacker node.',
@@ -642,6 +658,8 @@ export async function createCustomPlaybookTemplate(playbookName = 'custom-zero-d
     id: safeId,
     name: overrides.name || 'Custom Incident Response Simulation Scenario',
     category: overrides.category || 'initial-access',
+    nistVector: overrides.nistVector || 'WEB_APPLICATION',
+    signType: overrides.signType || 'INDICATOR',
     severity: overrides.severity || 'HIGH',
     author: overrides.author || 'Security Operator',
     description: overrides.description || 'Custom security playbook simulating targeted intrusion vectors for SOC detection verification.',

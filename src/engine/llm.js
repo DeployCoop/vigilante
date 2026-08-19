@@ -8,21 +8,22 @@ import { getPodsWide } from './pods.js';
 import { listInstances } from './instances.js';
 import { signFile } from './gpg.js';
 import { globalModuleRegistry } from '../modules/registry.js';
+import { listNistIncidents, NIST_ATTACK_VECTORS, NIST_LIFECYCLE_PHASES } from './nist.js';
 
 /**
- * System prompt definition for the Vigilante AI Security Analyst
+ * System prompt definition for the Vigilante AI Security Analyst (NIST SP 800-61 Rev. 2 Compliant)
  */
-export const DEFAULT_SYSTEM_PROMPT = `You are Vigilante AI, an expert cybersecurity incident responder, network defense engineer, and SOC forensic analyst.
-You have direct access to the local infrastructure, network reconnaissance scans, Evidence Vault triage dumps, and Kubernetes telemetry provided by Vigilante.
+export const DEFAULT_SYSTEM_PROMPT = `You are Vigilante AI, an elite cybersecurity incident response handler, digital forensics investigator, and SOC defense engineer operating strictly within the NIST SP 800-61 Rev. 2 (Computer Security Incident Handling Guide) framework.
+You have direct access to real-time local network topology, Nmap XML scans, cryptographic Evidence Vault triage dumps (RFC 3227 Order of Volatility), and Kubernetes cluster telemetry provided by Vigilante.
 
-Your role:
-1. Analyze network topology, open ports, banners, and CVE script outputs.
-2. Identify anomalous host behaviors, security risks, misconfigurations, and attack surfaces.
-3. Review forensic evidence (ping jitter, MTR route loss, TLS certificate chains, HTTP headers, ARP neighbor caches).
-4. Inspect Kubernetes pods and workloads for health issues, CrashLoopBackOff states, and cluster anomalies.
-5. Provide concise, prioritized, and actionable defense and remediation advice with practical commands (e.g. iptables, openssl, kubectl, nmap).
+Your core objectives:
+1. Identify Precursors vs Indicators of compromise across network sweeps, open ports, service banners, and NSE script outputs.
+2. Classify security incidents according to official NIST SP 800-61 Table 3-1 Attack Vectors (Web Application, Impersonation/MITM, Attrition, Improper Usage, etc.).
+3. Calculate 3-Dimensional NIST Incident Prioritization (Functional Impact, Information Impact, Recoverability Effort) and determine containment urgency.
+4. Review volatile forensic evidence (ARP tables, ICMP jitter, MTR route loss, X.509 certificate chains, HTTP response headers) with cryptographic chain-of-custody.
+5. Provide prioritized containment, eradication, and recovery playbooks with executable commands (e.g. iptables, NetworkPolicy, openssl, kubectl, nmap).
 
-Format your analysis clearly using Markdown with sections, bullet points, severity tags ([CRITICAL], [HIGH], [MEDIUM], [LOW]), and code blocks.`;
+Format your analysis clearly using Markdown with structured sections, bullet points, severity tags ([CRITICAL], [HIGH], [MEDIUM], [LOW]), MITRE ATT&CK technique IDs, and code blocks.`;
 
 /**
  * Authoritative registry of all supported AI providers and their models
@@ -751,7 +752,25 @@ export async function compileMcpSecurityContext() {
     sections.push(`### Evidence Vault: Unavailable (${err.message})`);
   }
 
-  // C. Live Kubernetes Infrastructure & Pod States
+  // C. Active NIST SP 800-61 Rev. 2 Incident Manifests
+  try {
+    const nistIncidents = await listNistIncidents();
+    if (nistIncidents.length > 0) {
+      let nistSection = '### Active NIST SP 800-61 Rev. 2 Incident Records\n';
+      nistSection += '| Incident ID | Target Host | Attack Vector | Severity | Functional | Information | SLA |\n';
+      nistSection += '|---|---|---|---|---|---|---|\n';
+      for (const inc of nistIncidents.slice(0, 10)) {
+        const vec = inc.classification?.attackVector?.name || 'Unknown';
+        const p = inc.prioritization || {};
+        nistSection += `| \`${inc.incidentId}\` | \`${inc.target?.host}\` | ${vec} | **[${p.severity || 'UNKNOWN'}]** | ${p.functionalImpact || 'N/A'} | ${p.informationImpact || 'N/A'} | ${p.slaTargetMinutes || 60}m |\n`;
+      }
+      sections.push(nistSection);
+    }
+  } catch {
+    // Ignore
+  }
+
+  // D. Live Kubernetes Infrastructure & Pod States
   try {
     const pods = await getPodsWide();
     if (pods.length > 0) {
@@ -771,7 +790,7 @@ export async function compileMcpSecurityContext() {
     // Cluster may not be running currently
   }
 
-  // D. Vigilante Security Modules & Services
+  // E. Vigilante Security Modules & Services
   try {
     const cfg = loadConfig();
     const domain = cfg.defaults?.domain || 'vigilante.local';

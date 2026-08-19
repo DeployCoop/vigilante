@@ -3,9 +3,22 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { getVigilanteNmapsDir, ensureVigilanteConfig } from './config.js';
 import { logger } from '../utils/logger.js';
+import { parseNmapXml as nastymapParse } from './nastymap/parser.js';
+import { generateTopology } from './nastymap/topology.js';
+import { compareNmapScans } from './nastymap/diff.js';
+import { generateHeadlessSvg, generateHtmlReport } from './nastymap/exporter.js';
+import { geocodeIp } from './nastymap/geoip.js';
+
+export {
+  generateTopology,
+  compareNmapScans,
+  generateHeadlessSvg,
+  generateHtmlReport,
+  geocodeIp
+};
 
 /**
- * Robust XML parser specifically tailored for Nmap XML output
+ * Robust XML parser specifically tailored for Nmap XML output powered by NastyMap
  * @param {string} xmlContent
  * @param {string} [filename='']
  * @returns {Object} Structured Nmap scan report
@@ -15,221 +28,74 @@ export function parseNmapXml(xmlContent, filename = '') {
     return {
       isValid: false,
       error: 'Empty or invalid XML content',
+      filename,
       hosts: [],
       runStats: {}
     };
   }
 
   try {
-    // 1. Parse <nmaprun> attributes
-    const nmaprunMatch = xmlContent.match(/<nmaprun\s+([^>]+)>/i);
-    const nmapAttrs = nmaprunMatch ? parseXmlAttributes(nmaprunMatch[1]) : {};
-
-    // 2. Parse <scaninfo>
-    const scanInfoMatch = xmlContent.match(/<scaninfo\s+([^>]+)\/?>/i);
-    const scanInfo = scanInfoMatch ? parseXmlAttributes(scanInfoMatch[1]) : {};
-
-    // 3. Parse <runstats>
-    const runstatsMatch = xmlContent.match(/<runstats>([\s\S]*?)<\/runstats>/i);
-    let runStats = {};
-    if (runstatsMatch) {
-      const finishedMatch = runstatsMatch[1].match(/<finished\s+([^>]+)\/?>/i);
-      const hostsMatch = runstatsMatch[1].match(/<hosts\s+([^>]+)\/?>/i);
-      const finishedAttrs = finishedMatch ? parseXmlAttributes(finishedMatch[1]) : {};
-      const hostsAttrs = hostsMatch ? parseXmlAttributes(hostsMatch[1]) : {};
-
-      runStats = {
-        time: finishedAttrs.time,
-        timestr: finishedAttrs.timestr,
-        elapsedSec: parseFloat(finishedAttrs.elapsed || '0'),
-        summary: finishedAttrs.summary || '',
-        exit: finishedAttrs.exit || 'success',
-        hostsUp: parseInt(hostsAttrs.up || '0', 10),
-        hostsDown: parseInt(hostsAttrs.down || '0', 10),
-        hostsTotal: parseInt(hostsAttrs.total || '0', 10)
-      };
+    const parsed = nastymapParse(xmlContent, filename);
+    if (!parsed.isValid) {
+      return parsed;
     }
 
-    // 4. Parse all <host> blocks
-    const hostRegex = /<host(?:\s+[^>]*?)?>([\s\S]*?)<\/host>/gi;
-    const hosts = [];
-    let hostMatch;
+    const hosts = (parsed.hosts || []).map((h) => {
+      const ports = (h.ports || []).map((p) => ({
+        port: p.portid,
+        portid: p.portid,
+        protocol: p.protocol,
+        state: p.state,
+        reason: p.reason || '',
+        service: p.service?.name || 'unknown',
+        product: p.service?.product || '',
+        version: p.service?.version || '',
+        extraInfo: p.service?.extrainfo || '',
+        cpe: p.service?.cpe ? (Array.isArray(p.service.cpe) ? p.service.cpe[0] : p.service.cpe) : null,
+        scripts: p.scripts || []
+      }));
 
-    while ((hostMatch = hostRegex.exec(xmlContent)) !== null) {
-      const hostBlock = hostMatch[1];
+      const openPorts = ports.filter((p) => p.state === 'open');
+      const osMatches = (h.osMatch || []).map((m) => ({
+        name: m.name,
+        accuracy: m.accuracy,
+        line: m.line || ''
+      }));
 
-      // Parse status
-      const statusMatch = hostBlock.match(/<status\s+([^>]+)\/?>/i);
-      const statusAttrs = statusMatch ? parseXmlAttributes(statusMatch[1]) : {};
-      const isUp = (statusAttrs.state || '').toLowerCase() === 'up';
-
-      // Parse addresses (IPv4, IPv6, MAC)
-      let ipv4 = null;
-      let ipv6 = null;
-      let mac = null;
-      let macVendor = null;
-
-      const addressRegex = /<address\s+([^>]+)\/?>/gi;
-      let addrMatch;
-      while ((addrMatch = addressRegex.exec(hostBlock)) !== null) {
-        const attrs = parseXmlAttributes(addrMatch[1]);
-        if (attrs.addrtype === 'ipv4') ipv4 = attrs.addr;
-        else if (attrs.addrtype === 'ipv6') ipv6 = attrs.addr;
-        else if (attrs.addrtype === 'mac') {
-          mac = attrs.addr;
-          macVendor = attrs.vendor || null;
-        }
-      }
-
-      const ip = ipv4 || ipv6 || 'unknown-ip';
-
-      // Parse hostnames
-      const hostnames = [];
-      const hostnamesBlock = hostBlock.match(/<hostnames>([\s\S]*?)<\/hostnames>/i);
-      if (hostnamesBlock) {
-        const hostnameRegex = /<hostname\s+([^>]+)\/?>/gi;
-        let hMatch;
-        while ((hMatch = hostnameRegex.exec(hostnamesBlock[1])) !== null) {
-          const hAttrs = parseXmlAttributes(hMatch[1]);
-          if (hAttrs.name) {
-            hostnames.push({ name: hAttrs.name, type: hAttrs.type || 'user' });
-          }
-        }
-      }
-      const primaryHostname = hostnames.length > 0 ? hostnames[0].name : ip;
-
-      // Parse ports
-      const ports = [];
-      const portsBlock = hostBlock.match(/<ports>([\s\S]*?)<\/ports>/i);
-      if (portsBlock) {
-        const portRegex = /<port\s+([^>]+)>([\s\S]*?)<\/port>/gi;
-        let pMatch;
-        while ((pMatch = portRegex.exec(portsBlock[1])) !== null) {
-          const portAttrs = parseXmlAttributes(pMatch[1]);
-          const portInner = pMatch[2];
-
-          const stateMatch = portInner.match(/<state\s+([^>]+)\/?>/i);
-          const stateAttrs = stateMatch ? parseXmlAttributes(stateMatch[1]) : {};
-
-          const serviceMatch = portInner.match(/<service\s+([^>]+)>(?:[\s\S]*?)<\/service>|<service\s+([^>]+)\/?>/i);
-          const serviceAttrs = serviceMatch ? parseXmlAttributes(serviceMatch[1] || serviceMatch[2]) : {};
-
-          // Parse scripts
-          const scripts = [];
-          const scriptRegex = /<script\s+([^>]+)(?:>([\s\S]*?)<\/script>|\/?>)/gi;
-          let sMatch;
-          while ((sMatch = scriptRegex.exec(portInner)) !== null) {
-            const sAttrs = parseXmlAttributes(sMatch[1]);
-            const sOutput = sAttrs.output || (sMatch[2] ? stripXmlTags(sMatch[2]).trim() : '');
-            if (sAttrs.id) {
-              scripts.push({ id: sAttrs.id, output: sOutput });
-            }
-          }
-
-          // Parse CPE
-          const cpeMatch = portInner.match(/<cpe>([\s\S]*?)<\/cpe>/i);
-          const cpe = cpeMatch ? cpeMatch[1].trim() : null;
-
-          ports.push({
-            port: parseInt(portAttrs.portid || '0', 10),
-            protocol: portAttrs.protocol || 'tcp',
-            state: stateAttrs.state || 'unknown',
-            reason: stateAttrs.reason || '',
-            service: serviceAttrs.name || 'unknown',
-            product: serviceAttrs.product || '',
-            version: serviceAttrs.version || '',
-            extraInfo: serviceAttrs.extrainfo || '',
-            method: serviceAttrs.method || 'table',
-            conf: serviceAttrs.conf || '',
-            cpe,
-            scripts
-          });
-        }
-      }
-
-      // Parse OS Matches
-      const osMatches = [];
-      const osBlock = hostBlock.match(/<os>([\s\S]*?)<\/os>/i);
-      if (osBlock) {
-        const osMatchRegex = /<osmatch\s+([^>]+)>/gi;
-        let oMatch;
-        while ((oMatch = osMatchRegex.exec(osBlock[1])) !== null) {
-          const oAttrs = parseXmlAttributes(oMatch[1]);
-          if (oAttrs.name) {
-            osMatches.push({
-              name: oAttrs.name,
-              accuracy: parseInt(oAttrs.accuracy || '0', 10),
-              line: oAttrs.line || ''
-            });
-          }
-        }
-      }
-
-      // Parse Times / Latency
-      const timesMatch = hostBlock.match(/<times\s+([^>]+)\/?>/i);
-      const timesAttrs = timesMatch ? parseXmlAttributes(timesMatch[1]) : {};
-      const latencyMs = timesAttrs.srtt ? (parseInt(timesAttrs.srtt, 10) / 1000).toFixed(2) + 'ms' : null;
-
-      const openPorts = ports.filter(p => p.state === 'open');
-
-      hosts.push({
-        ip,
-        mac,
-        macVendor,
-        hostnames,
-        primaryHostname,
-        isUp,
-        status: {
-          state: statusAttrs.state || (isUp ? 'up' : 'down'),
-          reason: statusAttrs.reason || '',
-          latency: latencyMs
-        },
+      return {
+        ...h,
+        ip: h.id,
+        macVendor: h.vendor,
         ports,
         openPorts,
         openPortsCount: openPorts.length,
         osMatches,
-        bestOsMatch: osMatches.length > 0 ? osMatches[0] : null
-      });
-    }
-
-    // Extract target
-    const target = nmapAttrs.args
-      ? nmapAttrs.args.split(' ').pop()
-      : (hosts.length > 0 ? hosts[0].ip : path.basename(filename).replace(/^nmap-/, '').replace(/-\d+\.xml$/, '').replace(/_/g, '/'));
+        bestOsMatch: osMatches.length > 0 ? osMatches[0] : null,
+        status: {
+          state: h.status?.state || (h.isUp ? 'up' : 'down'),
+          reason: h.status?.reason || '',
+          latency: h.latencyMs !== undefined ? `${h.latencyMs}ms` : null
+        }
+      };
+    });
 
     const totalOpenPorts = hosts.reduce((acc, h) => acc + h.openPortsCount, 0);
-    const totalScripts = hosts.reduce((acc, h) => acc + h.ports.reduce((pAcc, p) => pAcc + p.scripts.length, 0), 0);
-    const isCidr = target.includes('/') || hosts.length > 1 || (runStats.hostsTotal && runStats.hostsTotal > 1);
+    const totalScripts = hosts.reduce((acc, h) => acc + (h.ports || []).reduce((pAcc, p) => pAcc + (p.scripts?.length || 0), 0), 0);
+    const isCidr = parsed.target.includes('/') || hosts.length > 1 || (parsed.runStats?.hosts?.total && parsed.runStats.hosts.total > 1);
 
     return {
-      isValid: true,
-      filename,
-      scanner: nmapAttrs.scanner || 'nmap',
-      version: nmapAttrs.version || 'unknown',
-      args: nmapAttrs.args || '',
-      startStr: nmapAttrs.startstr || '',
-      target,
-      isCidr,
-      scanInfo: {
-        type: scanInfo.type || 'syn',
-        protocol: scanInfo.protocol || 'tcp',
-        numServices: parseInt(scanInfo.numservices || '0', 10)
-      },
-      runStats: {
-        ...runStats,
-        hostsUp: runStats.hostsUp || hosts.filter(h => h.isUp).length,
-        hostsTotal: runStats.hostsTotal || hosts.length
-      },
+      ...parsed,
       hosts,
-      liveHosts: hosts.filter(h => h.isUp),
+      liveHosts: hosts.filter((h) => h.isUp),
       totalOpenPorts,
       totalScripts,
+      isCidr,
       summary: isCidr
-        ? `${hosts.filter(h => h.isUp).length} active hosts (${totalOpenPorts} open ports, ${totalScripts} script findings)`
-        : `${totalOpenPorts} open ports on ${target} (${totalScripts} script findings)`
+        ? `${hosts.filter((h) => h.isUp).length} active hosts (${totalOpenPorts} open ports, ${totalScripts} script findings)`
+        : `${totalOpenPorts} open ports on ${parsed.target} (${totalScripts} script findings)`
     };
   } catch (err) {
-    logger.error('NMAP_XML:PARSE_ERROR', `Failed to parse XML: ${err.message}`, err);
+    logger.error('NMAP_XML:PARSE_ERROR', `Failed to parse XML with NastyMap: ${err.message}`, err);
     return {
       isValid: false,
       error: err.message,
@@ -238,27 +104,6 @@ export function parseNmapXml(xmlContent, filename = '') {
       runStats: {}
     };
   }
-}
-
-/**
- * Helper to parse attribute key="value" pairs from an XML tag string
- */
-function parseXmlAttributes(attrString) {
-  const attrs = {};
-  if (!attrString) return attrs;
-  const regex = /([a-zA-Z0-9_:-]+)="([^"]*)"/g;
-  let match;
-  while ((match = regex.exec(attrString)) !== null) {
-    attrs[match[1]] = match[2];
-  }
-  return attrs;
-}
-
-/**
- * Strip XML/HTML tags from a string
- */
-function stripXmlTags(str) {
-  return str.replace(/<[^>]*>/g, '');
 }
 
 /**

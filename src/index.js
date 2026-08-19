@@ -19,4 +19,26 @@ export {
   createCustomPlaybookTemplate,
   generateThreatJobManifest
 } from './engine/threats.js';
+export {
+  NIST_ATTACK_VECTORS,
+  NIST_LIFECYCLE_PHASES,
+  NIST_EVIDENCE_VOLATILITY,
+  ARTIFACT_VOLATILITY_MAP,
+  NIST_IMPACT_LEVELS,
+  calculateNistIncidentScore,
+  classifyAttackVector,
+  generateNistIncidentRecord,
+  generateNistPostMortemMarkdown,
+  listNistIncidents
+} from './engine/nist.js';
+export {
+  generateTopology,
+  compareNmapScans,
+  generateHeadlessSvg,
+  generateHtmlReport,
+  geocodeIp,
+  parseNmapXml,
+  listSavedXmlScans,
+  readXmlScan
+} from './engine/nmap-xml.js';
 

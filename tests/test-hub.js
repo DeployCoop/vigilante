@@ -45,7 +45,7 @@ async function runTests() {
     throw new Error('Core hub items missing');
   }
 
-  if (nmapItem.key !== '0' || modItem.key !== '2') {
+  if (nmapItem.key !== '5' || modItem.key !== '0') {
     throw new Error(`Unexpected hotkey mapping: nmap=${nmapItem.key}, modules=${modItem.key}`);
   }
   console.log('✔ Test 4 passed: Number and letter hotkeys cleanly disambiguate Namespace, Nmap, Modules, and Pods.');

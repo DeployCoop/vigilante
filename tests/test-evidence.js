@@ -53,10 +53,10 @@ async function runTests() {
     };
 
     const triageRes = await saveTriageBundle('10.0.1.0/24', '10.0.1.5', sampleBundle);
-    if (triageRes.artifacts.length !== 7) {
-      throw new Error(`Expected 7 triage artifacts saved, got: ${triageRes.artifacts.length}`);
+    if (triageRes.artifacts.length !== 8) {
+      throw new Error(`Expected 8 triage artifacts saved, got: ${triageRes.artifacts.length}`);
     }
-    console.log(`✔ Test 3 passed: saveTriageBundle generated ${triageRes.artifacts.length} structured artifacts (ping, mtr, dns, tls, http, arp, summary).`);
+    console.log(`✔ Test 3 passed: saveTriageBundle generated ${triageRes.artifacts.length} structured artifacts (ping, mtr, dns, tls, http, arp, summary, nist_incident_record).`);
 
     // Test 4: List Evidence Vault
     const vault = await listEvidenceVault();

@@ -9,7 +9,15 @@ import {
   ListResourceTemplatesRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { listSavedXmlScans, readXmlScan, parseNmapXml } from '../engine/nmap-xml.js';
+import {
+  listSavedXmlScans,
+  readXmlScan,
+  parseNmapXml,
+  generateTopology,
+  generateHeadlessSvg,
+  generateHtmlReport,
+  compareNmapScans
+} from '../engine/nmap-xml.js';
 import { listSavedNmapScans, readSavedScan, runNmapScan, SCAN_PROFILES, detectNetworkSubnets } from '../engine/nmap.js';
 import { listEvidenceVault, listHostEvidence, readEvidenceFile, readEvidenceContent, saveEvidenceFile } from '../engine/evidence.js';
 import { verifyFileSignature, listSecretKeys } from '../engine/gpg.js';
@@ -21,6 +29,16 @@ import { checkCertificates } from '../engine/certs.js';
 import { loadConfig } from '../engine/config.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 import { listAvailablePlaybooks, executeThreatPlaybook } from '../engine/threats.js';
+import {
+  NIST_ATTACK_VECTORS,
+  NIST_LIFECYCLE_PHASES,
+  NIST_EVIDENCE_VOLATILITY,
+  NIST_IMPACT_LEVELS,
+  calculateNistIncidentScore,
+  generateNistIncidentRecord,
+  generateNistPostMortemMarkdown,
+  listNistIncidents
+} from '../engine/nist.js';
 
 /**
  * Creates and configures the Vigilante MCP Server
@@ -98,6 +116,30 @@ export function createVigilanteMcpServer() {
           name: 'Threat Simulation Playbooks',
           description: 'List of all available built-in and custom attack simulation playbooks with MITRE techniques, severity, and event metadata.',
           mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://nist/framework',
+          name: 'NIST SP 800-61 Rev. 2 Framework & Taxonomy Reference',
+          description: 'Authoritative reference definitions for NIST Attack Vectors, Lifecycle Phases, Order of Volatility, and Impact Scoring.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://nist/incidents',
+          name: 'Active NIST SP 800-61 Incident Records',
+          description: 'List of all active and archived incident manifests from the Evidence Vault with 3D impact scores and GPG verification.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://topology/svg',
+          name: 'NastyMap Headless SVG Network Topology',
+          description: 'Vector SVG diagram visualizing live host topology, nodes, traceroute hops, and subnet boundaries.',
+          mimeType: 'image/svg+xml'
+        },
+        {
+          uri: 'vigilante://topology/html',
+          name: 'NastyMap Standalone Interactive HTML Report',
+          description: 'Complete standalone HTML report containing SVG map, host matrix, and service fingerprints.',
+          mimeType: 'text/html'
         }
       ]
     };
@@ -322,6 +364,82 @@ export function createVigilanteMcpServer() {
             uri,
             mimeType: 'application/json',
             text: JSON.stringify({ count: playbooks.length, playbooks }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // J. NIST SP 800-61 Rev. 2 Framework & Taxonomy Reference
+    if (uri === 'vigilante://nist/framework' || uri === 'vigilante://nist') {
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              standard: 'NIST SP 800-61 Rev. 2 (Computer Security Incident Handling Guide)',
+              lifecyclePhases: NIST_LIFECYCLE_PHASES,
+              attackVectors: NIST_ATTACK_VECTORS,
+              orderOfVolatility: NIST_EVIDENCE_VOLATILITY,
+              impactLevels: NIST_IMPACT_LEVELS
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // K. Active NIST SP 800-61 Incidents
+    if (uri === 'vigilante://nist/incidents') {
+      const incidents = await listNistIncidents();
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              count: incidents.length,
+              incidents
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // L. NastyMap SVG Topology
+    if (uri === 'vigilante://topology/svg') {
+      const scans = await listSavedXmlScans();
+      if (scans.length === 0) {
+        throw new Error('No saved Nmap XML scans found to generate SVG topology.');
+      }
+      const activeScan = scans[0];
+      const graph = generateTopology(activeScan);
+      const svg = generateHeadlessSvg(graph, { title: `Vigilante Topology: ${activeScan.target}` });
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'image/svg+xml',
+            text: svg
+          }
+        ]
+      };
+    }
+
+    // M. NastyMap Standalone Interactive HTML Report
+    if (uri === 'vigilante://topology/html') {
+      const scans = await listSavedXmlScans();
+      if (scans.length === 0) {
+        throw new Error('No saved Nmap XML scans found to generate HTML report.');
+      }
+      const activeScan = scans[0];
+      const graph = generateTopology(activeScan);
+      const html = generateHtmlReport(activeScan, graph);
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'text/html',
+            text: html
           }
         ]
       };
@@ -723,6 +841,109 @@ export function createVigilanteMcpServer() {
               }
             },
             required: ['scenario']
+          }
+        },
+        {
+          name: 'assess_nist_incident',
+          description: 'Perform an authoritative NIST SP 800-61 Rev. 2 incident evaluation for a target host, calculating 3D impact score, attack vector, and containment SLA.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              host: {
+                type: 'string',
+                description: 'Target compromised or suspicious host IP address (e.g. 10.0.1.15)'
+              },
+              network: {
+                type: 'string',
+                description: 'CIDR network subnet containing the host (e.g. 10.0.1.0/24)'
+              },
+              functionalImpact: {
+                type: 'string',
+                enum: ['NONE', 'LOW', 'MEDIUM', 'HIGH'],
+                description: 'NIST Functional Impact on operational systems (default: MEDIUM)'
+              },
+              informationImpact: {
+                type: 'string',
+                enum: ['NONE', 'PRIVACY_BREACH', 'PROPRIETARY_BREACH', 'INTEGRITY_LOSS'],
+                description: 'NIST Information Impact on data confidentiality/integrity (default: PRIVACY_BREACH)'
+              },
+              recoverabilityEffort: {
+                type: 'string',
+                enum: ['REGULAR', 'SUPPLEMENTED', 'EXTENDED', 'NOT_RECOVERABLE'],
+                description: 'NIST Recoverability Effort for CSIRT remediation (default: REGULAR)'
+              },
+              rootCause: {
+                type: 'string',
+                description: 'Initial access vector hypothesis or confirmed entry point'
+              }
+            },
+            required: ['host']
+          }
+        },
+        {
+          name: 'generate_nist_postmortem',
+          description: 'Generate an official NIST SP 800-61 Rev. 2 incident post-mortem markdown report, save it to the Evidence Vault, and optionally sign with GPG.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              host: {
+                type: 'string',
+                description: 'Target compromised host IP address'
+              },
+              network: {
+                type: 'string',
+                description: 'CIDR network subnet (default: 10.0.1.0_24)'
+              },
+              incidentId: {
+                type: 'string',
+                description: 'Optional incident ID to associate with the post-mortem report'
+              },
+              rootCause: {
+                type: 'string',
+                description: 'Summary of initial access vector and adversary actions'
+              }
+            },
+            required: ['host']
+          }
+        },
+        {
+          name: 'diff_nmap_scans',
+          description: 'Compare two Nmap XML scans to produce a structured security diff showing added/removed hosts, newly opened ports, service version drifts, and rogue listeners.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              baselineScan: {
+                type: 'string',
+                description: 'Baseline / older scan filename or full file path (optional, defaults to second latest scan)'
+              },
+              targetScan: {
+                type: 'string',
+                description: 'Target / newer scan filename or full file path (optional, defaults to latest scan)'
+              }
+            }
+          }
+        },
+        {
+          name: 'generate_topology_map',
+          description: 'Generate a NastyMap SVG diagram or standalone interactive HTML report for an Nmap scan.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scanFilename: {
+                type: 'string',
+                description: 'Specific XML scan filename or path (defaults to latest scan)'
+              },
+              format: {
+                type: 'string',
+                enum: ['svg', 'html', 'json'],
+                description: 'Output format (svg, html, or json topology graph)'
+              },
+              layout: {
+                type: 'string',
+                enum: ['force2d', 'radial', 'tree', 'subnet'],
+                description: 'Graph topology layout algorithm (default: force2d)'
+              }
+            }
           }
         }
       ]
@@ -1161,6 +1382,165 @@ export function createVigilanteMcpServer() {
               namespace: result.namespace,
               logs
             }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: assess_nist_incident
+    if (name === 'assess_nist_incident') {
+      const {
+        host,
+        network = '10.0.1.0_24',
+        functionalImpact = 'MEDIUM',
+        informationImpact = 'PRIVACY_BREACH',
+        recoverabilityEffort = 'REGULAR',
+        rootCause = 'Evaluated via MCP assess_nist_incident tool'
+      } = args;
+
+      const record = generateNistIncidentRecord({
+        host,
+        network,
+        functionalImpact,
+        informationImpact,
+        recoverabilityEffort,
+        rootCause
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(record, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: generate_nist_postmortem
+    if (name === 'generate_nist_postmortem') {
+      const {
+        host,
+        network = '10.0.1.0_24',
+        incidentId = null,
+        rootCause = 'Incident evaluated and contained'
+      } = args;
+
+      const record = generateNistIncidentRecord({
+        incidentId,
+        host,
+        network,
+        rootCause
+      });
+
+      const markdown = generateNistPostMortemMarkdown(record);
+      const saveRes = await saveEvidenceFile(network, host, `postmortem-${record.incidentId}.md`, markdown);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              incidentId: record.incidentId,
+              filePath: saveRes.filePath,
+              isSigned: saveRes.isSigned,
+              signaturePath: saveRes.signaturePath,
+              markdownReport: markdown
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: diff_nmap_scans
+    if (name === 'diff_nmap_scans') {
+      const { baselineScan, targetScan } = args;
+      const scans = await listSavedXmlScans();
+      if (scans.length < 2 && (!baselineScan || !targetScan)) {
+        throw new Error('At least 2 saved Nmap XML scans are required to compute a security diff.');
+      }
+
+      let scanA = null;
+      let scanB = null;
+
+      if (baselineScan) {
+        scanA = scans.find(s => s.filePath === baselineScan || s.filename === baselineScan || s.id === baselineScan);
+        if (!scanA) {
+          const raw = await readXmlScan(baselineScan);
+          scanA = raw;
+        }
+      } else {
+        scanA = scans[1];
+      }
+
+      if (targetScan) {
+        scanB = scans.find(s => s.filePath === targetScan || s.filename === targetScan || s.id === targetScan);
+        if (!scanB) {
+          const raw = await readXmlScan(targetScan);
+          scanB = raw;
+        }
+      } else {
+        scanB = scans[0];
+      }
+
+      const diff = compareNmapScans(scanA, scanB);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(diff, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: generate_topology_map
+    if (name === 'generate_topology_map') {
+      const { scanFilename, format = 'svg', layout = 'force2d' } = args;
+      const scans = await listSavedXmlScans();
+      if (scans.length === 0 && !scanFilename) {
+        throw new Error('No saved Nmap XML scans found to generate topology map.');
+      }
+
+      let scan = scans[0];
+      if (scanFilename) {
+        const found = scans.find(s => s.filePath === scanFilename || s.filename === scanFilename || s.id === scanFilename);
+        if (found) scan = found;
+        else scan = await readXmlScan(scanFilename);
+      }
+
+      const graph = generateTopology(scan, { layout });
+
+      if (format === 'json') {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(graph, null, 2)
+            }
+          ]
+        };
+      }
+
+      if (format === 'html') {
+        const html = generateHtmlReport(scan, graph);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: html
+            }
+          ]
+        };
+      }
+
+      // Default: SVG
+      const svg = generateHeadlessSvg(graph, { title: `Vigilante Topology: ${scan.target}` });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: svg
           }
         ]
       };

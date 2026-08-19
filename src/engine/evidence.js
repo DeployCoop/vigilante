@@ -3,6 +3,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { getVigilanteEvidenceDir, getHostEvidenceDir, sanitizePathComponent, ensureVigilanteConfig } from './config.js';
 import { autoSignIfConfigured, verifyFileSignature } from './gpg.js';
+import { ARTIFACT_VOLATILITY_MAP, classifyAttackVector, generateNistIncidentRecord } from './nist.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -51,7 +52,7 @@ export async function saveEvidenceFile(networkCidr, hostIp, fileName, content) {
 }
 
 /**
- * Save a complete triage evidence bundle for a host
+ * Save a complete triage evidence bundle for a host adhering to NIST SP 800-61 Rev. 2 & RFC 3227
  * @param {string} networkCidr
  * @param {string} hostIp
  * @param {Object} bundle Object containing diagnostic results
@@ -65,73 +66,85 @@ export async function saveTriageBundle(networkCidr, hostIp, bundle = {}) {
   const savedFiles = [];
   const timestamp = new Date().toISOString();
 
-  // 1. Ping evidence
+  // 1. Ping evidence (NIST Volatility Rank 3)
   if (bundle.ping) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'ping.json', bundle.ping);
     savedFiles.push({
       name: 'ping.json',
       path: res.filePath,
       type: 'ICMP Latency',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['ping.json']?.rank || 3,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['ping.json']?.volatilityName || 'Network State',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 2. MTR / Trace evidence
+  // 2. MTR / Trace evidence (NIST Volatility Rank 3)
   if (bundle.mtr) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'mtr.txt', bundle.mtr.output || bundle.mtr);
     savedFiles.push({
       name: 'mtr.txt',
       path: res.filePath,
       type: 'Route Path & Loss',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['mtr.txt']?.rank || 3,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['mtr.txt']?.volatilityName || 'Network Routing State',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 3. DNS evidence
+  // 3. DNS evidence (NIST Volatility Rank 3)
   if (bundle.dns) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'dns_records.json', bundle.dns);
     savedFiles.push({
       name: 'dns_records.json',
       path: res.filePath,
       type: 'DNS Records & PTR',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['dns_records.json']?.rank || 3,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['dns_records.json']?.volatilityName || 'DNS Cache Sockets',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 4. TLS Certificates evidence
+  // 4. TLS Certificates evidence (NIST Volatility Rank 3)
   if (bundle.tls) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'tls_certificates.pem', bundle.tls.output || bundle.tls);
     savedFiles.push({
       name: 'tls_certificates.pem',
       path: res.filePath,
       type: 'TLS Certificate Chain',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['tls_certificates.pem']?.rank || 3,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['tls_certificates.pem']?.volatilityName || 'Active TLS Ingress Socket',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 5. HTTP Headers & Banners evidence
+  // 5. HTTP Headers & Banners evidence (NIST Volatility Rank 4)
   if (bundle.http) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'http_headers.txt', bundle.http.output || bundle.http);
     savedFiles.push({
       name: 'http_headers.txt',
       path: res.filePath,
       type: 'HTTP Headers & Security Tokens',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['http_headers.txt']?.rank || 4,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['http_headers.txt']?.volatilityName || 'Application Worker Process State',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 6. ARP / Neighbors evidence
+  // 6. ARP / Neighbors evidence (NIST Volatility Rank 3)
   if (bundle.arp) {
     const res = await saveEvidenceFile(networkCidr, hostIp, 'arp_neighbors.json', bundle.arp);
     savedFiles.push({
       name: 'arp_neighbors.json',
       path: res.filePath,
       type: 'Kernel ARP & Neighbor Table',
+      volatilityRank: ARTIFACT_VOLATILITY_MAP['arp_neighbors.json']?.rank || 3,
+      volatilityLevel: ARTIFACT_VOLATILITY_MAP['arp_neighbors.json']?.volatilityName || 'Kernel ARP Table',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
@@ -144,17 +157,21 @@ export async function saveTriageBundle(networkCidr, hostIp, bundle = {}) {
       name: 'benchmark.txt',
       path: res.filePath,
       type: 'HTTP Load & Concurrency',
+      volatilityRank: 4,
+      volatilityLevel: 'Process Benchmark',
       isSigned: res.isSigned,
       signaturePath: res.signaturePath
     });
   }
 
-  // 8. Triage summary index
+  // 8. Triage summary index (NIST Volatility Rank 5)
   const summary = {
+    standard: 'NIST SP 800-61 Rev. 2 / RFC 3227',
     network: networkCidr,
     host: hostIp,
     capturedAt: timestamp,
     totalArtifacts: savedFiles.length,
+    volatilityOrderApplied: true,
     artifacts: savedFiles,
     metadata: bundle.metadata || {}
   };
@@ -164,16 +181,53 @@ export async function saveTriageBundle(networkCidr, hostIp, bundle = {}) {
     name: 'triage_summary.json',
     path: summaryRes.filePath,
     type: 'IR Triage Summary Index',
+    volatilityRank: 5,
+    volatilityLevel: 'Authoritative Chain-of-Custody Index',
     isSigned: summaryRes.isSigned,
     signaturePath: summaryRes.signaturePath
   });
 
-  logger.info('EVIDENCE:TRIAGE_BUNDLE', `Completed triage bundle for ${hostIp} in ${networkCidr} (${savedFiles.length} artifacts)`);
+  // 9. Auto-generate and sign NIST Incident Record (NIST SP 800-61 Section 3.2)
+  const detectedVector = classifyAttackVector({
+    arp: bundle.arp,
+    http: bundle.http,
+    message: bundle.metadata?.reason || ''
+  });
+
+  const nistRecord = generateNistIncidentRecord({
+    network: networkCidr,
+    host: hostIp,
+    detectedAt: timestamp,
+    attackVector: detectedVector,
+    functionalImpact: bundle.arp?.hasCollision ? 'HIGH' : 'MEDIUM',
+    informationImpact: bundle.arp?.hasCollision ? 'PRIVACY_BREACH' : 'NONE',
+    recoverabilityEffort: 'REGULAR',
+    artifacts: savedFiles,
+    rootCause: bundle.arp?.hasCollision
+      ? 'Suspected ARP Gateway Impersonation / Adversary-In-The-Middle (MITM)'
+      : 'Live diagnostic triage capture'
+  });
+
+  const nistRes = await saveEvidenceFile(networkCidr, hostIp, 'nist_incident_record.json', nistRecord);
+  savedFiles.push({
+    name: 'nist_incident_record.json',
+    path: nistRes.filePath,
+    type: 'NIST SP 800-61 Rev. 2 Incident Manifest',
+    volatilityRank: 5,
+    volatilityLevel: 'NIST Incident Record',
+    isSigned: nistRes.isSigned,
+    signaturePath: nistRes.signaturePath
+  });
+
+  logger.info('EVIDENCE:TRIAGE_BUNDLE', `Completed NIST SP 800-61 triage bundle for ${hostIp} in ${networkCidr} (${savedFiles.length} artifacts)`);
   return {
     hostDir,
     network: networkCidr,
     host: hostIp,
     timestamp,
+    nistIncidentId: nistRecord.incidentId,
+    nistAttackVector: detectedVector.name,
+    nistSeverity: nistRecord.prioritization.severity,
     artifacts: savedFiles
   };
 }

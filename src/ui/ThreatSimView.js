@@ -484,6 +484,12 @@ ${logs.join('\n')}
                           { color: sevColor, bold: true },
                           `[${pb.severity || 'HIGH'}] `
                         ),
+                        pb.nistVector
+                          ? React.createElement(Text, { color: theme.secondary || 'magenta', bold: true }, `[NIST: ${pb.nistVector}] `)
+                          : null,
+                        pb.signType === 'PRECURSOR'
+                          ? React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, `[PRECURSOR] `)
+                          : null,
                         pb.isCustom
                           ? React.createElement(Text, { color: theme.success || 'green', bold: true }, '⭐ [CUSTOM] ')
                           : null

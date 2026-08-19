@@ -125,8 +125,8 @@ uid:u::::1786891612::0DED6E1DEDE5B9A8DA46AA8889DACEC57C52DDF7::Vigilante Securit
     };
     const triageRes = await saveTriageBundle('10.0.1.0/24', '10.0.1.5', triageBundle);
     const signedArtifacts = triageRes.artifacts.filter(a => a.isSigned);
-    if (signedArtifacts.length !== 3) { // ping, dns, triage_summary
-      throw new Error(`Expected 3 signed artifacts, got: ${signedArtifacts.length}`);
+    if (signedArtifacts.length !== 4) { // ping, dns, triage_summary, nist_incident_record
+      throw new Error(`Expected 4 signed artifacts, got: ${signedArtifacts.length}`);
     }
 
     const hostArtifacts = await listHostEvidence('10.0.1.0/24', '10.0.1.5');

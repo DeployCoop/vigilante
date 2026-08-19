@@ -2,7 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import path from 'node:path';
-import { listSavedXmlScans, readXmlScan } from '../engine/nmap-xml.js';
+import fs from 'node:fs/promises';
+import { execa } from 'execa';
+import {
+  listSavedXmlScans,
+  readXmlScan,
+  generateTopology,
+  generateHtmlReport,
+  generateHeadlessSvg,
+  compareNmapScans
+} from '../engine/nmap-xml.js';
+import { getVigilanteEvidenceDir, ensureVigilanteConfig } from '../engine/config.js';
 import {
   runPing,
   runBenchmark,
@@ -13,7 +23,7 @@ import {
   runArpNeighLookup,
   runFullTriageCapture
 } from '../engine/diagnostics.js';
-import { listHostEvidence, saveEvidenceFile, readEvidenceContent } from '../engine/evidence.js';
+import { listHostEvidence, saveEvidenceFile } from '../engine/evidence.js';
 import { openInSystemPager } from '../engine/pods.js';
 import { openInEditor } from '../utils/editor.js';
 import { useClipboard } from './ClipboardManager.js';
@@ -28,6 +38,22 @@ const FILTER_MODES = [
   { id: 'VULNS', label: '🛡️ Script / CVEs' }
 ];
 
+async function launchBrowser(filePath) {
+  try {
+    const platform = process.platform;
+    if (platform === 'darwin') {
+      await execa('open', [filePath]);
+    } else if (platform === 'win32') {
+      await execa('cmd.exe', ['/c', 'start', '""', filePath]);
+    } else {
+      await execa('xdg-open', [filePath]);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 export const NmapVisualizerView = ({
   initialXmlPath = null,
   onNavigate = null
@@ -40,6 +66,7 @@ export const NmapVisualizerView = ({
   const [feedback, setFeedback] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeDiagnostic, setActiveDiagnostic] = useState(null);
+  const [diffResult, setDiffResult] = useState(null);
   const [hostEvidenceList, setHostEvidenceList] = useState([]);
 
   const { registerPanes } = useClipboard();
@@ -75,7 +102,7 @@ export const NmapVisualizerView = ({
   const filteredHosts = allHosts.filter(h => {
     if (currentFilter.id === 'LIVE') return h.isUp;
     if (currentFilter.id === 'OPEN_PORTS') return h.openPortsCount > 0;
-    if (currentFilter.id === 'VULNS') return h.ports.some(p => p.scripts && p.scripts.length > 0);
+    if (currentFilter.id === 'VULNS') return (h.vulnerabilitiesCount && h.vulnerabilitiesCount > 0) || h.ports.some(p => p.scripts && p.scripts.length > 0);
     return true;
   });
 
@@ -99,20 +126,21 @@ export const NmapVisualizerView = ({
     registerPanes([
       {
         id: 'nmap-xml-visualizer',
-        title: `Nmap XML Topology: ${activeScan.target}`,
+        title: `NastyMap Topology: ${activeScan.target}`,
         startRow: 6,
         endRow: 35,
         getText: () => {
           const lines = [
-            `Nmap XML Scan Report: ${activeScan.target}`,
+            `NastyMap Scan Report: ${activeScan.target}`,
             `Command: ${activeScan.args}`,
-            `Scanned at: ${activeScan.startStr} (Elapsed: ${activeScan.runStats.elapsedSec}s)`,
-            `Total Hosts: ${activeScan.runStats.hostsTotal} | Hosts Up: ${activeScan.runStats.hostsUp} | Open Ports: ${activeScan.totalOpenPorts}`,
+            `Scanned at: ${activeScan.startStr || activeScan.startstr}`,
+            `Total Hosts: ${activeScan.hosts.length} | Open Ports: ${activeScan.totalOpenPorts}`,
             '',
-            '=== DISCOVERED HOSTS & PORTS ===',
+            '=== DISCOVERED HOSTS & SERVICES ===',
             ...filteredHosts.map(h => {
               const portSummary = h.openPorts.map(p => `${p.port}/${p.protocol} (${p.service} ${p.product} ${p.version})`).join(', ');
-              return `• ${h.ip} ${h.primaryHostname !== h.ip ? '(' + h.primaryHostname + ')' : ''} [${h.status.state}] - ${portSummary || 'No open ports'}`;
+              const osLabel = h.primaryOs || h.osFamily ? ` [${h.primaryOs || h.osFamily}]` : '';
+              return `• ${h.ip} ${h.primaryHostname !== h.ip ? '(' + h.primaryHostname + ')' : ''}${osLabel} - ${portSummary || 'No open ports'}`;
             })
           ];
           return lines.join('\n');
@@ -121,11 +149,73 @@ export const NmapVisualizerView = ({
     ]);
   }, [activeScan, filteredHosts, registerPanes]);
 
+  const handleOpenWebMap = async () => {
+    if (!activeScan) return;
+    try {
+      await ensureVigilanteConfig();
+      const mapsDir = path.join(getVigilanteEvidenceDir(), 'maps');
+      await fs.mkdir(mapsDir, { recursive: true });
+
+      const graph = generateTopology(activeScan, { layout: 'force2d' });
+      const html = generateHtmlReport(activeScan, graph);
+      const scanId = activeScan.id || `scan-${Date.now()}`;
+      const filePath = path.join(mapsDir, `nastymap-${scanId}.html`);
+
+      await fs.writeFile(filePath, html, 'utf8');
+      const openRes = await launchBrowser(filePath);
+
+      if (openRes.success) {
+        setFeedback({ type: 'success', text: `🌐 Launched NastyMap in browser: ${path.basename(filePath)}` });
+      } else {
+        setFeedback({ type: 'info', text: `✔ Generated HTML report: ${filePath} (Run: xdg-open ${filePath})` });
+      }
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err) {
+      setFeedback({ type: 'error', text: `✖ Failed to generate web map: ${err.message}` });
+    }
+  };
+
+  const handleExportSvg = async () => {
+    if (!activeScan) return;
+    try {
+      await ensureVigilanteConfig();
+      const mapsDir = path.join(getVigilanteEvidenceDir(), 'maps');
+      await fs.mkdir(mapsDir, { recursive: true });
+
+      const graph = generateTopology(activeScan, { layout: 'force2d' });
+      const svg = generateHeadlessSvg(graph, { title: `Vigilante Topology: ${activeScan.target}` });
+      const scanId = activeScan.id || `scan-${Date.now()}`;
+      const filePath = path.join(mapsDir, `nastymap-${scanId}.svg`);
+
+      await fs.writeFile(filePath, svg, 'utf8');
+      setFeedback({ type: 'success', text: `✔ Exported SVG Vector Map to evidence/maps/nastymap-${scanId}.svg` });
+      setTimeout(() => setFeedback(null), 3500);
+    } catch (err) {
+      setFeedback({ type: 'error', text: `✖ SVG Export Error: ${err.message}` });
+    }
+  };
+
+  const handleRunDiff = async () => {
+    if (scans.length < 2) {
+      setFeedback({ type: 'info', text: 'Need at least 2 saved Nmap XML scans to calculate security diffs.' });
+      setTimeout(() => setFeedback(null), 3000);
+      return;
+    }
+
+    try {
+      const baselineIdx = (activeScanIdx + 1) % scans.length;
+      const baselineScan = scans[baselineIdx];
+      const diff = compareNmapScans(baselineScan, activeScan);
+      setDiffResult({ baseline: baselineScan, current: activeScan, diff });
+    } catch (err) {
+      setFeedback({ type: 'error', text: `Diff error: ${err.message}` });
+    }
+  };
+
   const handleViewRawXml = async () => {
     if (!activeScan) return;
     try {
-      const xmlRaw = await readXmlScan(activeScan.filePath);
-      const content = typeof xmlRaw === 'string' ? xmlRaw : await import('node:fs/promises').then(fs => fs.readFile(activeScan.filePath, 'utf8'));
+      const content = await fs.readFile(activeScan.filePath, 'utf8');
       openInSystemPager(content, activeScan.filename);
       await loadXmlScans();
     } catch (err) {
@@ -319,17 +409,19 @@ export const NmapVisualizerView = ({
     const updatedEvidence = await listHostEvidence(networkTarget, host.ip);
     setHostEvidenceList(updatedEvidence);
 
-    const artifactList = res.saved.artifacts.map(a => `  • ${a.name} (${a.type})`).join('\n');
+    const artifactList = (res.saved?.artifacts || []).map(a => `  • ${a.name} (${a.type}) [Vol Rank ${a.volatilityRank || 5}]`).join('\n');
     const summaryText = [
       `=== 🛡️ Incident Response Triage Bundle Complete ===`,
       `Target: ${host.ip} in network ${networkTarget}`,
-      `Captured: ${res.saved.artifacts.length} evidence artifacts in ${res.durationMs}ms`,
+      `NIST Incident ID: ${res.nistIncidentId || 'N/A'}`,
+      `NIST Attack Vector: ${res.nistAttackVector || 'WEB_APPLICATION'}`,
+      `Captured: ${res.saved?.artifacts?.length || 0} evidence artifacts in ${res.durationMs || 0}ms`,
       `Saved to: $XDG_CONFIG_HOME/vigilante/evidence/${networkTarget.replace(/\//g, '_')}/${host.ip}/`,
       '',
       `Evidence Artifacts Generated:`,
       artifactList,
       '',
-      `Press [v] to inspect the triage summary index in pager.`
+      `Press [Enter] to inspect the triage summary index in pager.`
     ].join('\n');
 
     setActiveDiagnostic({
@@ -353,7 +445,21 @@ export const NmapVisualizerView = ({
 
     const keyChar = (input || '').toLowerCase();
 
-    // If active diagnostic modal is open
+    // Diff Modal Handling
+    if (diffResult) {
+      if (key.escape || keyChar === 'q' || keyChar === 'x') {
+        setDiffResult(null);
+        return;
+      }
+      if (keyChar === 'v' || key.return) {
+        const text = JSON.stringify(diffResult.diff, null, 2);
+        openInSystemPager(text, `diff-${diffResult.baseline.filename}-vs-${diffResult.current.filename}`);
+        return;
+      }
+      return;
+    }
+
+    // Diagnostic Modal Handling
     if (activeDiagnostic) {
       if (key.escape || keyChar === 'q' || keyChar === 'x') {
         setActiveDiagnostic(null);
@@ -376,44 +482,46 @@ export const NmapVisualizerView = ({
       return;
     }
 
+    // NastyMap Web & SVG Export Hotkeys
+    if (keyChar === 'w') {
+      handleOpenWebMap();
+      return;
+    }
+    if (keyChar === 'v') {
+      handleExportSvg();
+      return;
+    }
+    if (keyChar === 'd') {
+      handleRunDiff();
+      return;
+    }
+
     // Host Quick Diagnostic Triggers
     if (selectedHost) {
-      // [t] -> Full Incident Response Triage Bundle
       if (keyChar === 't') {
         executeFullTriage(selectedHost);
         return;
       }
-      // [p] -> Ping host
       if (keyChar === 'p') {
         executePing(selectedHost);
         return;
       }
-      // [b] -> ApacheBench / HTTP load test
       if (keyChar === 'b') {
         executeBenchmark(selectedHost);
         return;
       }
-      // [m] -> MTR Network trace
       if (keyChar === 'm') {
         executeMtr(selectedHost);
         return;
       }
-      // [h] -> HTTP Header inspection (curl -I)
       if (keyChar === 'h') {
         executeCurl(selectedHost);
         return;
       }
-      // [c] -> OpenSSL TLS Certificate Dump
       if (keyChar === 'c') {
         executeTlsCertDump(selectedHost);
         return;
       }
-      // [d] -> DNS resolution (dig)
-      if (keyChar === 'd') {
-        executeDns(selectedHost);
-        return;
-      }
-      // [a] -> ARP / Neighbor table inspection
       if (keyChar === 'a') {
         executeArp(selectedHost);
         return;
@@ -431,8 +539,8 @@ export const NmapVisualizerView = ({
       return;
     }
 
-    // Switch XML scan file [s] or [Tab]
-    if (keyChar === 's' || key.tab) {
+    // Switch XML scan file [s]
+    if (keyChar === 's') {
       if (scans.length > 1) {
         const nextScan = (activeScanIdx + 1) % scans.length;
         setActiveScanIdx(nextScan);
@@ -450,8 +558,8 @@ export const NmapVisualizerView = ({
       return;
     }
 
-    // View raw XML [x] or [v] or [Enter]
-    if (keyChar === 'x' || keyChar === 'v' || key.return) {
+    // View raw XML [x] or [Enter]
+    if (keyChar === 'x' || key.return) {
       handleViewRawXml();
       return;
     }
@@ -475,10 +583,6 @@ export const NmapVisualizerView = ({
     }
 
     // Standard navigation
-    if (keyChar === 'b' && onNavigate) {
-      onNavigate('dashboard');
-      return;
-    }
     if (keyChar === 'u' && onNavigate) {
       onNavigate('up');
       return;
@@ -496,7 +600,7 @@ export const NmapVisualizerView = ({
     return React.createElement(
       Box,
       { padding: 1, borderStyle: 'round', borderColor: theme.border },
-      React.createElement(Text, { color: theme.accent }, '⏳ Loading Nmap XML reports...')
+      React.createElement(Text, { color: theme.accent }, '⏳ Loading Nmap XML reports with NastyMap...')
     );
   }
 
@@ -507,7 +611,7 @@ export const NmapVisualizerView = ({
       React.createElement(
         Text,
         { color: theme.header || theme.primary, bold: true },
-        '📊 NMAP XML TOPOLOGY & NETWORK VISUALIZER'
+        '📊 NASTYMAP NETWORK TOPOLOGY & SECURITY VISUALIZER'
       ),
       React.createElement(
         Box,
@@ -539,8 +643,8 @@ export const NmapVisualizerView = ({
       React.createElement(
         Box,
         null,
-        React.createElement(Text, { bold: true, color: theme.header || theme.primary }, '📊 NMAP XML NETWORK TOPOLOGY VISUALIZER '),
-        React.createElement(Text, { color: theme.muted }, `(${activeScan.scanner} v${activeScan.version})`)
+        React.createElement(Text, { bold: true, color: theme.header || theme.primary }, '🛡️ NASTYMAP TOPOLOGY & IR VISUALIZER '),
+        React.createElement(Text, { color: theme.muted }, `(${activeScan.scanner || 'nmap'} v${activeScan.version || '1.0'})`)
       ),
       React.createElement(
         Text,
@@ -569,15 +673,15 @@ export const NmapVisualizerView = ({
           React.createElement(Text, { color: theme.text, bold: true }, '🎯 Target: '),
           React.createElement(Text, { color: theme.accent, bold: true }, `${activeScan.target}  `),
           React.createElement(Text, { color: theme.text, bold: true }, '🕒 Date: '),
-          React.createElement(Text, { color: theme.text }, `${activeScan.startStr || 'Recent'}  `),
+          React.createElement(Text, { color: theme.text }, `${activeScan.startStr || activeScan.startstr || 'Recent'}  `),
           React.createElement(Text, { color: theme.text, bold: true }, '⏱️  Duration: '),
-          React.createElement(Text, { color: theme.text }, `${activeScan.runStats.elapsedSec}s`)
+          React.createElement(Text, { color: theme.text }, `${activeScan.runStats?.finished?.elapsed || activeScan.runStats?.elapsedSec || 0}s`)
         ),
         React.createElement(
           Box,
           null,
-          React.createElement(Text, { color: theme.success, bold: true }, `🟢 ${activeScan.runStats.hostsUp} Up  `),
-          React.createElement(Text, { color: theme.muted }, `🔴 ${activeScan.runStats.hostsDown || 0} Down  `),
+          React.createElement(Text, { color: theme.success, bold: true }, `🟢 ${activeScan.hosts.filter(h => h.isUp).length} Up  `),
+          React.createElement(Text, { color: theme.muted }, `🔴 ${activeScan.hosts.filter(h => !h.isUp).length} Down  `),
           React.createElement(Text, { color: theme.primary, bold: true }, `🔓 ${activeScan.totalOpenPorts} Ports  `),
           React.createElement(Text, { color: theme.secondary, bold: true }, `🛡️ ${activeScan.totalScripts} Scripts`)
         )
@@ -593,7 +697,7 @@ export const NmapVisualizerView = ({
       )
     ),
 
-    // Filter Bar & Host Count
+    // Filter Bar & Controls
     React.createElement(
       Box,
       { justifyContent: 'space-between', marginBottom: 1 },
@@ -645,7 +749,46 @@ export const NmapVisualizerView = ({
         )
       : null,
 
-    // Live Diagnostic Inspector Modal / Box
+    // Diff Modal
+    diffResult
+      ? React.createElement(
+          Box,
+          {
+            flexDirection: 'column',
+            marginBottom: 1,
+            padding: 1,
+            borderStyle: 'double',
+            borderColor: theme.secondary
+          },
+          React.createElement(
+            Box,
+            { justifyContent: 'space-between' },
+            React.createElement(
+              Text,
+              { color: theme.secondary, bold: true },
+              `🔍 Security Scan Diff: ${diffResult.baseline.filename} ➔ ${diffResult.current.filename}`
+            ),
+            React.createElement(Text, { color: theme.muted }, '[v/Enter] Full Diff in Pager | [Esc] Close')
+          ),
+          React.createElement(
+            Box,
+            { marginY: 1, justifyContent: 'space-between' },
+            React.createElement(Text, { color: diffResult.diff.summary.hostsAdded > 0 ? theme.error : theme.muted, bold: true }, `+${diffResult.diff.summary.hostsAdded} Hosts Added`),
+            React.createElement(Text, { color: diffResult.diff.summary.hostsRemoved > 0 ? theme.warning : theme.muted }, `-${diffResult.diff.summary.hostsRemoved} Hosts Removed`),
+            React.createElement(Text, { color: diffResult.diff.summary.portsAdded > 0 ? theme.error : theme.muted, bold: true }, `+${diffResult.diff.summary.portsAdded} Ports Opened`),
+            React.createElement(Text, { color: diffResult.diff.summary.portsRemoved > 0 ? theme.success : theme.muted }, `-${diffResult.diff.summary.portsRemoved} Ports Closed`)
+          ),
+          diffResult.diff.addedHosts.length > 0
+            ? React.createElement(
+                Text,
+                { color: theme.error },
+                `⚠️ Rogue / New Hosts: ${diffResult.diff.addedHosts.map(h => h.ip).join(', ')}`
+              )
+            : React.createElement(Text, { color: theme.success }, '✔ No rogue hosts detected between scans.')
+        )
+      : null,
+
+    // Live Diagnostic Modal
     activeDiagnostic
       ? React.createElement(
           Box,
@@ -724,7 +867,7 @@ export const NmapVisualizerView = ({
         React.createElement(
           Text,
           { color: theme.text, bold: true, marginBottom: 0 },
-          '🌐 Network Hosts Tree:'
+          '🌐 Network Topology Hosts:'
         ),
         filteredHosts.length === 0
           ? React.createElement(
@@ -734,6 +877,7 @@ export const NmapVisualizerView = ({
             )
           : filteredHosts.map((host, idx) => {
               const isFocused = idx === hostCursor;
+              const osTag = host.osFamily ? `[${host.osFamily}]` : '';
               return React.createElement(
                 Box,
                 { key: host.ip, flexDirection: 'column', marginY: 0 },
@@ -758,8 +902,9 @@ export const NmapVisualizerView = ({
                   React.createElement(
                     Text,
                     { color: host.openPortsCount > 0 ? theme.primary : theme.muted },
-                    `[${host.openPortsCount} ports]`
-                  )
+                    `[${host.openPortsCount}p] `
+                  ),
+                  osTag ? React.createElement(Text, { color: theme.secondary, dimColor: !isFocused }, `${osTag} `) : null
                 ),
                 isFocused && host.primaryHostname !== host.ip
                   ? React.createElement(
@@ -797,7 +942,7 @@ export const NmapVisualizerView = ({
                 React.createElement(
                   Text,
                   { color: selectedHost.isUp ? theme.success : theme.error, bold: true },
-                  `Status: ${selectedHost.status.state.toUpperCase()} ${selectedHost.status.latency ? '(' + selectedHost.status.latency + ')' : ''}`
+                  `Status: ${selectedHost.status?.state?.toUpperCase() || (selectedHost.isUp ? 'UP' : 'DOWN')} ${selectedHost.latencyMs !== undefined ? '(' + selectedHost.latencyMs + 'ms)' : ''}`
                 )
               ),
 
@@ -812,7 +957,7 @@ export const NmapVisualizerView = ({
                   flexWrap: 'wrap'
                 },
                 React.createElement(Text, { color: theme.error, bold: true }, '[t] '),
-                React.createElement(Text, { color: theme.text }, 'Full Triage Bundle  '),
+                React.createElement(Text, { color: theme.text }, 'Triage  '),
                 React.createElement(Text, { color: theme.success, bold: true }, '[p] '),
                 React.createElement(Text, { color: theme.text }, 'Ping  '),
                 React.createElement(Text, { color: theme.primary, bold: true }, '[b] '),
@@ -822,9 +967,7 @@ export const NmapVisualizerView = ({
                 React.createElement(Text, { color: theme.info, bold: true }, '[h] '),
                 React.createElement(Text, { color: theme.text }, 'HTTP  '),
                 React.createElement(Text, { color: theme.secondary, bold: true }, '[c] '),
-                React.createElement(Text, { color: theme.text }, 'TLS Certs  '),
-                React.createElement(Text, { color: theme.warning, bold: true }, '[d] '),
-                React.createElement(Text, { color: theme.text }, 'DNS  '),
+                React.createElement(Text, { color: theme.text }, 'TLS  '),
                 React.createElement(Text, { color: theme.accent, bold: true }, '[a] '),
                 React.createElement(Text, { color: theme.text }, 'ARP')
               ),
@@ -843,42 +986,42 @@ export const NmapVisualizerView = ({
                     React.createElement(
                       Text,
                       { color: theme.success, bold: true },
-                      `📁 Saved Evidence in Vault (${hostEvidenceList.length} artifacts)${hostEvidenceList.some(a => a.isSigned) ? ' [🔏 GPG Signed]' : ''}:`
-                    ),
-                    React.createElement(
-                      Text,
-                      { color: theme.muted, dimColor: true },
-                      `Path: evidence/${networkTarget.replace(/\//g, '_')}/${selectedHost.ip}/`
+                      `📁 Evidence Vault (${hostEvidenceList.length} artifacts)${hostEvidenceList.some(a => a.isSigned) ? ' [🔏 GPG Signed]' : ''}:`
                     ),
                     React.createElement(
                       Text,
                       { color: theme.text },
-                      hostEvidenceList.map(a => `${a.name}${a.isSigned ? ' 🔏' : ''} (${Math.round(a.sizeBytes / 1024 * 10) / 10}KB)`).join(' | ')
+                      hostEvidenceList.map(a => `${a.name}${a.isSigned ? ' 🔏' : ''}`).join(' | ')
                     )
                   )
                 : null,
 
-              // Hardware & OS Info
-              selectedHost.mac || selectedHost.bestOsMatch
-                ? React.createElement(
-                    Box,
-                    { flexDirection: 'column', marginBottom: 1 },
-                    selectedHost.mac
-                      ? React.createElement(
-                          Text,
-                          { color: theme.muted },
-                          `MAC: ${selectedHost.mac} ${selectedHost.macVendor ? '(' + selectedHost.macVendor + ')' : ''}`
-                        )
-                      : null,
-                    selectedHost.bestOsMatch
-                      ? React.createElement(
-                          Text,
-                          { color: theme.secondary },
-                          `OS: ${selectedHost.bestOsMatch.name} (${selectedHost.bestOsMatch.accuracy}% match)`
-                        )
-                      : null
-                  )
-                : null,
+              // Hardware, OS & Geo Info
+              React.createElement(
+                Box,
+                { flexDirection: 'column', marginBottom: 1 },
+                selectedHost.primaryOs || selectedHost.osFamily
+                  ? React.createElement(
+                      Text,
+                      { color: theme.secondary },
+                      `OS: ${selectedHost.primaryOs || selectedHost.osFamily} ${selectedHost.deviceType ? '[' + selectedHost.deviceType + ']' : ''}`
+                    )
+                  : null,
+                selectedHost.mac
+                  ? React.createElement(
+                      Text,
+                      { color: theme.muted },
+                      `MAC: ${selectedHost.mac} ${selectedHost.vendor ? '(' + selectedHost.vendor + ')' : ''}`
+                    )
+                  : null,
+                selectedHost.trace?.hops?.length
+                  ? React.createElement(
+                      Text,
+                      { color: theme.primary },
+                      `Traceroute: ${selectedHost.trace.hops.length} hops away (${selectedHost.trace.hops[selectedHost.trace.hops.length - 1]?.ipaddr})`
+                    )
+                  : null
+              ),
 
               // Port Matrix
               React.createElement(
@@ -902,7 +1045,7 @@ export const NmapVisualizerView = ({
                         React.createElement(
                           Text,
                           { color: p.state === 'open' ? theme.success : theme.muted, bold: true },
-                          `  • ${String(p.port).padEnd(5)}/${p.protocol.padEnd(4)} `
+                          `  • ${String(p.port || p.portid).padEnd(5)}/${(p.protocol || 'tcp').padEnd(4)} `
                         ),
                         React.createElement(
                           Text,
@@ -917,7 +1060,7 @@ export const NmapVisualizerView = ({
                         React.createElement(
                           Text,
                           { color: theme.primary },
-                          `${p.product} ${p.version}`.trim()
+                          `${p.product || ''} ${p.version || ''}`.trim()
                         )
                       ),
                       // Scripts output
@@ -942,6 +1085,31 @@ export const NmapVisualizerView = ({
               { color: theme.muted },
               'Select a host from the list to view port matrix and security details.'
             )
+      )
+    ),
+
+    // Action Toolbar at Bottom
+    React.createElement(
+      Box,
+      { marginTop: 1, justifyContent: 'space-between', borderStyle: 'single', borderColor: theme.border, paddingX: 1 },
+      React.createElement(
+        Box,
+        null,
+        React.createElement(Text, { color: theme.accent, bold: true }, '[w] '),
+        React.createElement(Text, { color: theme.text }, 'Open in Browser (NastyMap)  '),
+        React.createElement(Text, { color: theme.secondary, bold: true }, '[v] '),
+        React.createElement(Text, { color: theme.text }, 'Export SVG  '),
+        React.createElement(Text, { color: theme.warning, bold: true }, '[d] '),
+        React.createElement(Text, { color: theme.text }, 'Security Diff  '),
+        React.createElement(Text, { color: theme.primary, bold: true }, '[x] '),
+        React.createElement(Text, { color: theme.text }, 'Raw XML  '),
+        React.createElement(Text, { color: theme.info, bold: true }, '[y] '),
+        React.createElement(Text, { color: theme.text }, 'Copy JSON')
+      ),
+      React.createElement(
+        Box,
+        null,
+        React.createElement(Text, { color: theme.muted }, '[Tab] Hub | [q/Esc] Return')
       )
     )
   );

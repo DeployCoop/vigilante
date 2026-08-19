@@ -3,129 +3,127 @@ import { Box, Text, useInput } from 'ink';
 import { useTheme } from './theme.js';
 
 export const HUB_ITEMS = [
-  // Section 1: Workflows & Provisioning
-  {
-    id: 'up',
-    section: '🚀 Workflows & Provisioning',
-    title: 'Cluster Up & Full Provisioning',
-    subtitle: 'Deploy k3d cluster, TLS certificates, DNS & security modules',
-    key: '1',
-    altKey: 'u',
-    action: 'UP'
-  },
-  {
-    id: 'modules',
-    section: '🚀 Workflows & Provisioning',
-    title: 'Security Modules & Packages',
-    subtitle: 'Manage SIEM, SOC, and tooling per-namespace (press [n] inside for namespace)',
-    key: '2',
-    altKey: 'm',
-    action: 'MODULES'
-  },
-  {
-    id: 'values',
-    section: '🚀 Workflows & Provisioning',
-    title: 'Helm Values Editor & Overrides',
-    subtitle: 'Inspect and configure chart parameters and XDG overrides',
-    key: '3',
-    altKey: 'v',
-    action: 'VALUES'
-  },
-  {
-    id: 'instances',
-    section: '🚀 Workflows & Provisioning',
-    title: 'Cluster Instances Manager',
-    subtitle: 'Manage isolated multi-cluster k3d instances and certs',
-    key: '4',
-    altKey: 'i',
-    action: 'INSTANCES'
-  },
-  {
-    id: 'down',
-    section: '🚀 Workflows & Provisioning',
-    title: 'Cluster Teardown (Down)',
-    subtitle: 'Destroy k3d cluster and clean up local ingress routes',
-    key: '5',
-    altKey: 'd',
-    action: 'DOWN'
-  },
-
-  // Section 2: Infrastructure Status & Diagnostics
+  // Section 1: NIST Phase 1: Preparation
   {
     id: 'status',
-    section: '📊 Infrastructure Status & Diagnostics',
-    title: 'Environment Status Dashboard',
-    subtitle: 'Live cluster health, TLS certs, ingress routes & DNS status',
-    key: '6',
+    section: '🛠️ NIST Phase 1: Preparation & Readiness',
+    title: 'Environment Status & Jump Station Readiness',
+    subtitle: 'Live cluster health, TLS certs, ingress routes & GPG signing identity',
+    key: '1',
     altKey: 's',
     action: 'DASHBOARD'
   },
   {
-    id: 'pods',
-    section: '📊 Infrastructure Status & Diagnostics',
-    title: 'Kubernetes Live Pods Monitor',
-    subtitle: 'Real-time kubectl -A -o wide table with logs, describe & shell',
-    key: '7',
-    altKey: 'p',
-    action: 'PODS'
+    id: 'config',
+    section: '🛠️ NIST Phase 1: Preparation & Readiness',
+    title: 'Configuration & Cryptographic Identity',
+    subtitle: 'Inspect config.yaml, GPG keys, color themes & defaults',
+    key: '2',
+    altKey: 'c',
+    action: 'CONFIG'
   },
   {
-    id: 'threat-sim',
-    section: '📊 Infrastructure Status & Diagnostics',
-    title: 'Threat Simulation Engine',
-    subtitle: 'Inject simulated security events and attacks into SIEM',
-    key: '8',
-    altKey: 't',
-    action: 'THREAT_SIM'
+    id: 'instances',
+    section: '🛠️ NIST Phase 1: Preparation & Readiness',
+    title: 'Cluster Instances Manager',
+    subtitle: 'Manage isolated multi-cluster k3d instances, directories & certs',
+    key: '3',
+    altKey: 'i',
+    action: 'INSTANCES'
   },
   {
-    id: 'hosts',
-    section: '📊 Infrastructure Status & Diagnostics',
-    title: 'Local /etc/hosts Sync (hostr)',
-    subtitle: 'Synchronize local *.domain ingress mappings',
-    key: '9',
-    altKey: 'h',
-    action: 'HOSTR'
+    id: 'values',
+    section: '🛠️ NIST Phase 1: Preparation & Readiness',
+    title: 'Helm Values Editor & Overrides',
+    subtitle: 'Inspect and configure chart parameters and XDG overrides',
+    key: '4',
+    altKey: 'v',
+    action: 'VALUES'
   },
 
-  // Section 3: Network Reconnaissance & Forensics
+  // Section 2: NIST Phase 2: Detection & Analysis
   {
     id: 'nmap',
-    section: '🌐 Network Reconnaissance & Forensics',
-    title: 'Nmap Network Reconnaissance & Scanner',
-    subtitle: 'Run subnet sweeps, service detection & vulnerability scans',
-    key: '0',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Nmap Network Reconnaissance & Subnet Sweeps',
+    subtitle: 'Discover live hosts, open ports, service banners & CVE vulnerabilities',
+    key: '5',
     altKey: 'n',
     action: 'NMAP'
   },
   {
     id: 'xml-visualizer',
-    section: '🌐 Network Reconnaissance & Forensics',
-    title: 'XML Network Topology Visualizer',
-    subtitle: 'Interactive host matrix with ping, ab, mtr, curl & dig diagnostics',
-    key: 'x',
-    altKey: null,
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'XML Network Topology & Volatile Forensics',
+    subtitle: 'Host matrix, parallel triage bundle [t], ping, mtr, dns, tls, arp',
+    key: '6',
+    altKey: 'x',
     action: 'XML_VISUALIZER'
   },
   {
     id: 'ai-analyst',
-    section: '🌐 Network Reconnaissance & Forensics',
-    title: 'AI Security & Forensics Analyst (LLM)',
-    subtitle: 'Ask local Ollama, Claude, or ChatGPT to analyze host data, trends & pods',
-    key: 'a',
-    altKey: 'l',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'AI Security Analyst (NIST Triage & Reasoning)',
+    subtitle: 'Local Ollama, Claude, or ChatGPT grounded in real-time MCP context',
+    key: '7',
+    altKey: 'a',
     action: 'AI_ANALYST'
   },
-
-  // Section 4: Configuration & Settings
   {
-    id: 'config',
-    section: '⚙️ Configuration & Settings',
-    title: 'Configuration & Theming Settings',
-    subtitle: 'Inspect XDG config.yaml, color palettes & default settings',
-    key: 'c',
-    altKey: 'g',
-    action: 'CONFIG'
+    id: 'pods',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Kubernetes Live Pods & Workload Monitor',
+    subtitle: 'Real-time kubectl -A -o wide table with logs, describe & shell',
+    key: '8',
+    altKey: 'p',
+    action: 'PODS'
+  },
+
+  // Section 3: NIST Phase 3: Containment, Eradication & Recovery
+  {
+    id: 'threat-sim',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Threat Simulation Engine & Attack Playbooks',
+    subtitle: 'Inject simulated attack vectors (MITRE/NIST) into OpenSearch SIEM',
+    key: '9',
+    altKey: 't',
+    action: 'THREAT_SIM'
+  },
+  {
+    id: 'modules',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Security Modules & Multi-Tenant Stacks',
+    subtitle: 'Deploy SIEM, SOC, and containment stacks per-namespace',
+    key: '0',
+    altKey: 'm',
+    action: 'MODULES'
+  },
+  {
+    id: 'up',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Cluster Up & Clean Provisioning',
+    subtitle: 'Deploy clean k3d cluster, TLS certificates, DNS & security modules',
+    key: 'u',
+    altKey: null,
+    action: 'UP'
+  },
+  {
+    id: 'hosts',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Local /etc/hosts Sync & Ingress Cleanup (hostr)',
+    subtitle: 'Synchronize or revoke local *.domain ingress mappings',
+    key: 'h',
+    altKey: null,
+    action: 'HOSTR'
+  },
+  {
+    id: 'down',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Cluster Teardown & Ingress Flush',
+    subtitle: 'Destroy k3d cluster and clean up local ingress routes',
+    key: 'd',
+    altKey: null,
+    action: 'DOWN'
   }
 ];
 
