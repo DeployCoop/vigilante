@@ -1,15 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, memo } from 'react';
 import { Box, Text } from 'ink';
 import { useClipboard } from './ClipboardManager.js';
 
-export const StatusDashboard = ({
+export const StatusDashboard = memo(function StatusDashboard({
   prereqs,
   cluster,
   certs,
   hosts,
   modules = [],
   domain = 'vigilante.local'
-}) => {
+}) {
   const { registerPanes } = useClipboard();
 
   useEffect(() => {
@@ -357,4 +357,4 @@ export const StatusDashboard = ({
       )
     )
   );
-};
+});

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -9,7 +9,7 @@ import { useClipboard } from './ClipboardManager.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const ValuesView = ({
+export const ValuesView = memo(function ValuesView({
   domain = 'vigilante.local',
   customValuesDir = null,
   onNavigate = null
@@ -435,7 +435,7 @@ export const ValuesView = ({
       )
     )
   );
-};
+});
 
 function getChartDescription(moduleId, chartName) {
   if (chartName === 'vigil') {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { Header } from './Header.js';
 import { TaskRunner } from './TaskRunner.js';
@@ -17,6 +17,7 @@ import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
 import { ThemeProvider } from './theme.js';
 import { logger } from '../utils/logger.js';
+import { enterAlternateScreen, leaveAlternateScreen, setupTerminalLifecycle } from '../utils/terminal.js';
 
 import { checkPrereqs } from '../engine/prereqs.js';
 import { setupCertificates, checkCertificates } from '../engine/certs.js';
@@ -84,10 +85,19 @@ const AppContent = ({
     }
   }, [fatalError, logs, registerPanes]);
 
-  // Log application startup
+  // Log application startup and setup flicker-free terminal lifecycle
   useEffect(() => {
     logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, namespace=${targetNamespace}, nonInteractive=${nonInteractive}`);
-  }, []);
+    if (!nonInteractive) {
+      setupTerminalLifecycle();
+      enterAlternateScreen();
+    }
+    return () => {
+      if (!nonInteractive) {
+        leaveAlternateScreen();
+      }
+    };
+  }, [nonInteractive]);
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
@@ -236,11 +246,36 @@ const AppContent = ({
     }
   }, [nonInteractive, isDone]);
 
-  const addLog = (message) => {
+  // Batched log updates (40ms / 25fps flush) to prevent terminal render storms during rapid command outputs
+  const pendingLogsRef = useRef([]);
+  const logFlushTimeoutRef = useRef(null);
+
+  const flushLogs = useCallback(() => {
+    if (pendingLogsRef.current.length > 0) {
+      const toAppend = [...pendingLogsRef.current];
+      pendingLogsRef.current = [];
+      setLogs((prev) => [...prev, ...toAppend]);
+    }
+    logFlushTimeoutRef.current = null;
+  }, []);
+
+  const addLog = useCallback((message) => {
     const text = typeof message === 'string' ? message : JSON.stringify(message);
     logger.debug('TASK:LOG', text);
-    setLogs((prev) => [...prev, text]);
-  };
+    pendingLogsRef.current.push(text);
+    if (!logFlushTimeoutRef.current) {
+      logFlushTimeoutRef.current = setTimeout(flushLogs, 40);
+    }
+  }, [flushLogs]);
+
+  // Clean up flush timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (logFlushTimeoutRef.current) {
+        clearTimeout(logFlushTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const updateTask = (id, updates) => {
     logger.debug('TASK:UPDATE', `Task '${id}' -> ${JSON.stringify(updates)}`);

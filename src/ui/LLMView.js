@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import { useTheme } from './theme.js';
 import { useClipboard } from './ClipboardManager.js';
 import {
@@ -52,7 +52,7 @@ export const PRESET_ANALYSES = [
   }
 ];
 
-export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
+export const LLMView = memo(function LLMView({ onNavigate = null, domain = 'vigilante.local' }) {
   const theme = useTheme();
   const { copyToClipboard } = useClipboard();
 
@@ -527,7 +527,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
           ? React.createElement(
               Box,
               { marginRight: 2 },
-              React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+              React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(PulseIndicator, { type: 'dots', color: theme.warning || 'yellow' })),
               React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, ` ${statusStage || 'Analyzing...'} (${elapsedSec}s)`)
             )
           : null,
@@ -657,7 +657,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
               React.createElement(
                 Box,
                 null,
-                React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+                React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(PulseIndicator, { type: 'dots', color: theme.warning || 'yellow' })),
                 React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, ` ${statusStage || `Analyzing with ${provider.toUpperCase()} (${model})...`}`)
               ),
               React.createElement(
@@ -701,7 +701,7 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         ? React.createElement(
             Box,
             null,
-            React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(Spinner, { type: 'dots' })),
+            React.createElement(Text, { color: theme.warning || 'yellow' }, React.createElement(PulseIndicator, { type: 'dots', color: theme.warning || 'yellow' })),
             React.createElement(
               Text,
               { color: theme.warning || 'yellow', bold: true },
@@ -924,4 +924,4 @@ export const LLMView = ({ onNavigate = null, domain = 'vigilante.local' }) => {
         )
       : null
   );
-};
+});

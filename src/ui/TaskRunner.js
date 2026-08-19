@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, memo } from 'react';
 import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import { useClipboard } from './ClipboardManager.js';
 
-export const TaskRunner = ({ tasks = [], logs = [], maxLogs = 6 }) => {
+export const TaskRunner = memo(function TaskRunner({ tasks = [], logs = [], maxLogs = 6 }) {
   const visibleLogs = logs.slice(-maxLogs);
   const { registerPanes } = useClipboard();
 
@@ -48,7 +48,7 @@ export const TaskRunner = ({ tasks = [], logs = [], maxLogs = 6 }) => {
         let textColor = 'gray';
 
         if (task.status === 'running') {
-          icon = React.createElement(Spinner, { type: 'dots' });
+          icon = React.createElement(PulseIndicator, { type: 'dots', color: 'yellow' });
           textColor = 'yellow';
         } else if (task.status === 'done') {
           icon = React.createElement(Text, { color: 'green', bold: true }, '✔');
@@ -70,7 +70,7 @@ export const TaskRunner = ({ tasks = [], logs = [], maxLogs = 6 }) => {
             React.createElement(Box, { width: 3 }, icon),
             React.createElement(
               Text,
-              { color: textColor, bold: task.status === 'running' || task.status === 'done' },
+              { color: textColor, bold: task.status === 'running' || task.status === 'done', wrap: 'truncate-end' },
               task.label
             )
           ),

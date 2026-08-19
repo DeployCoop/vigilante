@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import { useTheme } from './theme.js';
 
-export const Header = ({ command = 'up', domain = 'vigilante.local', namespace = null }) => {
+export const Header = memo(function Header({ command = 'up', domain = 'vigilante.local', namespace = null }) {
   const theme = useTheme();
 
   return React.createElement(
@@ -57,4 +57,4 @@ export const Header = ({ command = 'up', domain = 'vigilante.local', namespace =
       )
     )
   );
-};
+});

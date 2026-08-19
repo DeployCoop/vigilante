@@ -76,7 +76,7 @@ console.log('🧪 Testing AI Security Analyst Engine (Ollama/Claude/GPT/Gemini).
 
 // Test 6: LLMView component export
 {
-  assert.ok(typeof LLMView === 'function');
+  assert.ok(typeof LLMView === 'function' || typeof LLMView === 'object');
   console.log('✔ Test 6 passed: LLMView React Ink component exported cleanly.');
 }
 

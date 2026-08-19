@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { execa } from 'execa';
@@ -54,10 +54,10 @@ async function launchBrowser(filePath) {
   }
 }
 
-export const NmapVisualizerView = ({
+export const NmapVisualizerView = memo(function NmapVisualizerView({
   initialXmlPath = null,
   onNavigate = null
-}) => {
+}) {
   const theme = useTheme();
   const [scans, setScans] = useState([]);
   const [activeScanIdx, setActiveScanIdx] = useState(0);
@@ -806,7 +806,7 @@ export const NmapVisualizerView = ({
               Box,
               null,
               activeDiagnostic.isRunning
-                ? React.createElement(Spinner, { type: 'dots' })
+                ? React.createElement(PulseIndicator, { type: 'dots', color: theme.warning })
                 : null,
               React.createElement(
                 Text,
@@ -1113,4 +1113,4 @@ export const NmapVisualizerView = ({
       )
     )
   );
-};
+});

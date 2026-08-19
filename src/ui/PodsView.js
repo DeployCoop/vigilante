@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import {
   watchPodsWide,
   getPodsWide,
@@ -12,7 +12,7 @@ import { useClipboard } from './ClipboardManager.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { logger } from '../utils/logger.js';
 
-export const PodsView = ({
+export const PodsView = memo(function PodsView({
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
   namespace = null,
@@ -313,7 +313,7 @@ export const PodsView = ({
       ? React.createElement(
           Box,
           { marginY: 1 },
-          React.createElement(Spinner, { type: 'dots' }),
+          React.createElement(PulseIndicator, { type: 'dots', color: 'yellow' }),
           React.createElement(Text, { color: 'gray', marginLeft: 1 }, ' Fetching running pods from cluster...')
         )
       : visiblePods.length === 0
@@ -439,4 +439,4 @@ export const PodsView = ({
       )
     )
   );
-};
+});

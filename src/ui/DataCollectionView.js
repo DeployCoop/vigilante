@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import path from 'node:path';
 import {
   listSavedNmapScans,
@@ -19,11 +19,11 @@ import { copyToClipboard } from '../utils/clipboard.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const DataCollectionView = ({
+export const DataCollectionView = memo(function DataCollectionView({
   domain = 'vigilante.local',
   ip = '127.0.0.1',
   onNavigate = null
-}) => {
+}) {
   const theme = useTheme();
   const [scans, setScans] = useState([]);
   const [cursor, setCursor] = useState(0);
@@ -469,7 +469,7 @@ export const DataCollectionView = ({
           React.createElement(
             Box,
             null,
-            React.createElement(Spinner, { type: 'dots' }),
+            React.createElement(PulseIndicator, { type: 'dots', color: theme.warning }),
             React.createElement(
               Text,
               { color: theme.warning, bold: true, marginLeft: 1 },
@@ -674,4 +674,4 @@ export const DataCollectionView = ({
       )
     )
   );
-};
+});

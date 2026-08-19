@@ -107,7 +107,7 @@ try {
   console.log('✔ Test 7 passed: generateThreatJobManifest generated valid Kubernetes Job with ECS telemetry payloads.');
 
   // Test 8: ThreatSimView React Ink Component Rendering
-  assert(typeof ThreatSimView === 'function', 'ThreatSimView must be a React component function');
+  assert(typeof ThreatSimView === 'function' || typeof ThreatSimView === 'object', 'ThreatSimView must be a React component');
   const appInstance = render(React.createElement(ThreatSimView, { domain: 'vigilante.local' }));
   assert.ok(appInstance);
   appInstance.unmount();

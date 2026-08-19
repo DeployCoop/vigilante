@@ -51,7 +51,7 @@ async function runTests() {
   console.log('✔ Test 4 passed: Number and letter hotkeys cleanly disambiguate Namespace, Nmap, Modules, and Pods.');
 
   // Test 5: NavHub React component export
-  if (typeof NavHub !== 'function') {
+  if (typeof NavHub !== 'function' && typeof NavHub !== 'object') {
     throw new Error('NavHub is not exported as a valid React component');
   }
   console.log('✔ Test 5 passed: NavHub React component exported and validated.');

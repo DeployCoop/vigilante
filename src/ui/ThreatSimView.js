@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -16,7 +16,7 @@ import { useClipboard } from './ClipboardManager.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const ThreatSimView = ({ domain = 'vigilante.local', onDone = null, onNavigate = null }) => {
+export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.local', onDone = null, onNavigate = null }) {
   const theme = useTheme();
   const { copyToClipboard, registerPanes } = useClipboard();
 
@@ -557,7 +557,7 @@ ${logs.join('\n')}
               ? React.createElement(
                   Box,
                   null,
-                  React.createElement(Spinner, { type: 'dots' }),
+                  React.createElement(PulseIndicator, { type: 'dots', color: theme.warning || 'yellow' }),
                   React.createElement(Text, { color: theme.warning || 'yellow', marginLeft: 1, bold: true }, ' INJECTING THREAT TRAFFIC...')
                 )
               : mode === 'completed'
@@ -656,4 +656,4 @@ ${logs.join('\n')}
         )
       : null
   );
-};
+});

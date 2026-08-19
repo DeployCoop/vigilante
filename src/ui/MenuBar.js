@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import { useTheme } from './theme.js';
 
@@ -289,10 +289,10 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
 /**
  * Globally Context-Aware Persistent Action Menu & Workflow Breadcrumb Bar
  */
-export const MenuBar = ({
+export const MenuBar = memo(function MenuBar({
   activeView = 'DASHBOARD',
   contextData = {}
-}) => {
+}) {
   const theme = useTheme();
   const currentStage = getActiveWorkflowStage(activeView);
   const menuConfig = getContextualMenuConfig(activeView, contextData, theme);
@@ -378,4 +378,4 @@ export const MenuBar = ({
         : null
     )
   );
-};
+});

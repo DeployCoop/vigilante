@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import { listInstances, deleteInstance } from '../engine/instances.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const InstancesView = ({ onNavigate = null }) => {
+export const InstancesView = memo(function InstancesView({ onNavigate = null }) {
   const theme = useTheme();
   const [instances, setInstances] = useState([]);
   const [cursor, setCursor] = useState(0);
@@ -88,7 +88,7 @@ export const InstancesView = ({ onNavigate = null }) => {
     return React.createElement(
       Box,
       { padding: 1, borderStyle: 'round', borderColor: theme.border },
-      React.createElement(Spinner, { type: 'dots' }),
+      React.createElement(PulseIndicator, { type: 'dots', color: theme.accent }),
       React.createElement(Text, { color: theme.accent, marginLeft: 1 }, 'Discovering k3d cluster instances...')
     );
   }
@@ -218,4 +218,4 @@ export const InstancesView = ({ onNavigate = null }) => {
       React.createElement(Text, { color: theme.muted }, '| [q/Esc] Return')
     )
   );
-};
+});

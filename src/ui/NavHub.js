@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useTheme } from './theme.js';
 
@@ -127,14 +127,14 @@ export const HUB_ITEMS = [
   }
 ];
 
-export const NavHub = ({
+export const NavHub = memo(function NavHub({
   clusterName = 'vigilante-dev',
   namespace = 'default',
   domain = 'vigilante.local',
   onSelect,
   onClose,
   activeView = 'DASHBOARD'
-}) => {
+}) {
   const theme = useTheme();
   const [cursor, setCursor] = useState(0);
 
@@ -324,4 +324,4 @@ export const NavHub = ({
       )
     )
   );
-};
+});

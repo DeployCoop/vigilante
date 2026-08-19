@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import Spinner from 'ink-spinner';
+import { PulseIndicator } from './PulseIndicator.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 import { useClipboard } from './ClipboardManager.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const ModulesView = ({
+export const ModulesView = memo(function ModulesView({
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
   namespace = 'default',
@@ -406,7 +406,7 @@ export const ModulesView = ({
       ? React.createElement(
           Box,
           { marginY: 1 },
-          React.createElement(Spinner, { type: 'dots' }),
+          React.createElement(PulseIndicator, { type: 'dots', color: theme.accent || 'cyan' }),
           React.createElement(Text, { color: theme.accent || 'cyan', marginLeft: 1 }, `Querying module health in namespace '${currentTargetNamespace}'...`)
         )
       : null,
@@ -562,4 +562,4 @@ export const ModulesView = ({
       )
     )
   );
-};
+});
