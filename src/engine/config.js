@@ -402,6 +402,14 @@ export function loadConfig() {
             ...DEFAULT_CONFIG.gpg,
             ...(parsed.gpg || {})
           },
+          modules: {
+            ...DEFAULT_CONFIG.modules,
+            ...(parsed.modules || {}),
+            vigilLocal: {
+              ...DEFAULT_CONFIG.modules?.vigilLocal,
+              ...(parsed.modules?.vigilLocal || {})
+            }
+          },
           behavior: {
             ...DEFAULT_CONFIG.behavior,
             ...(parsed.behavior || {})
@@ -427,4 +435,117 @@ export async function saveConfig(config) {
   const yamlStr = yamlDump(config, { indent: 2 });
   await fs.writeFile(configFile, yamlStr, 'utf8');
   logger.info('CONFIG', `Saved configuration to ${configFile}`);
+}
+
+/**
+ * Resolve a path string expanding tildes (~) to user home directory
+ * @param {string} p
+ * @returns {string}
+ */
+export function resolvePathWithHome(p) {
+  if (!p) return '';
+  const trimmed = String(p).trim();
+  if (trimmed.startsWith('~')) {
+    return path.resolve(os.homedir(), trimmed.slice(1).replace(/^[/\\]+/, ''));
+  }
+  return path.resolve(trimmed);
+}
+
+/**
+ * Get the currently configured local Vigil Helm chart directory path
+ * @returns {string}
+ */
+export function getVigilLocalChartPath() {
+  if (process.env.VIGIL_LOCAL_CHART_PATH) {
+    return resolvePathWithHome(process.env.VIGIL_LOCAL_CHART_PATH);
+  }
+  const cfg = loadConfig();
+  const chartPath =
+    cfg?.modules?.vigilLocal?.chartPath ||
+    cfg?.vigilLocalChartPath ||
+    DEFAULT_CONFIG?.modules?.vigilLocal?.chartPath ||
+    '/home/djehauti/git/vigil/infra/helm/vigil';
+  return resolvePathWithHome(chartPath);
+}
+
+/**
+ * Validate a local Vigil chart path asynchronously
+ * @param {string} [chartPath]
+ * @returns {Promise<{ valid: boolean, resolvedPath: string, dirExists: boolean, chartYamlExists: boolean }>}
+ */
+export async function validateVigilLocalChartPath(chartPath) {
+  const resolved = resolvePathWithHome(chartPath || getVigilLocalChartPath());
+  let dirExists = false;
+  let chartYamlExists = false;
+
+  try {
+    const stats = await fs.stat(resolved);
+    dirExists = stats.isDirectory();
+    if (dirExists) {
+      try {
+        const chartStat = await fs.stat(path.join(resolved, 'Chart.yaml'));
+        chartYamlExists = chartStat.isFile();
+      } catch {
+        chartYamlExists = false;
+      }
+    }
+  } catch {
+    dirExists = false;
+    chartYamlExists = false;
+  }
+
+  return {
+    valid: dirExists && chartYamlExists,
+    resolvedPath: resolved,
+    dirExists,
+    chartYamlExists
+  };
+}
+
+/**
+ * Validate a local Vigil chart path synchronously
+ * @param {string} [chartPath]
+ * @returns {{ valid: boolean, resolvedPath: string, dirExists: boolean, chartYamlExists: boolean }}
+ */
+export function validateVigilLocalChartPathSync(chartPath) {
+  const resolved = resolvePathWithHome(chartPath || getVigilLocalChartPath());
+  let dirExists = false;
+  let chartYamlExists = false;
+
+  try {
+    if (fsSync.existsSync(resolved)) {
+      const stats = fsSync.statSync(resolved);
+      dirExists = stats.isDirectory();
+      if (dirExists) {
+        const chartFile = path.join(resolved, 'Chart.yaml');
+        chartYamlExists = fsSync.existsSync(chartFile) && fsSync.statSync(chartFile).isFile();
+      }
+    }
+  } catch {
+    dirExists = false;
+    chartYamlExists = false;
+  }
+
+  return {
+    valid: dirExists && chartYamlExists,
+    resolvedPath: resolved,
+    dirExists,
+    chartYamlExists
+  };
+}
+
+/**
+ * Set and persist the local Vigil Helm chart directory path in config.yaml
+ * @param {string} newPath
+ * @returns {Promise<string>} Resolved and saved chart path
+ */
+export async function setVigilLocalChartPath(newPath) {
+  const resolved = resolvePathWithHome(newPath);
+  const cfg = loadConfig();
+  cfg.modules = cfg.modules || {};
+  cfg.modules.vigilLocal = cfg.modules.vigilLocal || {};
+  cfg.modules.vigilLocal.chartPath = resolved;
+  cfg.vigilLocalChartPath = resolved;
+  await saveConfig(cfg);
+  return resolved;
 }

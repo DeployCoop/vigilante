@@ -4,6 +4,12 @@ import { PulseIndicator } from './PulseIndicator.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 import { useClipboard } from './ClipboardManager.js';
 import { useTheme } from './theme.js';
+import {
+  getVigilLocalChartPath,
+  setVigilLocalChartPath,
+  validateVigilLocalChartPathSync,
+  resolvePathWithHome
+} from '../engine/config.js';
 import { logger } from '../utils/logger.js';
 
 export const ModulesView = memo(function ModulesView({
@@ -20,6 +26,10 @@ export const ModulesView = memo(function ModulesView({
   const [isEditingNamespace, setIsEditingNamespace] = useState(false);
   const [namespaceInput, setNamespaceInput] = useState(namespace || 'default');
 
+  const [isEditingVigilPath, setIsEditingVigilPath] = useState(false);
+  const [vigilChartPath, setVigilChartPath] = useState(() => getVigilLocalChartPath());
+  const [vigilPathInput, setVigilPathInput] = useState(() => getVigilLocalChartPath());
+
   const [modules, setModules] = useState([]);
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState(new Set());
@@ -32,6 +42,8 @@ export const ModulesView = memo(function ModulesView({
   const loadModules = useCallback(async (targetNs = currentTargetNamespace) => {
     try {
       setLoading(true);
+      const activeVigilPath = getVigilLocalChartPath();
+      setVigilChartPath(activeVigilPath);
       const allMods = globalModuleRegistry.getAll();
       const statusList = await Promise.all(
         allMods.map(async (mod) => {
@@ -47,7 +59,11 @@ export const ModulesView = memo(function ModulesView({
             installed: st.installed,
             status: st.status,
             pods: st.pods || [],
-            endpoints: endpoints || []
+            endpoints: endpoints || [],
+            chartPath: st.chartPath || (mod.id === 'vigil-local' ? activeVigilPath : null),
+            chartValid: st.chartValid,
+            chartDirExists: st.chartDirExists,
+            chartYamlExists: st.chartYamlExists
           };
         })
       );
@@ -102,13 +118,14 @@ export const ModulesView = memo(function ModulesView({
             .map((m) => {
               const isEnabled = selected.has(m.id);
               const ep = m.endpoints.map(e => `    • ${e.name}: ${e.url}`).join('\n');
-              return `• ${m.name} (${m.id}) [${isEnabled ? 'ENABLED' : 'DISABLED'}] [ns: ${currentTargetNamespace}] - Status: ${m.status}\n${ep || '    No endpoints'}`;
+              const pathLine = m.id === 'vigil-local' ? `\n    Chart Path: ${m.chartPath || vigilChartPath}` : '';
+              return `• ${m.name} (${m.id}) [${isEnabled ? 'ENABLED' : 'DISABLED'}] [ns: ${currentTargetNamespace}] - Status: ${m.status}${pathLine}\n${ep || '    No endpoints'}`;
             })
             .join('\n\n');
         }
       }
     ]);
-  }, [modules, selected, currentTargetNamespace, registerPanes]);
+  }, [modules, selected, currentTargetNamespace, vigilChartPath, registerPanes]);
 
   // Toggle enable/disable for a module with dependency management
   const toggleModule = (targetMod) => {
@@ -227,7 +244,70 @@ export const ModulesView = memo(function ModulesView({
       return;
     }
 
-    // Mode B: Normal Modules View Navigation
+    // Mode B: Editing Local Vigil Development Helm Chart Path
+    if (isEditingVigilPath) {
+      if (key.return) {
+        const cleanPath = (vigilPathInput || '').trim();
+        if (!cleanPath) {
+          setFeedback({
+            type: 'error',
+            text: '✖ Local Vigil chart path cannot be empty.'
+          });
+          return;
+        }
+
+        const resolved = resolvePathWithHome(cleanPath);
+        setVigilLocalChartPath(resolved).then(() => {
+          setVigilChartPath(resolved);
+          setIsEditingVigilPath(false);
+          const validation = validateVigilLocalChartPathSync(resolved);
+          if (validation.valid) {
+            setFeedback({
+              type: 'success',
+              text: `✔ Local Vigil chart path updated to '${resolved}' (Chart.yaml verified). Saved to config.yaml.`
+            });
+          } else if (validation.dirExists) {
+            setFeedback({
+              type: 'warning',
+              text: `⚠ Local Vigil chart path saved to '${resolved}', but Chart.yaml was not found in directory.`
+            });
+          } else {
+            setFeedback({
+              type: 'warning',
+              text: `⚠ Local Vigil chart path saved to '${resolved}', but directory does not currently exist.`
+            });
+          }
+          loadModules(currentTargetNamespace);
+        }).catch(err => {
+          logger.error('MODULES:PATH', `Failed to save chart path: ${err.message}`, err);
+          setFeedback({
+            type: 'error',
+            text: `✖ Failed to save chart path: ${err.message}`
+          });
+        });
+        return;
+      }
+
+      if (key.escape) {
+        setVigilPathInput(vigilChartPath);
+        setIsEditingVigilPath(false);
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        setVigilPathInput(prev => prev.slice(0, -1));
+        return;
+      }
+
+      if (input && input.length === 1 && !key.ctrl && !key.meta) {
+        setVigilPathInput(prev => prev + input);
+        return;
+      }
+
+      return;
+    }
+
+    // Mode C: Normal Modules View Navigation
     if (key.tab) {
       if (onNavigate) {
         onNavigate('menu');
@@ -241,6 +321,16 @@ export const ModulesView = memo(function ModulesView({
     if (keyChar === 'n') {
       setIsEditingNamespace(true);
       setNamespaceInput(currentTargetNamespace);
+      setFeedback(null);
+      return;
+    }
+
+    // [p] or [P] -> Trigger Local Vigil Chart Path Editor Prompt
+    if (keyChar === 'p') {
+      const currentPath = getVigilLocalChartPath();
+      setVigilChartPath(currentPath);
+      setVigilPathInput(currentPath);
+      setIsEditingVigilPath(true);
       setFeedback(null);
       return;
     }
@@ -333,8 +423,69 @@ export const ModulesView = memo(function ModulesView({
       )
     ),
 
-    // Namespace Editor Prompt (when user hits 'N')
-    isEditingNamespace
+    // Path Editor Prompt (when user hits 'p')
+    isEditingVigilPath
+      ? React.createElement(
+          Box,
+          {
+            marginY: 1,
+            padding: 1,
+            borderStyle: 'double',
+            borderColor: theme.secondary || 'magenta',
+            flexDirection: 'column'
+          },
+          React.createElement(
+            Box,
+            null,
+            React.createElement(
+              Text,
+              { color: theme.secondary || 'magenta', bold: true },
+              '📁 Set Local Development Vigil Helm Chart Path: '
+            ),
+            React.createElement(
+              Text,
+              { color: theme.accent || 'cyan', bold: true, underline: true },
+              vigilPathInput
+            ),
+            React.createElement(
+              Text,
+              { color: theme.primary || 'green' },
+              ' █'
+            )
+          ),
+          React.createElement(
+            Box,
+            { marginTop: 1 },
+            (() => {
+              const val = validateVigilLocalChartPathSync(vigilPathInput);
+              if (val.valid) {
+                return React.createElement(
+                  Text,
+                  { color: theme.success || 'green', bold: true },
+                  `✔ Valid Helm Chart: Chart.yaml verified at ${val.resolvedPath}`
+                );
+              }
+              if (val.dirExists) {
+                return React.createElement(
+                  Text,
+                  { color: theme.warning || 'yellow' },
+                  `⚠ Directory exists, but Chart.yaml was not found at ${val.resolvedPath}`
+                );
+              }
+              return React.createElement(
+                Text,
+                { color: theme.muted || 'gray' },
+                `○ Path: ${val.resolvedPath} (Directory not found yet)`
+              );
+            })()
+          ),
+          React.createElement(
+            Text,
+            { color: theme.muted || 'gray', marginTop: 1 },
+            'Type the directory path containing Chart.yaml. Press [Enter] to save to config.yaml, or [Esc] to cancel.'
+          )
+        )
+      : isEditingNamespace
       ? React.createElement(
           Box,
           {
@@ -375,12 +526,21 @@ export const ModulesView = memo(function ModulesView({
           React.createElement(
             Text,
             { color: theme.muted || 'gray' },
-            'Use ↑/↓ to navigate, [Space] to toggle, [n] to change target namespace, [Enter] to apply.'
+            'Use ↑/↓ to navigate, [Space] to toggle, [p] to set local Vigil path, [n] to change NS, [Enter] to apply.'
           ),
           React.createElement(
-            Text,
-            { color: theme.warning || 'yellow' },
-            'Press [n] to switch namespace'
+            Box,
+            null,
+            React.createElement(
+              Text,
+              { color: theme.secondary || 'magenta', marginRight: 2 },
+              '[p] Vigil Path'
+            ),
+            React.createElement(
+              Text,
+              { color: theme.warning || 'yellow' },
+              '[n] Switch NS'
+            )
           )
         ),
 
@@ -471,6 +631,46 @@ export const ModulesView = memo(function ModulesView({
             mod.description
           )
         ),
+        mod.id === 'vigil-local' || mod.chartPath
+          ? React.createElement(
+              Box,
+              { marginLeft: 4, marginTop: 0, flexDirection: 'column' },
+              React.createElement(
+                Box,
+                null,
+                React.createElement(
+                  Text,
+                  { color: theme.secondary || 'magenta', bold: true },
+                  '↳ Local Chart Path: '
+                ),
+                React.createElement(
+                  Text,
+                  { color: theme.accent || 'cyan' },
+                  mod.chartPath || vigilChartPath
+                ),
+                React.createElement(
+                  Text,
+                  {
+                    color: (mod.chartValid ?? validateVigilLocalChartPathSync(mod.chartPath || vigilChartPath).valid)
+                      ? (theme.success || 'green')
+                      : (theme.warning || 'yellow'),
+                    marginLeft: 1,
+                    bold: true
+                  },
+                  (mod.chartValid ?? validateVigilLocalChartPathSync(mod.chartPath || vigilChartPath).valid)
+                    ? '[✔ Chart.yaml Found]'
+                    : '[⚠ Chart.yaml Missing]'
+                ),
+                isFocused
+                  ? React.createElement(
+                      Text,
+                      { color: theme.warning || 'yellow', marginLeft: 1 },
+                      '(Press [p] to edit path)'
+                    )
+                  : null
+              )
+            )
+          : null,
         mod.dependencies && mod.dependencies.length > 0
           ? React.createElement(
               Box,
@@ -551,6 +751,8 @@ export const ModulesView = memo(function ModulesView({
         React.createElement(Text, { color: theme.text || 'white' }, 'Toggle  '),
         React.createElement(Text, { color: theme.warning || 'yellow', bold: true }, '[n] '),
         React.createElement(Text, { color: theme.text || 'white' }, `Namespace (${currentTargetNamespace})  `),
+        React.createElement(Text, { color: theme.secondary || 'magenta', bold: true }, '[p] '),
+        React.createElement(Text, { color: theme.text || 'white' }, 'Vigil Path  '),
         React.createElement(Text, { color: theme.success || 'green', bold: true }, '[Enter] '),
         React.createElement(Text, { color: theme.text || 'white' }, 'Apply  '),
         React.createElement(Text, { color: theme.muted || 'gray' }, '| [u] Deploy All  [v] Values  [s] Status  [q] Return')

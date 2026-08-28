@@ -119,6 +119,7 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
       items: [
         { key: '↑/↓', label: 'Navigate', color: theme.muted || 'gray' },
         { key: 'Space', label: 'Toggle', color: theme.accent || 'magenta' },
+        { key: 'p', label: 'Vigil Path', color: theme.secondary || 'magenta' },
         { key: 'n', label: 'Namespace', color: theme.warning || 'yellow' },
         { key: 'Enter', label: hasChanges ? 'Apply Changes' : 'Select', color: theme.success || 'green' },
         { key: 'u', label: '➔ Deploy (Up)', color: theme.success || 'green' },

@@ -5,6 +5,13 @@ import { VigilLocalModule, DEFAULT_VIGIL_LOCAL_CHART_PATH } from '../src/modules
 import { globalModuleRegistry } from '../src/modules/registry.js';
 import { getDomainHosts } from '../src/engine/hosts.js';
 import { resolveChartValuesArgs } from '../src/engine/helm.js';
+import {
+  getVigilLocalChartPath,
+  setVigilLocalChartPath,
+  validateVigilLocalChartPath,
+  validateVigilLocalChartPathSync,
+  resolvePathWithHome
+} from '../src/engine/config.js';
 
 console.log('🧪 Testing Vigil AI SOC Local Checkout Module (vigil-local)...');
 
@@ -26,12 +33,35 @@ assert.strictEqual(resolved[0].id, 'opensearch');
 assert.strictEqual(resolved[1].id, 'vigil-local');
 console.log('✔ Test 2 passed: Dependency resolution orders opensearch before vigil-local.');
 
-// Test 3: Local Helm chart path discovery & validation
+// Test 3: Path helpers, getting, setting & validation
+const initialPath = getVigilLocalChartPath();
+assert.ok(typeof initialPath === 'string' && initialPath.length > 0, 'getVigilLocalChartPath must return a path string');
+
+// Test with known valid chart path in workspace
+const validWorkspaceChart = path.resolve('src/modules/vigil-soc/charts/vigil');
+const syncValValid = validateVigilLocalChartPathSync(validWorkspaceChart);
+assert.strictEqual(syncValValid.valid, true, 'validateVigilLocalChartPathSync must return valid: true for chart directory with Chart.yaml');
+assert.strictEqual(syncValValid.chartYamlExists, true);
+assert.strictEqual(syncValValid.dirExists, true);
+
+const asyncValValid = await validateVigilLocalChartPath(validWorkspaceChart);
+assert.strictEqual(asyncValValid.valid, true);
+
+// Test with non-existent path
+const fakePath = '/tmp/nonexistent-vigil-chart-path-test-xyz';
+const syncValFake = validateVigilLocalChartPathSync(fakePath);
+assert.strictEqual(syncValFake.valid, false, 'Nonexistent path must return valid: false');
+assert.strictEqual(syncValFake.dirExists, false);
+
+// Test setting custom chart path
+const savedPath = await setVigilLocalChartPath(validWorkspaceChart);
+assert.strictEqual(savedPath, validWorkspaceChart);
+assert.strictEqual(getVigilLocalChartPath(), validWorkspaceChart);
+assert.strictEqual(moduleInstance.getChartPath(), validWorkspaceChart);
+
 const resolvedPath = await moduleInstance.resolveLocalChartPath();
-assert.strictEqual(resolvedPath, path.resolve(DEFAULT_VIGIL_LOCAL_CHART_PATH));
-const chartYamlStats = await fs.stat(path.join(resolvedPath, 'Chart.yaml'));
-assert.ok(chartYamlStats.isFile(), 'Chart.yaml must exist at local checkout');
-console.log(`✔ Test 3 passed: Verified local Helm chart at '${resolvedPath}' (Chart.yaml verified).`);
+assert.strictEqual(resolvedPath, validWorkspaceChart);
+console.log(`✔ Test 3 passed: Configured, validated, and resolved local chart path at '${resolvedPath}'.`);
 
 // Test 4: Domain hosts mapping
 const domainHosts = getDomainHosts({ domain: 'vigilante.local' });
@@ -59,12 +89,22 @@ assert.ok(valuesArgs.length >= 2, 'resolveChartValuesArgs must produce Helm -f f
 assert.strictEqual(valuesArgs[0], '-f');
 console.log('✔ Test 6 passed: resolveChartValuesArgs successfully templated vigil-local values.');
 
-// Test 7: Status method structure
+// Test 7: Status method structure & chart metadata
 const statusResult = await moduleInstance.status({ domain: 'vigilante.local', clusterName: 'vigilante-dev' });
 assert.strictEqual(statusResult.id, 'vigil-local');
 assert.strictEqual(statusResult.name, 'Vigil AI SOC (Local Source / Dev)');
 assert.ok(typeof statusResult.installed === 'boolean');
 assert.ok(Array.isArray(statusResult.endpoints));
-console.log('✔ Test 7 passed: status() returned standard module health structure.');
+assert.strictEqual(statusResult.chartPath, validWorkspaceChart);
+assert.strictEqual(statusResult.chartValid, true);
+console.log('✔ Test 7 passed: status() returned standard module health structure with chart metadata.');
+
+// Test 8: SelectModules & ModulesView export and UI integration
+const { SelectModules } = await import('../src/ui/SelectModules.js');
+const { ModulesView } = await import('../src/ui/ModulesView.js');
+assert.strictEqual(typeof SelectModules, 'function', 'SelectModules must be an exported component');
+assert.strictEqual(typeof ModulesView, 'object', 'ModulesView must be a memoized component');
+console.log('✔ Test 8 passed: SelectModules and ModulesView UI components loaded and integrated.');
 
 console.log('\n🎉 All Vigil Local Checkout Module (vigil-local) tests passed successfully!\n');
+

@@ -7,7 +7,14 @@ import { execStream } from '../../utils/exec.js';
 import { applyK8sTlsSecret } from '../../engine/certs.js';
 import { ensureNamespace } from '../../engine/k8s.js';
 import { resolveChartValuesArgs } from '../../engine/helm.js';
-import { loadConfig } from '../../engine/config.js';
+import {
+  loadConfig,
+  getVigilLocalChartPath,
+  setVigilLocalChartPath,
+  validateVigilLocalChartPath,
+  validateVigilLocalChartPathSync,
+  resolvePathWithHome
+} from '../../engine/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +26,7 @@ export class VigilLocalModule extends BaseModule {
     super({
       id: 'vigil-local',
       name: 'Vigil AI SOC (Local Source / Dev)',
-      description: 'Vigil Autonomous AI-Native SOC Platform installed directly from local checkout at /home/djehauti/git/vigil/infra/helm/vigil',
+      description: 'Vigil Autonomous AI-Native SOC Platform installed directly from local checkout',
       category: 'soc',
       version: '0.5.0',
       dependencies: ['opensearch'],
@@ -30,19 +37,48 @@ export class VigilLocalModule extends BaseModule {
   }
 
   /**
+   * Get the currently configured local Vigil Helm chart path
+   * @returns {string}
+   */
+  getChartPath() {
+    return getVigilLocalChartPath();
+  }
+
+  /**
+   * Set and save the local Vigil Helm chart path in config.yaml
+   * @param {string} newPath
+   * @returns {Promise<string>}
+   */
+  async setChartPath(newPath) {
+    return setVigilLocalChartPath(newPath);
+  }
+
+  /**
+   * Validate local Vigil chart path asynchronously
+   * @param {string} [chartPath]
+   * @returns {Promise<{ valid: boolean, resolvedPath: string, dirExists: boolean, chartYamlExists: boolean }>}
+   */
+  async validateChartPath(chartPath) {
+    return validateVigilLocalChartPath(chartPath || this.getChartPath());
+  }
+
+  /**
+   * Validate local Vigil chart path synchronously
+   * @param {string} [chartPath]
+   * @returns {{ valid: boolean, resolvedPath: string, dirExists: boolean, chartYamlExists: boolean }}
+   */
+  validateChartPathSync(chartPath) {
+    return validateVigilLocalChartPathSync(chartPath || this.getChartPath());
+  }
+
+  /**
    * Resolve and validate the path to the local Vigil Helm chart
    * @param {Object} [options]
    * @returns {Promise<string>}
    */
   async resolveLocalChartPath(options = {}) {
-    const cfg = loadConfig();
-    const candidatePath = options?.chartPath ||
-      process.env.VIGIL_LOCAL_CHART_PATH ||
-      cfg?.modules?.vigilLocal?.chartPath ||
-      cfg?.vigilLocalChartPath ||
-      DEFAULT_VIGIL_LOCAL_CHART_PATH;
-
-    const resolved = path.resolve(candidatePath);
+    const candidatePath = options?.chartPath || this.getChartPath();
+    const resolved = resolvePathWithHome(candidatePath);
     const chartYaml = path.join(resolved, 'Chart.yaml');
 
     try {
@@ -51,7 +87,7 @@ export class VigilLocalModule extends BaseModule {
     } catch (err) {
       throw new Error(
         `Local Vigil Helm chart not found at '${resolved}'. ` +
-        `Please ensure the repository is checked out or configure 'vigilLocalChartPath' in config.yaml.`
+        `Please ensure the repository is checked out or set the path in Modules pane [p] or config.yaml.`
       );
     }
   }
@@ -173,22 +209,36 @@ export class VigilLocalModule extends BaseModule {
       const isInstalled = pods.length > 0;
       const allReady = isInstalled && pods.every(p => p.ready || p.phase === 'Succeeded');
 
+      const currentChartPath = this.getChartPath();
+      const chartValidation = this.validateChartPathSync(currentChartPath);
+
       return {
         id: this.id,
         name: this.name,
         namespace: targetNamespace,
         installed: isInstalled,
         status: allReady ? 'Ready' : isInstalled ? 'Deploying / Degraded' : 'Not Installed',
+        chartPath: currentChartPath,
+        chartValid: chartValidation.valid,
+        chartDirExists: chartValidation.dirExists,
+        chartYamlExists: chartValidation.chartYamlExists,
         pods,
         endpoints: await this.getEndpoints({ domain, namespace: targetNamespace })
       };
     } catch {
+      const currentChartPath = this.getChartPath();
+      const chartValidation = this.validateChartPathSync(currentChartPath);
+
       return {
         id: this.id,
         name: this.name,
         namespace: targetNamespace,
         installed: false,
         status: 'Not Installed',
+        chartPath: currentChartPath,
+        chartValid: chartValidation.valid,
+        chartDirExists: chartValidation.dirExists,
+        chartYamlExists: chartValidation.chartYamlExists,
         pods: [],
         endpoints: []
       };
