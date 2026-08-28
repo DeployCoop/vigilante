@@ -90,13 +90,7 @@ const AppContent = ({
     logger.info('APP:START', `Mounted App with command=${command}, subCommand=${subCommand}, domain=${domain}, clusterName=${clusterName}, namespace=${targetNamespace}, nonInteractive=${nonInteractive}`);
     if (!nonInteractive) {
       setupTerminalLifecycle();
-      enterAlternateScreen();
     }
-    return () => {
-      if (!nonInteractive) {
-        leaveAlternateScreen();
-      }
-    };
   }, [nonInteractive]);
 
   // Keyboard navigation & interactive menu shortcuts
