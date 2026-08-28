@@ -25,7 +25,7 @@
     "mcp": "node ./bin/vigilante.js mcp",
     "test": "node tests/test-values.js && node tests/test-editor.js && node tests/test-modules.js && node tests/test-pods.js && node tests/test-clipboard.js && node tests/test-config.js && node tests/test-nmap.js && node tests/test-nmap-xml.js && node tests/test-diagnostics.js && node tests/test-menubar.js && node tests/test-evidence.js && node tests/test-gpg.js && node tests/test-instances.js && node tests/test-namespaces.js && node tests/test-k8s.js && node tests/test-hub.js && node tests/test-mcp.js && node tests/test-llm.js && node tests/test-threats.js && node tests/test-nist.js && node tests/test-nastymap.js && node tests/test-flicker.js && node tests/test-vigil-local.js"
   },
-  "packageManager": "pnpm@11.12.0",
+  "packageManager": "pnpm@11.24.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "execa": "^8.0.1",
