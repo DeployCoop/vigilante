@@ -1,0 +1,34 @@
+# ==============================================================================
+# Default Helm Values for OpenSearch Core SIEM Cluster (vigil-soc)
+# ==============================================================================
+# Override by placing your custom YAML at:
+#   ./values/vigil-soc/opensearch.yaml or passing --values <file>
+# ==============================================================================
+
+singleNode: true
+
+persistence:
+  enabled: false
+
+resources:
+  requests:
+    cpu: "300m"
+    memory: "1024Mi"
+  limits:
+    cpu: "1500m"
+    memory: "2048Mi"
+
+opensearchJavaOpts: "-Xms512m -Xmx1024m"
+
+securityConfig:
+  action:
+    auto_create_indices: true
+  enabled: false
+
+extraEnvs:
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
+  - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+    value: "Admin123456!"
