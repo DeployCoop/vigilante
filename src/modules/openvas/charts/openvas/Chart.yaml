@@ -1,0 +1,14 @@
+apiVersion: v2
+name: openvas
+description: Greenbone Community Edition & OpenVAS Vulnerability Scanner Helm Chart for Vigilante
+type: application
+version: 1.0.0
+appVersion: "24.10"
+keywords:
+  - openvas
+  - greenbone
+  - gvm
+  - vulnerability-scanner
+  - cve
+maintainers:
+  - name: Vigilante Security Team

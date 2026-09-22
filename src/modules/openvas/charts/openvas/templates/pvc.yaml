@@ -1,0 +1,56 @@
+{{- if .Values.persistence.enabled -}}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: gvmd-pvc
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode | quote }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: openvas-pvc
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode | quote }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+{{- end }}
+
+{{- if .Values.psgvm.persistence.enabled -}}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: psql-pvc
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.psgvm.persistence.accessMode | quote }}
+  {{- if .Values.psgvm.persistence.storageClass }}
+  storageClassName: {{ .Values.psgvm.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.psgvm.persistence.size | quote }}
+{{- end }}

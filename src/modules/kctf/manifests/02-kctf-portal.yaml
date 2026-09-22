@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kctf-portal-html
+  namespace: kctf
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>kCTF Challenge Explorer | Vigilante Security Sandbox</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        :root {
+          --bg: #0d1117;
+          --card: #161b22;
+          --border: #30363d;
+          --text: #c9d1d9;
+          --accent: #58a6ff;
+          --success: #3fb950;
+          --warning: #d29922;
+          --code: #f0883e;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+          background: var(--bg);
+          color: var(--text);
+          margin: 0;
+          padding: 24px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+        h1 { color: #fff; margin: 0 0 8px 0; font-size: 26px; }
+        .subtitle { color: #8b949e; font-size: 14px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .card {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 16px;
+          transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .badge {
+          background: #21262d;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          text-transform: uppercase;
+          font-weight: bold;
+        }
+        .badge.web { color: #58a6ff; }
+        .badge.pwn { color: #f85149; }
+        .badge.crypto { color: #d29922; }
+        .badge.rev { color: #bc8cff; }
+        .badge.status { color: var(--success); }
+        .command-box {
+          background: #0d1117;
+          border: 1px solid #30363d;
+          border-radius: 4px;
+          padding: 8px 12px;
+          font-family: monospace;
+          font-size: 13px;
+          color: var(--code);
+          margin-top: 10px;
+          word-break: break-all;
+        }
+        footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: #8b949e; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <header>
+          <h1>🚩 kCTF Challenge Explorer</h1>
+          <div class="subtitle">Google kCTF Isolated Capture-the-Flag Infrastructure &middot; Vigilante Cyber Defense Sandbox</div>
+        </header>
+
+        <section>
+          <h2 style="color: #fff; font-size: 18px; margin-bottom: 16px;">Active Competitor Challenges</h2>
+          <div class="grid">
+            <div class="card">
+              <div class="card-header">
+                <span class="badge web">WEB</span>
+                <span class="badge status">HEALTHY</span>
+              </div>
+              <h3 style="margin: 0 0 8px 0; color: #fff;">web-flag-leak</h3>
+              <p style="font-size: 13px; color: #8b949e; margin: 0;">Analyze HTTP headers, query parameters, and endpoints to uncover the leaked flag.</p>
+              <div class="command-box">curl -sSL https://kctf.{{DOMAIN}}/challenges/web-flag-leak</div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="badge pwn">PWN / NSJAIL</span>
+                <span class="badge status">SANDBOXED</span>
+              </div>
+              <h3 style="margin: 0 0 8px 0; color: #fff;">pwn-nsjail-echo</h3>
+              <p style="font-size: 13px; color: #8b949e; margin: 0;">Exploit a sandboxed binary running with isolated Linux namespaces and cgroups.</p>
+              <div class="command-box">nc {{DOMAIN}} 31337</div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="badge crypto">CRYPTO</span>
+                <span class="badge status">READY</span>
+              </div>
+              <h3 style="margin: 0 0 8px 0; color: #fff;">crypto-pow-vault</h3>
+              <p style="font-size: 13px; color: #8b949e; margin: 0;">Solve the cryptographic proof-of-work challenge before unlocking access to the vault.</p>
+              <div class="command-box">curl -sSL https://kctf.{{DOMAIN}}/challenges/crypto-vault</div>
+            </div>
+          </div>
+        </section>
+
+        <footer>
+          <p>Powered by <strong>Vigilante</strong> & <strong>kCTF</strong>. Deployed on Kubernetes (k3d) with Traefik Ingress and mkcert local TLS.</p>
+        </footer>
+      </div>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kctf-portal
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: kctf-portal
+    app.kubernetes.io/component: web-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kctf-portal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kctf-portal
+    spec:
+      serviceAccountName: kctf-controller
+      containers:
+        - name: web
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+      volumes:
+        - name: html-volume
+          configMap:
+            name: kctf-portal-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kctf-portal
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: kctf-portal
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: kctf-portal
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kctf-ingress
+  namespace: kctf
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - "kctf.{{DOMAIN}}"
+        - "ctf.{{DOMAIN}}"
+      secretName: "{{TLS_SECRET}}"
+  rules:
+    - host: "kctf.{{DOMAIN}}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kctf-portal
+                port:
+                  number: 80
+    - host: "ctf.{{DOMAIN}}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kctf-portal
+                port:
+                  number: 80

@@ -1,0 +1,311 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openvas.fullname" . }}
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "openvas.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "openvas.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: pg-init
+          image: {{ .Values.psgvm.image.repository }}:{{ .Values.psgvm.image.tag }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "/init-scripts/init-postgres.sh"]
+          env:
+            - name: POSTGRES_VERSION
+              value: "{{ .Values.psgvm.POSTGRES_VERSION }}"
+          volumeMounts:
+            - name: psql-storage
+              mountPath: /mnt/postgresql
+            - name: init-scripts
+              mountPath: /init-scripts
+
+        - name: notus-data
+          image: registry.community.greenbone.net/community/notus-data
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: shared-storage
+              mountPath: /mnt
+              subPath: notus-data
+
+        - name: scap-data
+          image: registry.community.greenbone.net/community/scap-data
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /mnt
+              subPath: scap-data
+
+        - name: cert-bund-data
+          image: registry.community.greenbone.net/community/cert-bund-data
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /mnt
+              subPath: cert-data
+
+        - name: dfn-cert-data
+          image: registry.community.greenbone.net/community/dfn-cert-data
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /mnt
+              subPath: cert-data
+
+        - name: data-objects
+          image: registry.community.greenbone.net/community/data-objects
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: FEED_RELEASE
+              value: "{{ .Values.FEED_RELEASE }}"
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /mnt
+              subPath: data-objects/gvmd
+
+        - name: report-formats
+          image: registry.community.greenbone.net/community/report-formats
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: FEED_RELEASE
+              value: "{{ .Values.FEED_RELEASE }}"
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /mnt
+              subPath: data-objects/gvmd
+
+        - name: gpg-data
+          image: registry.community.greenbone.net/community/gpg-data
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: openvas-storage
+              mountPath: /mnt
+              subPath: gnupg/gpg-data
+
+        - name: vulnerability-tests
+          image: registry.community.greenbone.net/community/vulnerability-tests
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: FEED_RELEASE
+              value: "{{ .Values.FEED_RELEASE }}"
+          volumeMounts:
+            - name: shared-storage
+              mountPath: /mnt
+              subPath: vt-data
+
+        - name: configure-openvas
+          image: registry.community.greenbone.net/community/openvas-scanner:stable
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: openvas-storage
+              mountPath: /mnt
+            - name: shared-storage
+              mountPath: /var/log/openvas
+              subPath: openvas-log-data
+          command:
+            - /bin/sh
+            - -c
+            - |
+              printf "table_driven_lsc = yes\nopenvasd_server = http://127.0.0.1:81\n" > /mnt/openvas.conf
+              if [ -f /etc/openvas/openvas_log.conf ]; then
+                sed "s/127/{{ .Values.logLevel }}/" /etc/openvas/openvas_log.conf | sed 's/gvm/openvas/' > /mnt/openvas_log.conf
+              fi
+              chmod 644 /mnt/openvas.conf 2>/dev/null || true
+              mkdir -p /var/log/openvas
+              touch /var/log/openvas/openvas.log
+              chmod 666 /var/log/openvas/openvas.log 2>/dev/null || true
+
+      containers:
+        - name: redis-server
+          image: registry.community.greenbone.net/community/redis-server
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: shared-storage
+              mountPath: /run/redis
+              subPath: redis-socket
+
+        - name: pg-gvm
+          image: {{ .Values.psgvm.image.repository }}:{{ .Values.psgvm.image.tag }}
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: psql-storage
+              mountPath: /var/lib/postgresql
+            - name: shared-storage
+              mountPath: /var/run/postgresql
+              subPath: psql-socket
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true"]
+
+        - name: gvmd
+          image: registry.community.greenbone.net/community/gvmd:stable
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: gvmd-storage
+              mountPath: /var/lib/gvm
+            - name: shared-storage
+              mountPath: /var/lib/openvas/plugins
+              subPath: vt-data
+            - name: psql-storage
+              mountPath: /var/lib/postgresql
+            - name: gvmd-socket
+              mountPath: /run/gvmd
+            - name: shared-storage
+              mountPath: /run/ospd
+              subPath: ospd-openvas-socket
+            - name: shared-storage
+              mountPath: /var/run/postgresql
+              subPath: psql-socket
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "chown -R gvmd:gvmd /run/gvmd 2>/dev/null || true; mkdir -p /var/lib/gvm/gvmd; chown -R gvmd:gvmd /var/lib/gvm 2>/dev/null || true"]
+          {{- with .Values.gvmd.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+        - name: gsa
+          image: registry.community.greenbone.net/community/gsa:stable
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: gsa
+              containerPort: 9392
+              protocol: TCP
+          volumeMounts:
+            - name: gvmd-socket
+              mountPath: /run/gvmd
+
+        - name: openvas
+          image: registry.community.greenbone.net/community/openvas-scanner:stable
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: openvas-storage
+              mountPath: /etc/openvas
+            - name: shared-storage
+              mountPath: /var/log/openvas
+              subPath: openvas-log-data
+          command: ["/bin/sh", "-c", "cat /etc/openvas/openvas.conf 2>/dev/null && tail -f /var/log/openvas/openvas.log"]
+
+        - name: openvasd
+          image: registry.community.greenbone.net/community/openvas-scanner:stable
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: openvasd
+              containerPort: 81
+              protocol: TCP
+          env:
+            - name: OPENVASD_MODE
+              value: "service_notus"
+            - name: GNUPGHOME
+              value: "/etc/openvas/gnupg"
+            - name: LISTENING
+              value: "0.0.0.0:81"
+          volumeMounts:
+            - name: openvas-storage
+              mountPath: /etc/openvas
+            - name: shared-storage
+              mountPath: /var/log/openvas
+              subPath: openvas-log-data
+            - name: shared-storage
+              mountPath: /var/lib/notus
+              subPath: notus-data
+
+        - name: ospd-openvas
+          image: {{ .Values.ospd.image.repository }}:{{ .Values.ospd.image.tag }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          command: ["ospd-openvas", "-f", "--config", "/etc/gvm/ospd-openvas.conf", "--notus-feed-dir", "/var/lib/notus/advisories", "-m", "666"]
+          volumeMounts:
+            - name: shared-storage
+              mountPath: /var/lib/openvas/plugins
+              subPath: vt-data
+            - name: shared-storage
+              mountPath: /var/lib/notus
+              subPath: notus-data
+            - name: shared-storage
+              mountPath: /run/ospd
+              subPath: ospd-openvas-socket
+            - name: shared-storage
+              mountPath: /run/redis
+              subPath: redis-socket
+            - name: openvas-storage
+              mountPath: /etc/openvas
+            - name: shared-storage
+              mountPath: /var/log/openvas
+              subPath: openvas-log-data
+          {{- with .Values.ospdOpenvas.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+        - name: gvm-tools
+          image: registry.community.greenbone.net/community/gvm-tools
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: gvmd-socket
+              mountPath: /run/gvmd
+            - name: shared-storage
+              mountPath: /run/ospd
+              subPath: ospd-openvas-socket
+          command: ["sh", "-c", "while true; do sleep 3600; done"]
+
+      volumes:
+        - name: shared-storage
+          emptyDir: {}
+        - name: gvmd-socket
+          emptyDir: {}
+        - name: init-scripts
+          configMap:
+            name: init-scripts-config
+            defaultMode: 0755
+        - name: gvmd-storage
+        {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: gvmd-pvc
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+        - name: openvas-storage
+        {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: openvas-pvc
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+        - name: psql-storage
+        {{- if .Values.psgvm.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: psql-pvc
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

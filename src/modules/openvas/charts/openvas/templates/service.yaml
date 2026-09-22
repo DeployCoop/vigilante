@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openvas.fullname" . }}-service
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: gsa
+      protocol: TCP
+      port: 9392
+      targetPort: 9392
+    - name: openvasd
+      protocol: TCP
+      port: 81
+      targetPort: 81
+  selector:
+    {{- include "openvas.selectorLabels" . | nindent 4 }}

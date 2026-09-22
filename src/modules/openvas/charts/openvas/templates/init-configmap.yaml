@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-scripts-config
+  namespace: {{ template "openvas.namespace" . }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+data:
+  init-postgres.sh: |
+    #!/bin/sh
+    set -u
+
+    log() { echo "[INFO] $*"; }
+    warn() { echo "[WARN] $*"; }
+    err() { echo "[ERROR] $*" >&2; }
+
+    run() {
+      log "RUN: $*"
+      "$@"
+      rc=$?
+      if [ $rc -ne 0 ]; then
+        err "Command failed (rc=$rc): $*"
+        return $rc
+      fi
+      return 0
+    }
+
+    [ -z "${POSTGRES_USER:-}" ] && POSTGRES_USER="gvmd"
+    [ -z "${POSTGRES_DATA:-}" ] && POSTGRES_DATA="/var/lib/postgresql"
+    [ -z "${POSTGRES_HOST_AUTH_METHOD:-}" ] && POSTGRES_HOST_AUTH_METHOD="md5"
+    [ -z "${POSTGRES_VERSION:-}" ] && POSTGRES_VERSION=17
+
+    POSTGRES_DB=gvmd
+    POSTGRES_HBA_CONF="/etc/postgresql/$POSTGRES_VERSION/main/pg_hba.conf"
+    POSTGRES_SETUP_DIR="/mnt/postgresql/main"
+    POSTGRES_SOCKET_DIR="/run/postgresql"
+
+    log "Checking if PostgreSQL is already initialized..."
+    if [ -d "$POSTGRES_SETUP_DIR" ]; then
+      log "PostgreSQL already set up at $POSTGRES_SETUP_DIR, skipping."
+      exit 0
+    fi
+
+    HBA_DIR="$(dirname "$POSTGRES_HBA_CONF")"
+    if [ -d "$HBA_DIR" ] && [ -w "$HBA_DIR" ]; then
+      log "Writing pg_hba.conf"
+      {
+        echo "local all all trust"
+        echo "host all all all $POSTGRES_HOST_AUTH_METHOD"
+      } > "$POSTGRES_HBA_CONF" 2>/dev/null || true
+    fi
+
+    rm -f "$POSTGRES_DATA/started" 2>/dev/null || true
+
+    if command -v pg_ctlcluster >/dev/null 2>&1; then
+      log "Starting temporary PostgreSQL cluster for initial setup..."
+      pg_ctlcluster "$POSTGRES_VERSION" main start || true
+
+      if command -v pg_isready >/dev/null 2>&1; then
+        i=0
+        while [ $i -lt 30 ]; do
+          pg_isready -h "$POSTGRES_SOCKET_DIR" -U postgres >/dev/null 2>&1 && break
+          i=$((i+1))
+          sleep 1
+        done
+      fi
+
+      USER_EXISTS="$(echo "SELECT 1 FROM pg_roles WHERE rolname = '$POSTGRES_USER'" | psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d postgres --tuples-only 2>/dev/null || true)"
+      if [ -z "$USER_EXISTS" ]; then
+        createuser --host="$POSTGRES_SOCKET_DIR" -U postgres -DRS "$POSTGRES_USER" 2>/dev/null || true
+      fi
+
+      DB_EXISTS="$(echo "SELECT 1 FROM pg_database WHERE datname = '$POSTGRES_DB';" | psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d postgres --tuples-only 2>/dev/null || true)"
+      if [ -z "$DB_EXISTS" ]; then
+        createdb --host="$POSTGRES_SOCKET_DIR" -U postgres -O "$POSTGRES_USER" "$POSTGRES_DB" 2>/dev/null || true
+      fi
+
+      psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d "$POSTGRES_DB" -c "create role dba with superuser noinherit;" 2>/dev/null || true
+      psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d "$POSTGRES_DB" -c "grant dba to $POSTGRES_USER;" 2>/dev/null || true
+      psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d "$POSTGRES_DB" -c 'create extension if not exists "uuid-ossp";' 2>/dev/null || true
+      psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d "$POSTGRES_DB" -c 'create extension if not exists "pgcrypto";' 2>/dev/null || true
+      psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d "$POSTGRES_DB" -c 'create extension if not exists "pg-gvm";' 2>/dev/null || true
+
+      pg_ctlcluster "$POSTGRES_VERSION" main stop 2>/dev/null || true
+    fi
+
+    log "Populating persistent volume mount /mnt/postgresql..."
+    cp -ra /var/lib/postgresql/* /mnt/postgresql/ 2>/dev/null || true
+    mkdir -p "$POSTGRES_SETUP_DIR" 2>/dev/null || true
+    log "PostgreSQL initialization completed successfully."

@@ -1,0 +1,70 @@
+# Default values for Greenbone Community Edition / OpenVAS
+hostname: openvas.vigilante.local
+domain: vigilante.local
+tlsSecretName: openvas-tls
+
+psgvm:
+  POSTGRES_VERSION: "17"
+  image:
+    repository: registry.community.greenbone.net/community/pg-gvm
+    tag: 22.6.13
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+
+ospd:
+  image:
+    repository: registry.community.greenbone.net/community/ospd-openvas
+    tag: stable
+
+# Log levels: 4=Errors, 8=Critical, 16=Warnings, 32=Messages, 64=Information, 128=Debug
+logLevel: 16
+FEED_RELEASE: "24.10"
+
+ospdOpenvas:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 250Mi
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+
+gvmd:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 15Gi
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: openvas.vigilante.local
+    - host: gvm.vigilante.local
+  tls:
+    - secretName: openvas-tls
+      hosts:
+        - openvas.vigilante.local
+        - gvm.vigilante.local
+
+serviceAccount:
+  create: false
+  name: ""
+
+podSecurityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

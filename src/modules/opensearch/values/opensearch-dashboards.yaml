@@ -1,0 +1,39 @@
+# ==============================================================================
+# Default Helm Values for OpenSearch Dashboards (opensearch)
+# ==============================================================================
+# Override by placing your custom YAML at:
+#   ./values/opensearch/opensearch-dashboards.yaml or passing --values <file>
+# ==============================================================================
+
+opensearchHosts: "http://opensearch-cluster-master:9200"
+
+resources:
+  requests:
+    cpu: "150m"
+    memory: "512Mi"
+  limits:
+    cpu: "800m"
+    memory: "1024Mi"
+
+opensearch_security:
+  enabled: false
+
+extraEnvs:
+  - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+    value: "true"
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: "siem.{{DOMAIN}}"
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            serviceName: ""
+  tls:
+    - hosts:
+        - "siem.{{DOMAIN}}"
+      secretName: "{{TLS_SECRET}}"

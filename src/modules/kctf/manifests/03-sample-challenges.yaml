@@ -1,0 +1,133 @@
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: web-flag-leak
+  namespace: kctf
+spec:
+  deployed: true
+  category: web
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: http
+        port: 8080
+        targetPort: 80
+        protocol: TCP
+  podTemplate:
+    template:
+      spec:
+        containers:
+          - name: challenge
+            image: nginx:alpine
+            env:
+              - name: CTF_FLAG
+                value: "VIGILANTE{kctf_w3b_1nj3ct10n_succ3ss}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-web-flag-leak
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-web-flag-leak
+    kctf.dev/challenge: web-flag-leak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-web-flag-leak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-web-flag-leak
+        kctf.dev/challenge: web-flag-leak
+    spec:
+      containers:
+        - name: challenge
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: CTF_FLAG
+              value: "VIGILANTE{kctf_w3b_1nj3ct10n_succ3ss}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-web-flag-leak
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: web-flag-leak
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: chal-web-flag-leak
+---
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: pwn-nsjail-echo
+  namespace: kctf
+spec:
+  deployed: true
+  category: pwn
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 31337
+        targetPort: 31337
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-pwn-nsjail-echo
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-pwn-nsjail-echo
+    kctf.dev/challenge: pwn-nsjail-echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-pwn-nsjail-echo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-pwn-nsjail-echo
+        kctf.dev/challenge: pwn-nsjail-echo
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "=== kCTF nsjail Protected Sandbox ===\nTarget: echo service\nFlag is hidden in /flag.txt\nType 'cat flag' or payload: " | nc -lp 31337 -e sh -c 'echo "FLAG: VIGILANTE{kctf_nsj41l_pwn_fl4g_c4ptur3d}"';
+              done
+          ports:
+            - containerPort: 31337
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-pwn-nsjail-echo
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: pwn-nsjail-echo
+spec:
+  type: ClusterIP
+  ports:
+    - port: 31337
+      targetPort: 31337
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-pwn-nsjail-echo

@@ -1,0 +1,45 @@
+{{- if .Values.ingress.enabled }}
+{{- $serviceName := printf "%s-service" (include "openvas.fullname" .) -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "openvas.fullname" . }}
+  namespace: {{ template "openvas.namespace" . }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "openvas.labels" . | nindent 4 }}
+spec:
+  rules:
+  {{- range .Values.ingress.hosts }}
+  - host: {{ .host | quote }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ $serviceName }}
+            port:
+              number: 9392
+  {{- end }}
+  tls:
+  {{- if .Values.ingress.tls }}
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- else }}
+    - hosts:
+      {{- range .Values.ingress.hosts }}
+        - {{ .host | quote }}
+      {{- end }}
+      secretName: {{ .Values.tlsSecretName | default "openvas-tls" }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,39 @@
+# ==============================================================================
+# Default Helm Values for OpenSearch Dashboards (vigil-soc)
+# ==============================================================================
+# Override by placing your custom YAML at:
+#   ./values/vigil-soc/opensearch-dashboards.yaml or passing --values <file>
+# ==============================================================================
+
+opensearchHosts: "http://opensearch-cluster-master:9200"
+
+resources:
+  requests:
+    cpu: "150m"
+    memory: "512Mi"
+  limits:
+    cpu: "800m"
+    memory: "1024Mi"
+
+opensearch_security:
+  enabled: false
+
+extraEnvs:
+  - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+    value: "true"
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: "siem.vigilante.local"
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            serviceName: ""
+  tls:
+    - hosts:
+        - "siem.vigilante.local"
+      secretName: "vigil-soc-tls"
