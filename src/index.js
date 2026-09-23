@@ -3,6 +3,7 @@ export { VigilSOCModule } from './modules/vigil-soc/index.js';
 export { VigilLocalModule } from './modules/vigil-local/index.js';
 export { KCTFModule } from './modules/kctf/index.js';
 export { OpenVASModule } from './modules/openvas/index.js';
+export { WazuhModule } from './modules/wazuh/index.js';
 export {
   CHALLENGE_CATEGORIES,
   CHALLENGE_TEMPLATES,

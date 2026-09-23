@@ -198,6 +198,10 @@ export const DEFAULT_CONFIG = {
       enabled: false,
       feedRelease: '24.10',
       defaultProfile: 'full-and-fast'
+    },
+    wazuh: {
+      enabled: false,
+      version: '4.14.7'
     }
   },
   behavior: {
@@ -426,6 +430,10 @@ export function loadConfig() {
             openvas: {
               ...DEFAULT_CONFIG.modules?.openvas,
               ...(parsed.modules?.openvas || {})
+            },
+            wazuh: {
+              ...DEFAULT_CONFIG.modules?.wazuh,
+              ...(parsed.modules?.wazuh || {})
             }
           },
           behavior: {

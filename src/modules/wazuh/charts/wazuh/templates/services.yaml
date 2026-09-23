@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-indexer
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  type: ClusterIP
+  ports:
+    - name: indexer
+      port: 9200
+      targetPort: 9200
+  selector:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/component: indexer
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-indexer-headless
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: indexer
+      port: 9200
+      targetPort: 9200
+  selector:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/component: indexer
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: manager
+spec:
+  type: ClusterIP
+  ports:
+    - name: events
+      port: 1514
+      targetPort: 1514
+    - name: enrollment
+      port: 1515
+      targetPort: 1515
+    - name: api
+      port: 55000
+      targetPort: 55000
+  selector:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager-headless
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: manager
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: events
+      port: 1514
+      targetPort: 1514
+    - name: enrollment
+      port: 1515
+      targetPort: 1515
+    - name: api
+      port: 55000
+      targetPort: 55000
+  selector:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-dashboard
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - name: dashboard
+      port: 5601
+      targetPort: 5601
+  selector:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/instance: {{ .Release.Name }}

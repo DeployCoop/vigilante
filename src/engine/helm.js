@@ -268,7 +268,7 @@ async function getAvailableModuleIds(modulesDir) {
   } catch {
     // Ignore
   }
-  return modIds.length > 0 ? modIds : ['opensearch', 'vigil-soc', 'kctf', 'openvas'];
+  return modIds.length > 0 ? modIds : ['opensearch', 'vigil-soc', 'kctf', 'openvas', 'wazuh'];
 }
 
 /**

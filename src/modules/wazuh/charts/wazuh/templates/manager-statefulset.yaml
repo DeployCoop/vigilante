@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: manager
+spec:
+  serviceName: wazuh-manager-headless
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh
+      app.kubernetes.io/component: manager
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wazuh
+        app.kubernetes.io/component: manager
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      hostname: wazuh-manager
+      initContainers:
+        - name: wait-for-indexer
+          image: {{ .Values.images.busybox }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              i=0
+              while [ "$i" -lt 60 ]; do
+                if nc -z wazuh-indexer 9200; then
+                  exit 0
+                fi
+                i=$((i+1))
+                sleep 5
+              done
+              echo "timed out waiting for wazuh-indexer:9200" >&2
+              exit 1
+      containers:
+        - name: wazuh-manager
+          image: {{ .Values.images.manager }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: HOSTNAME
+              value: wazuh-manager
+            - name: INDEXER_URL
+              value: https://{{ include "wazuh.indexerHost" . }}:9200
+            - name: INDEXER_USERNAME
+              value: {{ .Values.credentials.indexerUsername | quote }}
+            - name: INDEXER_PASSWORD
+              value: {{ .Values.credentials.indexerPassword | quote }}
+            - name: FILEBEAT_SSL_VERIFICATION_MODE
+              value: full
+            - name: SSL_CERTIFICATE_AUTHORITIES
+              value: /etc/ssl/wazuh-certs/root-ca.pem
+            - name: SSL_CERTIFICATE
+              value: /etc/ssl/wazuh-certs/wazuh-manager.pem
+            - name: SSL_KEY
+              value: /etc/ssl/wazuh-certs/wazuh-manager-key.pem
+            - name: API_USERNAME
+              value: {{ .Values.credentials.apiUsername | quote }}
+            - name: API_PASSWORD
+              value: {{ .Values.credentials.apiPassword | quote }}
+          ports:
+            - name: events
+              containerPort: 1514
+            - name: enrollment
+              containerPort: 1515
+            - name: api
+              containerPort: 55000
+          startupProbe:
+            tcpSocket:
+              port: 55000
+            periodSeconds: 10
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: 55000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.manager.resources | nindent 12 }}
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/ssl/wazuh-certs
+            {{- if .Values.manager.persistence.enabled }}
+            - name: manager-data
+              mountPath: /var/ossec/api/configuration
+              subPath: api-configuration
+            - name: manager-data
+              mountPath: /var/ossec/etc
+              subPath: etc
+            - name: manager-data
+              mountPath: /var/ossec/logs
+              subPath: logs
+            - name: manager-data
+              mountPath: /var/ossec/queue
+              subPath: queue
+            - name: manager-data
+              mountPath: /var/ossec/agentless
+              subPath: agentless
+            - name: manager-data
+              mountPath: /var/ossec/var/multigroups
+              subPath: multigroups
+            - name: manager-data
+              mountPath: /var/ossec/integrations
+              subPath: integrations
+            - name: manager-data
+              mountPath: /var/ossec/active-response/bin
+              subPath: active-response
+            - name: manager-data
+              mountPath: /var/ossec/wodles
+              subPath: wodles
+            - name: manager-data
+              mountPath: /etc/filebeat
+              subPath: filebeat
+            - name: manager-data
+              mountPath: /var/lib/filebeat
+              subPath: filebeat-data
+            {{- end }}
+      volumes:
+        - name: certs
+          persistentVolumeClaim:
+            claimName: wazuh-certs
+{{ if .Values.manager.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: manager-data
+        labels:
+          {{- include "wazuh.labels" . | nindent 10 }}
+          app.kubernetes.io/component: manager
+      spec:
+        accessModes:
+          - {{ .Values.manager.persistence.accessMode | quote }}
+        {{- include "wazuh.persistence.storageClass" .Values.manager.persistence.storageClass | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.manager.persistence.size | quote }}
+{{ end }}

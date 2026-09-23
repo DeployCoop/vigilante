@@ -3,6 +3,7 @@ import { VigilSOCModule } from './vigil-soc/index.js';
 import { VigilLocalModule } from './vigil-local/index.js';
 import { KCTFModule } from './kctf/index.js';
 import { OpenVASModule } from './openvas/index.js';
+import { WazuhModule } from './wazuh/index.js';
 
 export class ModuleRegistry {
   constructor() {
@@ -16,6 +17,7 @@ export class ModuleRegistry {
     this.register(new VigilLocalModule());
     this.register(new KCTFModule());
     this.register(new OpenVASModule());
+    this.register(new WazuhModule());
   }
 
   /**

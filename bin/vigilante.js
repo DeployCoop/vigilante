@@ -60,6 +60,7 @@ const cli = meow(`
     $ vigilante threat-sim --scenario credential-bruteforce
     $ vigilante threat-sim --playbook ./playbooks/my-custom-exploit.yaml
     $ vigilante playbooks
+    $ vigilante up -m wazuh
     $ vigilante up -n tenant-alpha -m opensearch,vigil-soc
     $ vigilante uninstall -m openvas -n openvas
     $ vigilante reset -m kctf -n kctf

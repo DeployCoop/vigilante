@@ -8,8 +8,8 @@ async function runTests() {
   const allModules = globalModuleRegistry.getAll();
   const ids = allModules.map(m => m.id);
 
-  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas')) {
-    throw new Error(`Expected default modules 'opensearch', 'vigil-soc', 'kctf', and 'openvas', got: ${JSON.stringify(ids)}`);
+  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas') || !ids.includes('wazuh')) {
+    throw new Error(`Expected default modules 'opensearch', 'vigil-soc', 'kctf', 'openvas', and 'wazuh', got: ${JSON.stringify(ids)}`);
   }
   console.log('✔ Test 1 passed: Default modules registered in globalModuleRegistry.');
 
@@ -21,6 +21,15 @@ async function runTests() {
     throw new Error(`Expected ['opensearch', 'vigil-soc'] in dependency order, got: ${JSON.stringify(resolvedIds)}`);
   }
   console.log('✔ Test 2 passed: Dependency resolution ordered opensearch before vigil-soc.');
+
+  const wazuhOnly = globalModuleRegistry.resolveModules(['wazuh']).map(m => m.id);
+  if (wazuhOnly.length !== 1 || wazuhOnly[0] !== 'wazuh') {
+    throw new Error(`Expected wazuh to resolve with no dependencies, got: ${JSON.stringify(wazuhOnly)}`);
+  }
+  const withWazuh = globalModuleRegistry.resolveModules(['wazuh', 'vigil-soc']).map(m => m.id);
+  if (withWazuh.indexOf('opensearch') > withWazuh.indexOf('vigil-soc') || !withWazuh.includes('wazuh')) {
+    throw new Error(`Expected wazuh plus opensearch before vigil-soc, got: ${JSON.stringify(withWazuh)}`);
+  }
 
   // Test 3: Circular dependency detection
   const testRegistry = new ModuleRegistry();
@@ -44,10 +53,10 @@ async function runTests() {
 
   // Test 4: Domain hosts include both subdomains
   const hosts = getDomainHosts({ domain: 'vigilante.local' });
-  if (!hosts.includes('siem.vigilante.local') || !hosts.includes('vigil.vigilante.local')) {
-    throw new Error(`Expected siem and vigil hostnames, got: ${JSON.stringify(hosts)}`);
+  if (!hosts.includes('siem.vigilante.local') || !hosts.includes('vigil.vigilante.local') || !hosts.includes('wazuh.vigilante.local')) {
+    throw new Error(`Expected siem, vigil, and wazuh hostnames, got: ${JSON.stringify(hosts)}`);
   }
-  console.log('✔ Test 4 passed: getDomainHosts maps both siem and vigil subdomains.');
+  console.log('✔ Test 4 passed: getDomainHosts maps siem, vigil, and wazuh subdomains.');
 
   // Test 5: simulateThreats exists on opensearch and vigil-soc
   const opensearch = globalModuleRegistry.get('opensearch');
