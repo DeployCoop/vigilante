@@ -1136,13 +1136,13 @@ export function createVigilanteMcpServer() {
         },
         {
           name: 'uninstall_module',
-          description: 'Uninstall an individual security or platform module from the Kubernetes cluster (e.g. openvas, kctf, opensearch, vigil-soc, vigil-local).',
+          description: 'Uninstall an individual security or platform module from the Kubernetes cluster (e.g. wazuh, openvas, kctf, opensearch, vigil-soc, vigil-local).',
           inputSchema: {
             type: 'object',
             properties: {
               moduleId: {
                 type: 'string',
-                description: 'Unique ID of the module to uninstall (e.g. openvas, kctf, vigil-soc, opensearch, vigil-local)'
+                description: 'Unique ID of the module to uninstall (e.g. wazuh, openvas, kctf, vigil-soc, opensearch, vigil-local)'
               },
               namespace: {
                 type: 'string',
@@ -1168,7 +1168,7 @@ export function createVigilanteMcpServer() {
             properties: {
               moduleId: {
                 type: 'string',
-                description: 'Unique ID of the module to reset (e.g. openvas, kctf, vigil-soc, opensearch, vigil-local)'
+                description: 'Unique ID of the module to reset (e.g. wazuh, openvas, kctf, vigil-soc, opensearch, vigil-local)'
               },
               namespace: {
                 type: 'string',

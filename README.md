@@ -1,6 +1,6 @@
 # 🦇 Vigilante
 
-**Vigilante** is a modern, modular terminal CLI application built with **React** and **Ink** designed to orchestrate local Kubernetes environments using **k3d**, automatically issue and trust local TLS certificates via **mkcert**, and dynamically deploy modular security and SOC packages like **OpenSearch SIEM** for network threat analysis.
+**Vigilante** is a modern, modular terminal CLI application built with **React** and **Ink** designed to orchestrate local Kubernetes environments using **k3d**, automatically issue and trust local TLS certificates via **mkcert**, and dynamically deploy modular security and SOC packages like **OpenSearch SIEM** and **Wazuh XDR/SIEM** for network threat analysis.
 
 > 🚨 **UNDER ACTIVE BREACH? READ THE EMERGENCY PLAYBOOK FIRST**:
 > If you suspect or have confirmed an active network intrusion, go immediately to **[FIRSTRESPONSE.md](FIRSTRESPONSE.md)** for the step-by-step incident response checklist to contain the breach, preserve volatile evidence with GPG chain-of-custody, and document root-cause initial access.
@@ -27,6 +27,7 @@ This project is a reimagining of [vigilant-octo-waffle](https://github.com/Deplo
 - **Automated Local DNS (`hostr`)**: Automatically synchronizes `/etc/hosts` with managed domain mappings (`127.0.0.1 vigilante.local`, `127.0.0.1 siem.vigilante.local`) in an idempotent, safe block with sudo elevation when required.
 - **Modular Package Ecosystem & Custom Values**: Declarative `BaseModule` system with easy `values.yaml` customization (`vigilante values export`) to tweak chart configurations without modifying code.
 - **vigil-SOC (OpenSearch SIEM)**: Out-of-the-box OpenSearch and OpenSearch Dashboards configured for SIEM and network threat analysis at `https://siem.vigilante.local`.
+- **Wazuh XDR/SIEM**: Single-node Wazuh indexer, manager, and dashboard for a local lab at `https://wazuh.vigilante.local` (`vigilante up -m wazuh`).
 - **Network Threat Pipeline & Simulator**: Pre-packaged SIGMA threat detection rules and an automated threat injection simulator (Port Scanning, SSH Brute Force, DNS Tunneling) to validate SIEM alerts.
 - **Incident Response Evidence Vault (`net/host/data.ext`)**: Parallel forensic triage capture (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`, `bench`) with cryptographic GPG detached signatures (`.asc`) for legal chain-of-custody.
 - **Model Context Protocol (MCP) Server for LLMs**: Expose discovered host profiles, network topology maps, Incident Response Evidence Vaults, Kubernetes cluster telemetry, and live forensic diagnostic tools directly to AI assistants (Claude, Antigravity, Cursor) via `@modelcontextprotocol/sdk`.
@@ -86,6 +87,22 @@ https://siem.vigilante.local
 - **Username**: `admin`
 - **Password**: `Admin123456!` *(or `admin`)*
 - *(Local TLS certificate is automatically trusted via mkcert root CA; dev mode allows direct access without auth friction)*
+
+### 5. Access Wazuh XDR/SIEM
+Deploy the optional Wazuh module (it is not selected by default):
+```bash
+vigilante up -m wazuh
+```
+Open the dashboard:
+```text
+https://wazuh.vigilante.local
+```
+These are the upstream Wazuh single-node lab credentials (also in `src/modules/wazuh/values/wazuh.yaml`):
+- **Dashboard / indexer**: `admin` / `SecretPassword`
+- **Dashboard service account** (internal): `kibanaserver` / `kibanaserver`
+- **Wazuh API**: `wazuh-wui` / `MyS3cr37P450r.*-`
+
+The chart runs one indexer, one manager, and one dashboard. Indexer heap defaults to 512Mi and memory mapping is disabled so a laptop k3d node does not need `vm.max_map_count`. Agent event and enrollment ports (`1514`, `1515`) and the manager API (`55000`) are available inside the cluster at `wazuh-manager.<namespace>.svc.cluster.local`. The first start pulls the Wazuh images and waits for the indexer before the dashboard is served.
 
 ---
 
@@ -287,6 +304,7 @@ vigilante values export --values-dir ~/.config/vigilante/values
 This generates:
 - `opensearch/opensearch.yaml` (OpenSearch SIEM core cluster memory, CPU, replica settings)
 - `opensearch/opensearch-dashboards.yaml` (OpenSearch Dashboards UI, ingress, resources)
+- `wazuh/wazuh.yaml` (Wazuh indexer/manager/dashboard resources, ingress host, and lab credentials)
 - `vigil-soc/vigil.yaml` (Vigil AI SOC: backend API, daemon orchestrator, LLM/agent workers, postgres, redis, ingress)
 
 ---
@@ -954,6 +972,10 @@ vigilante/
 │   │   │   ├── index.js          # OpenSearchModule lifecycle implementation
 │   │   │   ├── values/           # Default Helm values templates (opensearch, opensearch-dashboards)
 │   │   │   └── manifests/        # SIGMA threat rules & threat simulation Job
+│   │   ├── wazuh/                # Wazuh open-source XDR/SIEM (indexer, manager, dashboard)
+│   │   │   ├── index.js          # WazuhModule lifecycle implementation
+│   │   │   ├── charts/           # Single-node lab Helm chart (charts/wazuh)
+│   │   │   └── values/           # Default Helm values template (wazuh.yaml)
 │   │   └── vigil-soc/            # Package 2: Vigil AI-Native SOC Investigation Platform
 │   │       ├── index.js          # VigilSOCModule lifecycle implementation
 │   │       ├── charts/           # Vendored Helm charts (charts/vigil)

@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-indexer
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  serviceName: wazuh-indexer-headless
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh
+      app.kubernetes.io/component: indexer
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wazuh
+        app.kubernetes.io/component: indexer
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      initContainers:
+        - name: generate-certs
+          image: {{ .Values.images.certs }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            runAsUser: 0
+          env:
+            - name: CERT_TOOL_VERSION
+              value: {{ .Values.certsToolVersion | quote }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -eu
+              if [ ! -s /certificates/root-ca.pem ]; then
+                echo "Generating Wazuh internal certificates"
+                /entrypoint.sh
+              else
+                echo "Reusing existing Wazuh certificates"
+              fi
+              chmod 755 /certificates
+              for f in /certificates/*; do
+                case "$f" in
+                  *-key.pem|*.key) chmod 600 "$f" ;;
+                  *) chmod 644 "$f" ;;
+                esac
+              done
+              chown -R 1000:1000 /certificates /var/lib/wazuh-indexer
+              test -s /certificates/wazuh-indexer.pem
+              test -s /certificates/wazuh-indexer-key.pem
+              test -s /certificates/wazuh-manager.pem
+              test -s /certificates/root-ca.pem
+              test -s /certificates/admin.pem
+              test -s /certificates/admin-key.pem
+          volumeMounts:
+            - name: certs
+              mountPath: /certificates
+            - name: certs-config
+              mountPath: /config/certs.yml
+              subPath: certs.yml
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+      containers:
+        - name: wazuh-indexer
+          image: {{ .Values.images.indexer }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          env:
+            - name: OPENSEARCH_JAVA_OPTS
+              value: {{ .Values.indexer.javaOpts | quote }}
+          ports:
+            - name: indexer
+              containerPort: 9200
+          startupProbe:
+            tcpSocket:
+              port: 9200
+            periodSeconds: 10
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: 9200
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.indexer.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/wazuh-indexer
+            - name: config
+              mountPath: /usr/share/wazuh-indexer/config/opensearch.yml
+              subPath: opensearch.yml
+            - name: config
+              mountPath: /usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml
+              subPath: internal_users.yml
+            - name: certs
+              mountPath: /usr/share/wazuh-indexer/config/certs
+      volumes:
+        - name: certs
+          persistentVolumeClaim:
+            claimName: wazuh-certs
+        - name: certs-config
+          configMap:
+            name: wazuh-config
+            items:
+              - key: certs.yml
+                path: certs.yml
+        - name: config
+          configMap:
+            name: wazuh-config
+            items:
+              - key: opensearch.yml
+                path: opensearch.yml
+              - key: internal_users.yml
+                path: internal_users.yml
+{{ if not .Values.indexer.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+{{ end }}
+{{ if .Values.indexer.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "wazuh.labels" . | nindent 10 }}
+          app.kubernetes.io/component: indexer
+      spec:
+        accessModes:
+          - {{ .Values.indexer.persistence.accessMode | quote }}
+        {{- include "wazuh.persistence.storageClass" .Values.indexer.persistence.storageClass | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.indexer.persistence.size | quote }}
+{{ end }}

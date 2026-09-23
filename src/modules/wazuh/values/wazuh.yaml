@@ -1,0 +1,33 @@
+# ==============================================================================
+# Default Helm values for the Wazuh XDR/SIEM module
+# ==============================================================================
+# Override by placing a custom file at:
+#   ./values/wazuh/wazuh.yaml
+#   or by passing --values <file>
+#
+# Lab credentials (upstream Wazuh single-node demo users):
+#   Dashboard / indexer admin : admin / SecretPassword
+#   Dashboard service user    : kibanaserver / kibanaserver
+#   Wazuh API                 : wazuh-wui / MyS3cr37P450r.*-
+# Indexer password hashes are shipped in the chart. Changing indexerPassword
+# or dashboardPassword here also requires new bcrypt hashes.
+# ==============================================================================
+
+credentials:
+  indexerUsername: admin
+  indexerPassword: SecretPassword
+  dashboardUsername: kibanaserver
+  dashboardPassword: kibanaserver
+  apiUsername: wazuh-wui
+  apiPassword: "MyS3cr37P450r.*-"
+
+ingress:
+  enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: wazuh.{{DOMAIN}}
+  tls:
+    - secretName: {{TLS_SECRET}}
+      hosts:
+        - wazuh.{{DOMAIN}}

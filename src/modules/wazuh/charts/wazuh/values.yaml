@@ -1,0 +1,86 @@
+# Single-node Wazuh 4.14 lab defaults for a laptop k3d cluster.
+# This is not an HA production topology: one indexer, one manager, one dashboard.
+#
+# Dashboard login uses the upstream Wazuh single-node demo users. The bcrypt
+# hashes in files/internal_users.yml must stay in sync with indexerPassword
+# and dashboardPassword. The API password is applied by the manager at boot
+# and can be changed here without regenerating hashes.
+
+images:
+  indexer: wazuh/wazuh-indexer:4.14.7
+  manager: wazuh/wazuh-manager:4.14.7
+  dashboard: wazuh/wazuh-dashboard:4.14.7
+  certs: wazuh/wazuh-certs-generator:0.0.4
+  busybox: busybox:1.36.1
+
+certsToolVersion: "4.14"
+imagePullPolicy: IfNotPresent
+
+credentials:
+  indexerUsername: admin
+  # Upstream single-node demo password. Hash lives in files/internal_users.yml.
+  indexerPassword: SecretPassword
+  dashboardUsername: kibanaserver
+  dashboardPassword: kibanaserver
+  apiUsername: wazuh-wui
+  apiPassword: "MyS3cr37P450r.*-"
+
+indexer:
+  # 512m heap plus node.store.allow_mmap=false avoids vm.max_map_count on k3d.
+  javaOpts: "-Xms512m -Xmx512m"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 8Gi
+
+manager:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+
+dashboard:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+certs:
+  persistence:
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 64Mi
+
+ingress:
+  enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: wazuh.vigilante.local
+  tls:
+    - secretName: wazuh-tls
+      hosts:
+        - wazuh.vigilante.local
+
+serviceAccount:
+  create: false
+  name: ""

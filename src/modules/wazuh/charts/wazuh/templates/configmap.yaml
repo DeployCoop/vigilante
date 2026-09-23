@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-config
+  namespace: {{ include "wazuh.namespace" . }}
+  labels:
+    {{- include "wazuh.labels" . | nindent 4 }}
+data:
+  opensearch.yml: |
+{{ .Files.Get "files/opensearch.yml" | indent 4 }}
+  internal_users.yml: |
+{{ .Files.Get "files/internal_users.yml" | indent 4 }}
+  opensearch_dashboards.yml: |
+    server.host: 0.0.0.0
+    server.port: 5601
+    opensearch.hosts: https://{{ include "wazuh.indexerHost" . }}:9200
+    opensearch.ssl.verificationMode: full
+    opensearch.requestHeadersWhitelist: ["securitytenant","Authorization"]
+    opensearch_security.multitenancy.enabled: false
+    opensearch_security.readonly_mode.roles: ["kibana_read_only"]
+    server.ssl.enabled: false
+    opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
+    uiSettings.overrides.defaultRoute: /app/wz-home
+    opensearch_security.cookie.ttl: 900000
+    opensearch_security.session.ttl: 900000
+    opensearch_security.session.keepalive: true
+  certs.yml: |
+    nodes:
+      indexer:
+        - name: wazuh-indexer
+          ip: {{ include "wazuh.indexerHost" . }}
+      server:
+        - name: wazuh-manager
+          ip: {{ include "wazuh.managerHost" . }}
+      dashboard:
+        - name: wazuh-dashboard
+          ip: wazuh-dashboard.{{ include "wazuh.namespace" . }}.svc.cluster.local
