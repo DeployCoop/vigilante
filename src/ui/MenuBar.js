@@ -33,9 +33,14 @@ export function getActiveWorkflowStage(viewState) {
     case 'PODS':
       return 'PODS';
     case 'NMAP':
+    case 'OOBSCAN':
       return 'NMAP';
     case 'XML_VISUALIZER':
     case 'OPENVAS':
+    case 'VULN':
+    case 'BATTLESTATION':
+    case 'KSPM':
+    case 'AUDIT':
       return 'VISUALIZER';
     case 'AI_ANALYST':
     case 'AI':
@@ -256,6 +261,152 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
         { key: 'w', label: 'Web Portal', color: theme.accent || 'cyan' },
         { key: 'r', label: 'Refresh', color: theme.primary || 'blue' },
         { key: 'q/Esc', label: 'Dashboard', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: OOBscan BMC Hardware Audit
+  if (viewState === 'OOBSCAN') {
+    return {
+      title: '📡 OOBscan BMC & Out-of-Band Hardware Security Audit',
+      nextStepHint: { label: 'Operations Hub', key: 'Tab' },
+      items: [
+        { key: 'Tab', label: 'Switch Tab', color: theme.accent || 'cyan' },
+        { key: 'Enter', label: 'Start Scan', color: theme.success || 'green' },
+        { key: 'i', label: 'Custom Target', color: theme.primary || 'blue' },
+        { key: 'c/y', label: 'Copy Hash', color: theme.warning || 'yellow' },
+        { key: 'h', label: 'Export Hashes', color: theme.secondary || 'magenta' },
+        { key: 'p', label: 'Pager', color: theme.info || 'cyan' },
+        { key: 'd', label: 'Delete', color: theme.error || 'red' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Vulnerability & Threat Center
+  if (viewState === 'VULN') {
+    return {
+      title: '⚡ Vulnerability & Threat Center (Dossiers & Brain)',
+      nextStepHint: { label: 'AI Analyst', key: 'a' },
+      items: [
+        { key: 'Tab', label: 'Cycle Tabs', color: theme.primary || 'cyan' },
+        { key: '1-4', label: 'Jump Tab', color: theme.secondary || 'blue' },
+        { key: '↑/↓', label: 'Select Host', color: theme.muted || 'gray' },
+        { key: 'r', label: 'Refresh Dossier', color: theme.success || 'green' },
+        { key: 'c', label: 'Copy JSON', color: theme.text || 'white' },
+        { key: 'q/Esc', label: 'Hub', color: theme.warning || 'yellow' }
+      ]
+    };
+  }
+
+  // State: Battle Station
+  if (viewState === 'BATTLESTATION') {
+    return {
+      title: '⚔️ Battle Station (eBPF Runtime + IDS Network Stream)',
+      nextStepHint: { label: 'AI Analyst', key: 'a' },
+      items: [
+        { key: 'Tab', label: 'Switch Stream', color: theme.warning || 'yellow' },
+        { key: '↑/↓', label: 'Scroll Events', color: theme.muted || 'gray' },
+        { key: 'x', label: 'SOAR Isolate/Block', color: theme.error || 'red' },
+        { key: 'a', label: 'Agent SOC ReAct', color: theme.primary || 'cyan' },
+        { key: 'Space/p', label: 'Pause/Resume', color: theme.success || 'green' },
+        { key: 'c', label: 'Copy Event', color: theme.info || 'blue' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: KSPM
+  if (viewState === 'KSPM') {
+    return {
+      title: '🛡️ Kubernetes Security Posture Management (KSPM)',
+      nextStepHint: { label: 'Battle Station', key: 'b' },
+      items: [
+        { key: '↑/↓', label: 'Select Violation', color: theme.muted || 'gray' },
+        { key: 'r', label: 'Refresh Scorecard', color: theme.success || 'green' },
+        { key: 'e', label: 'Export Signed Report', color: theme.secondary || 'yellow' },
+        { key: 'c', label: 'Copy JSON', color: theme.text || 'white' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Shift-Left Audit
+  if (viewState === 'AUDIT') {
+    return {
+      title: '🛡️ Shift-Left CI/CD Security Audit',
+      nextStepHint: { label: 'KSPM', key: 'k' },
+      items: [
+        { key: '↑/↓', label: 'Select Finding', color: theme.muted || 'gray' },
+        { key: 'r', label: 'Re-scan', color: theme.success || 'green' },
+        { key: 's', label: 'Copy SARIF', color: theme.accent || 'cyan' },
+        { key: 'c', label: 'Copy JSON', color: theme.text || 'white' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Autonomous Deception Mesh
+  if (viewState === 'CANARY') {
+    return {
+      title: '🪤 Autonomous Deception Mesh ("Canary Kube")',
+      nextStepHint: { label: 'Purple Team', key: 'w' },
+      items: [
+        { key: 'r', label: 'Refresh Canaries', color: theme.success || 'green' },
+        { key: 'd', label: 'Deploy Decoy', color: theme.accent || 'cyan' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Purple Team Arena
+  if (viewState === 'PURPLE') {
+    return {
+      title: '⚔️ Autonomous Purple Team Arena',
+      nextStepHint: { label: 'Deception', key: 'y' },
+      items: [
+        { key: 's', label: 'Start Wargame', color: theme.success || 'green' },
+        { key: '1/2', label: 'Select Scenario', color: theme.accent || 'cyan' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: PCAP Forensics
+  if (viewState === 'FORENSICS') {
+    return {
+      title: '🔬 Deep PCAP Forensic Extraction',
+      nextStepHint: { label: 'Lineage', key: 'e' },
+      items: [
+        { key: 'r', label: 'Rescan Dropzone', color: theme.success || 'green' },
+        { key: 'c', label: 'Carve Payloads', color: theme.accent || 'cyan' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Kernel eBPF Lineage
+  if (viewState === 'LINEAGE') {
+    return {
+      title: '🐝 Kernel eBPF Process Lineage Tree',
+      nextStepHint: { label: 'CloudSec', key: 'c' },
+      items: [
+        { key: 'r', label: 'Refresh Trace', color: theme.success || 'green' },
+        { key: 'x', label: 'SOAR Isolate', color: theme.error || 'red' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
+      ]
+    };
+  }
+
+  // State: Multi-Cloud Identity & CSPM
+  if (viewState === 'CLOUDSEC') {
+    return {
+      title: '☁️ Multi-Cloud Workload Identity & CSPM',
+      nextStepHint: { label: 'KSPM', key: 'k' },
+      items: [
+        { key: 'r', label: 'Rescan Clouds', color: theme.success || 'green' },
+        { key: 'p', label: 'Export Report', color: theme.secondary || 'yellow' },
+        { key: 'q/Esc', label: 'Hub', color: theme.muted || 'gray' }
       ]
     };
   }

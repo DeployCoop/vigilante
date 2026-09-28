@@ -1,3 +1,5 @@
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { ModuleRegistry, globalModuleRegistry } from '../src/modules/registry.js';
 import { getDomainHosts } from '../src/engine/hosts.js';
 
@@ -8,8 +10,8 @@ async function runTests() {
   const allModules = globalModuleRegistry.getAll();
   const ids = allModules.map(m => m.id);
 
-  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas') || !ids.includes('wazuh')) {
-    throw new Error(`Expected default modules 'opensearch', 'vigil-soc', 'kctf', 'openvas', and 'wazuh', got: ${JSON.stringify(ids)}`);
+  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas') || !ids.includes('wazuh') || !ids.includes('flamingo') || !ids.includes('falco') || !ids.includes('suricata') || !ids.includes('zeek') || !ids.includes('zap') || !ids.includes('bloodhound')) {
+    throw new Error(`Expected default modules, got: ${JSON.stringify(ids)}`);
   }
   console.log('✔ Test 1 passed: Default modules registered in globalModuleRegistry.');
 
@@ -29,6 +31,18 @@ async function runTests() {
   const withWazuh = globalModuleRegistry.resolveModules(['wazuh', 'vigil-soc']).map(m => m.id);
   if (withWazuh.indexOf('opensearch') > withWazuh.indexOf('vigil-soc') || !withWazuh.includes('wazuh')) {
     throw new Error(`Expected wazuh plus opensearch before vigil-soc, got: ${JSON.stringify(withWazuh)}`);
+  }
+
+  const flamingoOnly = globalModuleRegistry.resolveModules(['flamingo']).map(m => m.id);
+  if (flamingoOnly.length !== 1 || flamingoOnly[0] !== 'flamingo') {
+    throw new Error(`Expected flamingo to resolve with no dependencies, got: ${JSON.stringify(flamingoOnly)}`);
+  }
+
+  for (const mId of ['falco', 'suricata', 'zeek', 'zap', 'bloodhound']) {
+    const resMod = globalModuleRegistry.resolveModules([mId]).map(m => m.id);
+    if (resMod.length !== 1 || resMod[0] !== mId) {
+      throw new Error(`Expected ${mId} to resolve standalone, got: ${JSON.stringify(resMod)}`);
+    }
   }
 
   // Test 3: Circular dependency detection
@@ -51,12 +65,12 @@ async function runTests() {
   }
   console.log('✔ Test 3 passed: Circular dependency correctly detected and rejected.');
 
-  // Test 4: Domain hosts include both subdomains
+  // Test 4: Domain hosts include subdomains
   const hosts = getDomainHosts({ domain: 'vigilante.local' });
-  if (!hosts.includes('siem.vigilante.local') || !hosts.includes('vigil.vigilante.local') || !hosts.includes('wazuh.vigilante.local')) {
-    throw new Error(`Expected siem, vigil, and wazuh hostnames, got: ${JSON.stringify(hosts)}`);
+  if (!hosts.includes('siem.vigilante.local') || !hosts.includes('vigil.vigilante.local') || !hosts.includes('wazuh.vigilante.local') || !hosts.includes('flamingo.vigilante.local')) {
+    throw new Error(`Expected siem, vigil, wazuh, and flamingo hostnames, got: ${JSON.stringify(hosts)}`);
   }
-  console.log('✔ Test 4 passed: getDomainHosts maps siem, vigil, and wazuh subdomains.');
+  console.log('✔ Test 4 passed: getDomainHosts maps siem, vigil, wazuh, and flamingo subdomains.');
 
   // Test 5: simulateThreats exists on opensearch and vigil-soc
   const opensearch = globalModuleRegistry.get('opensearch');
@@ -115,6 +129,21 @@ async function runTests() {
     throw new Error(`resetModule unexpected phase sequence: ${JSON.stringify(resetPhases)}`);
   }
   console.log('✔ Test 7 passed: resetModule executes two-phase teardown and reinstall cleanly.');
+
+  // Test 8: vigil-soc chart version and 0.6.0 image rendering
+  const vigilChartYamlPath = path.resolve('src/modules/vigil-soc/charts/vigil/Chart.yaml');
+  const vigilChartYaml = await fs.readFile(vigilChartYamlPath, 'utf8');
+  if (!vigilChartYaml.includes('version: 0.6.0') || !vigilChartYaml.includes('appVersion: 0.6.0')) {
+    throw new Error('vigil-soc Chart.yaml must specify version 0.6.0 and appVersion 0.6.0');
+  }
+
+  // Verify daemon-statefulset template includes state volume mount and VIGIL_DIR fix for issue #1152
+  const daemonStatefulsetPath = path.resolve('src/modules/vigil-soc/charts/vigil/templates/daemon-statefulset.yaml');
+  const daemonTemplate = await fs.readFile(daemonStatefulsetPath, 'utf8');
+  if (!daemonTemplate.includes('vigil.stateVolumeMount') || !daemonTemplate.includes('vigil.stateEnv')) {
+    throw new Error('daemon-statefulset.yaml must include vigil.stateVolumeMount and vigil.stateEnv');
+  }
+  console.log('✔ Test 8 passed: vigil-soc chart upgraded to 0.6.0 with VIGIL_DIR state volume mount.');
 
   console.log('🎉 All Modules tests passed successfully!');
 }

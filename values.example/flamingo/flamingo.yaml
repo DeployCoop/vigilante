@@ -1,0 +1,29 @@
+# ==============================================================================
+# Example Custom Helm Values for Flamingo Credential Harvester
+# ==============================================================================
+# Place at: ./values/flamingo/flamingo.yaml
+# ==============================================================================
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/joshuacox/flamingo
+  tag: "latest"
+
+config:
+  # Enable selected listener protocols
+  protocols: "ssh,snmp,ldap,http,dns,ftp"
+  httpAuthMode: "ntlm" # ntlm or basic
+  outputs:
+    - "stdout"
+    # - "/var/log/flamingo/creds.log"
+    # - "https://webhook.site/..."
+
+# Persistence (optional: record credentials to disk)
+persistence:
+  enabled: false
+  size: 1Gi
+  mountPath: /var/log/flamingo
+
+service:
+  type: ClusterIP

@@ -4,6 +4,84 @@ export { VigilLocalModule } from './modules/vigil-local/index.js';
 export { KCTFModule } from './modules/kctf/index.js';
 export { OpenVASModule } from './modules/openvas/index.js';
 export { WazuhModule } from './modules/wazuh/index.js';
+export { FlamingoModule } from './modules/flamingo/index.js';
+export { FalcoModule } from './modules/falco/index.js';
+export { SuricataModule } from './modules/suricata/index.js';
+export { ZeekModule } from './modules/zeek/index.js';
+export { ZAPModule } from './modules/zap/index.js';
+export { BloodHoundModule } from './modules/bloodhound/index.js';
+export {
+  RECON_PROFILES,
+  checkReconToolsInstalled,
+  runReconScan,
+  listSavedReconScans,
+  parseNaabuOutput,
+  parseHttpxOutput,
+  reconToTopology
+} from './engine/recon.js';
+export {
+  NUCLEI_PROFILES,
+  checkNucleiInstalled,
+  runNucleiScan,
+  parseNucleiOutput,
+  listSavedNucleiScans
+} from './engine/nuclei.js';
+export {
+  TRIVY_PROFILES,
+  checkTrivyInstalled,
+  runTrivyAudit,
+  parseTrivyOutput,
+  listSavedTrivyScans
+} from './engine/trivy.js';
+export {
+  KUBEAUDIT_PROFILES,
+  checkKubeAuditToolsInstalled,
+  runKubeAudit,
+  parseKubeBenchOutput,
+  parseKubeHunterOutput,
+  listSavedKubeAudits
+} from './engine/kubeaudit.js';
+export {
+  NETEXEC_PROFILES,
+  checkNetexecInstalled,
+  runNetexecAudit,
+  parseNetexecOutput,
+  listSavedNetexecAudits
+} from './engine/netexec.js';
+export {
+  ZAP_PROFILES,
+  checkZapAvailable,
+  runZapScan,
+  listSavedZapScans
+} from './engine/zap.js';
+export {
+  parseSuricataEve,
+  parseZeekConnLogs,
+  summarizeTrafficAlerts,
+  replayPcap,
+  listPcapRecordings
+} from './engine/traffic.js';
+export {
+  checkBloodhoundAvailable,
+  parseBloodhoundData,
+  correlateFlamingoCredentials,
+  ingestBloodhoundData,
+  listBloodhoundIngests
+} from './engine/bloodhound.js';
+export {
+  calculateRiskScore,
+  buildHostDossier,
+  getHostDossier,
+  listHostDossiers
+} from './engine/dossier.js';
+export {
+  MITRE_TACTICS,
+  CORE_TECHNIQUES,
+  generateMitreCoverageMatrix,
+  generateMitreMarkdownReport,
+  saveMitreReport
+} from './engine/mitre.js';
+export { VulnView } from './ui/VulnView.js';
 export {
   CHALLENGE_CATEGORIES,
   CHALLENGE_TEMPLATES,
@@ -65,4 +143,235 @@ export {
   listSavedXmlScans,
   readXmlScan
 } from './engine/nmap-xml.js';
+export { OOBScanView } from './ui/OOBScanView.js';
+export {
+  OOB_SCAN_PROFILES,
+  checkOobscanInstalled,
+  detectOobTargets,
+  runOobScan,
+  parseOobReportContent,
+  listSavedOobScans,
+  readSavedOobScan,
+  deleteSavedOobScan,
+  exportRakpHashes
+} from './engine/oobscan.js';
+
+export {
+  generateQuarantineNetworkPolicy,
+  isolatePod,
+  freezePod,
+  blockIp,
+  quarantineAccount,
+  listActiveContainments,
+  releaseContainment
+} from './engine/soar.js';
+
+export {
+  runAgentSocInvestigation,
+  generateSocInvestigatorReport
+} from './engine/agent-soc.js';
+
+export {
+  syncFeodoTrackerC2,
+  syncUrlhausThreats,
+  matchCtiIndicators,
+  updateSuricataRules
+} from './engine/cti.js';
+
+export {
+  evaluatePodSecurityStandards,
+  generateKspmScorecard,
+  generateKspmReport,
+  saveKspmReport
+} from './engine/kspm.js';
+
+export {
+  auditFileContent,
+  generateSarifReport,
+  runPipelineAudit
+} from './engine/audit.js';
+
+export { BattleStationView } from './ui/BattleStationView.js';
+export { CommandPalette } from './ui/CommandPalette.js';
+export { KspmView } from './ui/KspmView.js';
+export { AuditView } from './ui/AuditView.js';
+
+export {
+  generateCanaryServiceAccount,
+  generateCanarySecret,
+  generateDecoyDeploymentYaml,
+  detectCanaryTripped,
+  triggerCanaryAlarm,
+  listActiveCanaries,
+  registerCanaryAsset,
+  generateCloudHoneytoken,
+  plantDecoyBreadcrumbs,
+  startCanaryWebhookListener
+} from './engine/deception.js';
+
+export {
+  WARGAME_SCENARIOS,
+  runPurpleTeamSimulation,
+  calculatePurpleScorecard,
+  generatePurpleReport,
+  savePurpleReport
+} from './engine/purpleteam.js';
+
+export {
+  generatePatchForFinding,
+  generateUnifiedDiff,
+  applyPatchToFile,
+  generateRemediationPrScript
+} from './engine/remediation.js';
+
+export {
+  initDataLake,
+  closeDataLake,
+  getDataLakeBackend,
+  ingestSecurityEvents,
+  queryDataLake,
+  runRetrospectiveThreatHunt
+} from './engine/datalake.js';
+
+export {
+  auditWorkloadIdentity,
+  auditCloudStorageExposure,
+  calculateCloudRiskScore,
+  generateCloudSecReport
+} from './engine/cloudsec.js';
+
+export {
+  buildProcessLineageTree,
+  detectAnomalousProcessLineage,
+  renderAsciiProcessTree
+} from './engine/lineage.js';
+
+export {
+  carveFilesFromPayload,
+  ingestTlsSessionKeys,
+  reconstructTcpStreams,
+  generateFlowLadder,
+  listCarvedFiles
+} from './engine/forensics.js';
+
+export {
+  DEFAULT_DETECTOR_WASM_BYTES,
+  loadWasmPlugin,
+  executeWasmDetector,
+  listWasmPlugins,
+  installWasmPlugin
+} from './engine/wasm.js';
+
+export {
+  parseSigmaRule,
+  transpileSigmaToSql,
+  runSigmaThreatHunt,
+  generateSigmaHypothesis
+} from './engine/sigma.js';
+
+export {
+  findBloodHoundAttackPaths,
+  simulateDynamicAttackChain,
+  calculateAdversaryResilienceScore,
+  generateAdversaryReport
+} from './engine/adversary.js';
+
+export {
+  parseProcessMemoryMaps,
+  detectMemoryAnomalies,
+  extractStringsAndEntropy,
+  saveProcessDumpArtifact
+} from './engine/memdump.js';
+
+export {
+  generateCycloneDxSbom,
+  generateSpdxSbom,
+  verifyCosignSignature,
+  evaluateSupplyChainPolicy
+} from './engine/supplychain.js';
+
+export {
+  ObservabilityRingBuffer,
+  buildSocketConnectionMatrix,
+  detectAnomalousSocketConnections,
+  streamLiveEvents
+} from './engine/observability.js';
+
+export {
+  renderBrailleSparkline,
+  renderHalfBlockHeatmap,
+  renderMitreHeatmapGrid
+} from './ui/canvas.js';
+
+export {
+  createFederationNode,
+  signThreatRecord,
+  verifyThreatRecord,
+  broadcastThreatIndicator,
+  ingestFederatedThreatRecord,
+  getVigilanteFederationDir
+} from './engine/federation.js';
+
+export { DeceptionView } from './ui/DeceptionView.js';
+export { PurpleTeamView } from './ui/PurpleTeamView.js';
+export { ForensicsView } from './ui/ForensicsView.js';
+export { LineageView } from './ui/LineageView.js';
+export { CloudSecView } from './ui/CloudSecView.js';
+export { MitreView } from './ui/MitreView.js';
+export { AttackGraphView } from './ui/AttackGraphView.js';
+
+export {
+  generateBpfLsmPolicy,
+  compileLsmRuleToFilter,
+  simulateLsmPolicyEvaluation,
+  exportLsmCSource
+} from './engine/lsm.js';
+
+export {
+  calculateInterArrivalTime,
+  detectBeaconingPeriodicity,
+  calculateShannonEntropy,
+  detectDnsTunneling
+} from './engine/beaconing.js';
+
+export {
+  generateRansomwareCanaryFiles,
+  calculateFileEntropy,
+  detectRansomwareEncryption,
+  triggerRansomwareContainment
+} from './engine/ransomware.js';
+
+export {
+  conveneIncidentWarRoom,
+  conductAgentDebateRound,
+  calculateConsensusScore,
+  generateWarRoomTranscript
+} from './engine/warroom.js';
+
+export {
+  generateLocalEmbedding,
+  cosineSimilarity,
+  initSemanticThreatCatalog,
+  semanticThreatSearch
+} from './engine/vectorcti.js';
+
+export {
+  initAuditLedger,
+  appendLedgerEntry,
+  getLedgerEntries,
+  buildMerkleRoot,
+  generateInclusionProof,
+  verifyInclusionProof,
+  verifyLedgerIntegrity,
+  exportLegalChainOfCustody
+} from './engine/ledger.js';
+
+export {
+  buildCompositeAttackGraph,
+  findShortestAttackPath,
+  calculateBlastRadius,
+  renderAsciiAttackGraph
+} from './engine/attackgraph.js';
+
+
 

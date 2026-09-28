@@ -1,0 +1,14 @@
+apiVersion: v2
+name: falco
+description: Cloud-Native Runtime Threat Detection and Alerting using eBPF probes and Falcosidekick
+type: application
+version: 0.1.0
+appVersion: "0.38.0"
+keywords:
+  - security
+  - ebpf
+  - runtime
+  - falco
+  - threat-detection
+maintainers:
+  - name: Vigilante Security Team

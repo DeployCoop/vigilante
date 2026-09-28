@@ -19,21 +19,51 @@ This project is a reimagining of [vigilant-octo-waffle](https://github.com/Deplo
 
 ## 🌟 Features
 
-- **🚨 Emergency Breach First Response Playbook**: Built-in, battle-tested operational guide ([`FIRSTRESPONSE.md`](FIRSTRESPONSE.md)) for rapid triage, evidence collection, and root-cause determination.
-- **Ink Terminal UI**: Interactive dashboards, step spinners, dynamic logs, and keyboard-driven module selectors.
-- **Interactive Click-to-Copy & Quick Shortcuts**: Click on any pane in interactive mode (or press `[1-6]`) to copy text/URLs to your system clipboard, and press `[t]` anytime from the status dashboard to trigger threat simulations.
-- **Automated k3d Orchestration**: Spin up lightweight K3s clusters in Docker with Ingress port bindings (`80` / `443`), defaulting straight to the live status dashboard on completion.
-- **Zero-Config Local TLS (`mkcert`)**: Generate wildcard certificates (`*.vigilante.local`) trusted by your operating system keychain and automatically inject them as Kubernetes Ingress secrets.
-- **Automated Local DNS (`hostr`)**: Automatically synchronizes `/etc/hosts` with managed domain mappings (`127.0.0.1 vigilante.local`, `127.0.0.1 siem.vigilante.local`) in an idempotent, safe block with sudo elevation when required.
-- **Modular Package Ecosystem & Custom Values**: Declarative `BaseModule` system with easy `values.yaml` customization (`vigilante values export`) to tweak chart configurations without modifying code.
-- **vigil-SOC (OpenSearch SIEM)**: Out-of-the-box OpenSearch and OpenSearch Dashboards configured for SIEM and network threat analysis at `https://siem.vigilante.local`.
-- **Wazuh XDR/SIEM**: Single-node Wazuh indexer, manager, and dashboard for a local lab at `https://wazuh.vigilante.local` (`vigilante up -m wazuh`).
-- **Network Threat Pipeline & Simulator**: Pre-packaged SIGMA threat detection rules and an automated threat injection simulator (Port Scanning, SSH Brute Force, DNS Tunneling) to validate SIEM alerts.
-- **Incident Response Evidence Vault (`net/host/data.ext`)**: Parallel forensic triage capture (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`, `bench`) with cryptographic GPG detached signatures (`.asc`) for legal chain-of-custody.
-- **Model Context Protocol (MCP) Server for LLMs**: Expose discovered host profiles, network topology maps, Incident Response Evidence Vaults, Kubernetes cluster telemetry, and live forensic diagnostic tools directly to AI assistants (Claude, Antigravity, Cursor) via `@modelcontextprotocol/sdk`.
-- **Interactive AI Forensics Analyst (`vigilante ai`)**: Private offline incident reasoning powered by local **Ollama** (`llama3.2`, `mistral`, `deepseek-r1`) and cloud models (Claude, ChatGPT, Gemini).
+- **🚨 Emergency Breach First Response Playbook**: Built-in operational guide ([`FIRSTRESPONSE.md`](FIRSTRESPONSE.md)) for rapid triage, evidence collection, and root-cause determination.
+- **Ink Terminal UI & BattleStation**: Interactive React Ink dashboard, live streaming pod logs, interactive process trees, Braille sparklines, and half-block heatmaps.
+- **Global Command Palette (`[:]` / `[/]`) & NavHub (`[Tab]`)**: 30 indexed commands and 25 operational actions accessible from any view.
+- **Automated k3d Orchestration & Zero-Config TLS**: Spin up lightweight K3s clusters in Docker with Ingress port bindings (`80` / `443`), automated wildcard certificates (`*.vigilante.local`) via `mkcert`, and idempotent `/etc/hosts` synchronization (`hostr`).
+- **12 Modular Security Packages**: Deploy and configure `vigil-soc`, `opensearch`, `wazuh`, `bloodhound` (CE + Neo4j), `falco` (eBPF), `suricata`, `zeek`, `zap`, `flamingo`, `kctf`, `openvas`, and `vigil-local`.
+- **SOAR Active Containment Engine**: Sub-second programmatic zero-trust isolation (`isolatePod`), container freezing (`freezePod`), IP blocking (`blockIp`), and account quarantine (`quarantineAccount`).
+- **Autonomous Agentic ReAct SOC Loop**: Tier-3 autonomous incident investigation, log correlation, hypothesis testing, and NIST SP 800-61 Rev. 2 post-mortem generation.
+- **Autonomous Deception Mesh ("Canary Kube") & Cloud Honeytokens**: Deploy decoy ServiceAccounts, canary Secrets, decoy honeypots (SMB/SSH/Redis/MSSQL), and realistic cloud credentials (AWS STS, GitHub PAT, Slack webhooks, Kubeconfig) with in-process HTTP trap listeners.
+- **SIGMA-to-SQL Detection Transpiler & Threat Hunter**: Transpiles open SIGMA YAML/JSON rules into ANSI SQL queries against historical telemetry in the Security Data Lake.
+- **Autonomous Dynamic Red Team Agent**: BloodHound CE attack path traversal using BFS and multi-step adversary progression emulation with resilience scorecards.
+- **In-Memory & Process Forensics Engine**: Linux `/proc/$PID/maps` live triage detecting RWX shellcode buffers, unlinked deleted binaries, fileless `memfd_create` executions, and `/tmp` shared library injections.
+- **Supply Chain Security, SBOM & Container Attestation**: Generate standard CycloneDX v1.5 and SPDX v2.3 SBOMs, verify Cosign/Sigstore digital signatures and Rekor receipts, and evaluate package admission policies.
+- **eBPF Syscall Observability & Socket Connection Matrix**: In-memory ring buffer, live socket connection matrix, and anomalous egress/lateral movement detection.
+- **Terminal Braille Heatmaps & ANSI Canvas Visualizations**: 2x4 sub-pixel Unicode Braille sparklines (`\u2800`–`\u28FF`), colored half-block heatmaps (`▀`, `▄`), and color-coded MITRE ATT&CK coverage grids.
+- **Multi-Cluster Defense Federation**: Ed25519 node identities, cryptographic threat record signing/verification, peer broadcast, and automated cross-cluster SOAR containment synchronization.
+- **Autonomous Purple Team Arena**: Multi-agent adversarial simulations (Red Team adversary vs. Blue Team SOC) across 4 MITRE ATT&CK phases with MTTD/MTTR scorecards.
+- **Self-Healing Auto-Remediator**: Automatically patch Kubernetes manifests and Dockerfiles to fix security audit findings, generating unified diffs and Git PR scripts.
+- **Deep PCAP Forensic Extraction**: File carving (HTTP/SMB payloads with MD5/SHA256 hashes), TLS stream decryption (`SSLKEYLOGFILE`), TCP stream reconstruction, and ASCII flow ladders.
+- **High-Throughput Security Data Lake**: In-process SQL analytics across normalized security events with zero dependencies via `node:sqlite` and official DuckDB dynamic adapter support.
+- **Model Context Protocol (MCP) Server**: 78 callable tools and 16 resources exposing security telemetry, BPF-LSM policies, attack graphs, and containment actions directly to AI assistants (Claude, Antigravity, Cursor).
+- **Kernel-Level eBPF LSM Policy Synthesizer**: Declarative YAML-to-C compilation of in-kernel Linux Security Module enforcement hooks (`bprm_check_security`, `file_open`, `socket_connect`).
+- **Statistical C2 Beaconing & FFT Frequency Detector**: Discrete Fourier Transform (DFT) spectral peak concentration, inter-arrival time (IAT) analysis, jitter calculation, and DNS tunneling Shannon entropy detector.
+- **Anti-Ransomware Canary Traps & Entropy Monitor**: Deploy decoy files with pre-calculated entropy baselines, detect AES-256 block encryption spikes ($\Delta H > 2.0$), and trigger sub-second container freeze & isolation.
+- **Autonomous Multi-Agent Incident War Room**: 4-persona AI specialist consortium (Forensics, Threat Intel, SRE Blast Radius, Incident Commander) conducting structured consensus debate with quorum thresholds ($\ge 75\%$).
+- **Local Offline Semantic CTI & Vector Threat Search**: Air-gapped 128-dimensional dense float vector embeddings and cosine similarity search across MITRE ATT&CK and Sigma rules with zero dependencies.
+- **Cryptographic Merkle Ledger & Legal Chain-of-Custody**: Append-only SHA-256 hash chaining, Merkle tree root calculation, cryptographic inclusion proofs, tamper detection, and court-admissible affidavits.
+- **Interactive Terminal Attack Graph & Blast-Radius Explorer**: Multi-tier directional attack graph federating Network, Kubernetes RBAC, and Identity topologies with BFS shortest path discovery to Crown Jewels.
 
 ---
+
+## 📚 Technical Documentation Library
+
+Complete technical manuals and architectural guides are available in the [`docs/`](docs/) directory:
+
+| Document | Description |
+| :--- | :--- |
+| **[Architecture Manual](docs/ARCHITECTURE.md)** | Deep architectural breakdown: layers, data flows, evidence vault, reactive UI, and MCP server. |
+| **[CLI Reference Manual](docs/CLI_REFERENCE.md)** | Exhaustive reference for all 37 CLI subcommands, flags, environment variables, and exit codes. |
+| **[Security Modules Catalog](docs/MODULES_CATALOG.md)** | Full guide for all 12 security packages, ingress URLs, default credentials, and Helm values. |
+| **[Engines Technical Reference](docs/ENGINES_REFERENCE.md)** | Deep technical specifications for all 32 security, SOAR, deception, posture, and forensic engines. |
+| **[Model Context Protocol Catalog](docs/MCP_CATALOG.md)** | Complete reference for all 78 MCP tools, 16 resources, templates, and LLM configuration examples. |
+| **[Contributor & Developer Guide](docs/DEVELOPMENT_AND_TESTING.md)** | Guide to running all 70 test suites (`pnpm test`), authoring React Ink views, and adding modules. |
+| **[System Design Blueprint](design.md)** | High-level system design, sequence diagrams, and subsystem specifications. |
+| **[Emergency Playbook](FIRSTRESPONSE.md)** | Step-by-step incident response playbook for active breaches. |
+
 
 ## 📋 Prerequisites
 
@@ -112,7 +142,7 @@ The chart runs one indexer, one manager, and one dashboard. Indexer heap default
 $ vigilante [command] [options]
 
 Commands:
-  menu/hub    Central operations hub and interactive workflow dispatcher
+  menu/hub    Central operations hub and interactive workflow dispatcher ([Tab])
   up          Provision k3d cluster, certificates, and deploy security modules
   down        Tear down k3d cluster and clean up resources
   status      Check status of prerequisites, cluster, certificates, and DNS
@@ -126,6 +156,19 @@ Commands:
   values      Inspect or export customizable Helm chart values.yaml files
   config      Inspect, initialize, or display $XDG_CONFIG_HOME/vigilante/config.yaml
   mcp         Launch Model Context Protocol (MCP) server over stdio for LLMs
+  ai          Launch interactive AI Security Analyst (Ollama / Claude / GPT / Gemini)
+  oob         Out-of-band management scanner (BMC, IPMI 2.0, Redfish, RAKP-2 dump)
+  kctf        Google kCTF cyber range challenges manager
+  openvas     Greenbone OpenVAS vulnerability scanning manager
+  nasty       NastyMap 2.0 Cyber Attack Graph & Blast Radius Overlay
+  battle      Cyber Defense Operations BattleStation (real-time telemetry & SOAR)
+  audit       CI/CD Shift-Left Security Pipeline Gate & SARIF v2.1.0 generator
+  fix         Self-Healing Auto-Remediator (auto-patch K8s manifests & Dockerfiles)
+  canary      Autonomous Deception Mesh manager (list / deploy canary assets)
+  purple      Autonomous Purple Team Arena (multi-agent adversarial simulation)
+  query       High-Throughput Embedded Security Data Lake SQL query runner
+  forensics   Deep PCAP Forensic Extraction & file carving dropzone browser
+  cloudsec    Multi-Cloud Workload Identity & CSPM posture audit
 
 Options:
   --domain, -d       Local top-level domain (Default: vigilante.local)
@@ -180,6 +223,16 @@ The menu automatically highlights your active stage (e.g. `[● 4. Pods]`) and i
 
 | Screen / Context | Keybindings | Description |
 |---|---|---|
+| **NavHub ([Tab])** | `[Tab]` Hub, `[↑/↓]` Select Action, `[Enter]` Dispatch, `[q]` Dismiss | Central operations hub & indexed 25-action dispatcher |
+| **Command Palette** | `[:]` or `[/]` Open, `[↑/↓]` Browse, `[Enter]` Execute, `[Esc]` Close | Global fuzzy-find command palette indexing 30 operations |
+| **BattleStation** | `[b]` Battle, `[i]` Isolate Pod, `[f]` Freeze Pod, `[r]` Refresh, `[q]` Hub | Cyber Defense Operations & real-time SOAR active containment |
+| **Canary Deception**| `[y]` Canary, `[d]` Deploy Honeytoken, `[r]` Refresh Sensors, `[q]` Hub | Autonomous deception mesh, decoy SAs, and trip detectors |
+| **Purple Team** | `[w]` Purple, `[s]` Start Wargame, `[e]` Export Scorecard, `[q]` Hub | Autonomous multi-agent Red vs. Blue adversarial arena |
+| **Forensics** | `[z]` Forensics, `[c]` Carve Payload, `[t]` TCP Streams, `[q]` Hub | Deep PCAP file carving, TLS decryption, & flow ladders |
+| **Lineage Tree** | `[e]` Lineage, `[a]` Anomaly Filter, `[r]` Refresh Tree, `[q]` Hub | Kernel-native eBPF process hierarchy & LOLBin detection |
+| **CloudSec** | `[c]` CloudSec, `[i]` Audit Workload Identity, `[s]` Storage Audit, `[q]` Hub| Multi-Cloud IRSA / GCP Workload Identity / CSPM posture |
+| **KSPM Posture** | `[k]` KSPM, `[s]` Scorecard, `[e]` Export Report, `[q]` Hub | Kubernetes Security Posture Management & PSS benchmarks |
+| **Shift-Left Audit**| `[a]` Audit, `[s]` SARIF Export, `[f]` Fix Finding, `[q]` Hub | Manifest & Dockerfile static analysis & PR gatekeeper |
 | **6. XML Visualizer** | `[p]` Ping, `[b]` Bench (`ab`), `[m]` MTR, `[h]` HTTP, `[d]` DNS, `[s]` Switch Scan, `[f]` Filter, `[x/v]` Raw XML, `[e]` Editor, `[c]` Copy, `[n]` Nmap, `[q]` Return | Host network diagnostics & XML topology exploration |
 | **5. Nmap Scanner** | `[n]` Run Scan, `[i]` Custom CIDR/IP, `[t]` Target, `[p]` Profile, `[x]` ➔ XML Visualizer, `[v]` Pager, `[e]` Editor, `[c]` Copy, `[d]` Delete, `[q]` Dashboard | Network sweeps & target profiling |
 | **4. Live Pods** | `[↑/↓]` Select Pod, `[d]` Describe, `[l]` Logs, `[s]` Shell, `[f]` Filter NS, `[r]` Refresh, `[n]` ➔ Nmap, `[x]` Visualizer, `[c]` Copy, `[q]` Dashboard | Kubernetes pod operations (`-A -o wide`) |
@@ -732,26 +785,25 @@ AI models can directly inspect real-time state and historical scan reports using
 
 ---
 
-### 4. 14 Interactive Tools for LLMs
+### 4. 54 Interactive Tools for LLMs
 
-The MCP server provides 14 callable tools that allow LLMs to actively query infrastructure, trigger reconnaissance scans, and run non-destructive forensic diagnostics:
+The MCP server provides **54 callable tools** and **16 resources** allowing AI assistants to actively inspect infrastructure, run vulnerability scans, execute active SOAR containment, query the security data lake, and deploy deception tokens.
 
-| Tool Name | Parameters | Purpose |
+> 📖 **Full Catalog & Schemas**: For complete argument schemas, types, and parameter tables, see **[`docs/MCP_CATALOG.md`](docs/MCP_CATALOG.md)**.
+
+| Category | Tools Included | Capabilities |
 | :--- | :--- | :--- |
-| `list_hosts` | `subnet`, `port`, `service`, `state` (`up`/`down`/`all`) | Query discovered network hosts across Nmap XML scans with flexible attribute filtering. |
-| `get_host_details` | `host` *(required)* | Retrieve complete in-depth profile for a target host IP, including open ports, banners, OS match guesses, NSE vulnerability script outputs, and existing evidence artifacts. |
-| `query_topology` | *(none)* | Get structured network topology tree grouped by subnet CIDRs, live host IP addresses, and open service ports. |
-| `list_evidence` | `network`, `host` | Browse the Incident Response Evidence Vault (`net/host/data.ext`), listing all forensic artifacts, triage bundles, and cryptographic GPG signatures. |
-| `run_diagnostic` | `tool` (`ping`/`mtr`/`curl`/`dns`/`tls`/`ab`/`arp`), `host`, `port`, `path`, `count`, `network` | Execute live forensic network diagnostic probes against a target host, with optional automatic archiving into the Evidence Vault. |
-| `run_triage_capture` | `network`, `host`, `ports` | Execute a full parallel incident response forensic triage bundle against a host (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`), save all structured artifacts in `net/host/data.ext`, and sign with GPG if configured. |
-| `run_nmap_scan` | `target`, `profile` (`sweep`/`quick`/`service`/`vuln`/`full`/`custom`), `customArgs` | Launch an Nmap reconnaissance scan against a target IP or CIDR range, save results as XML and Nmap text, and return parsed host data. |
-| `verify_evidence_signature` | `filePath`, `signaturePath` | Verify the cryptographic GPG detached signature (`.asc`) for an artifact in the Evidence Vault to confirm evidence authenticity and non-repudiation. |
-| `get_pods` | `namespace`, `clusterName` | Query live Kubernetes pods across all namespaces (`-A -o wide`) with pod IP, node, status, restart count, and age. |
-| `get_pod_logs` | `podName`, `namespace`, `container`, `tailLines`, `clusterName` | Retrieve live log tails from a specific Kubernetes pod container. |
-| `describe_pod` | `podName`, `namespace`, `clusterName` | Fetch detailed Kubernetes pod description, containers, volumes, conditions, and lifecycle events. |
-| `get_cluster_status` | `clusterName`, `domain`, `namespace` | Check health and status of prerequisites, k3d clusters, TLS certificates, local DNS host mappings, and deployed security modules. |
-| `list_threat_playbooks` | `customDir` | List all available built-in and custom attack simulation playbooks with descriptions, MITRE techniques, and event counts. |
-| `run_threat_simulation` | `scenario` *(required)*, `namespace`, `clusterName` | Inject a simulated network threat scenario or custom playbook into OpenSearch SIEM within the Kubernetes cluster. |
+| **Recon & Topology** | `list_hosts`, `get_host_dossier`, `query_topology`, `export_topology_svg`, `export_topology_html`, `run_nmap_scan`, `compare_scans` | Query discovered hosts, inspect port matrices, and export NastyMap attack graphs. |
+| **Diagnostics & Evidence** | `run_diagnostic`, `list_evidence`, `verify_signature`, `list_carved_files` | Execute live probes (`ping`, `mtr`, `dns`, `tls`, `http`, `arp`), browse evidence vaults, and verify GPG signatures. |
+| **Cluster & Pods** | `get_cluster_status`, `list_pods`, `get_pod_logs`, `describe_pod`, `list_instances`, `create_cluster`, `delete_cluster` | Live Kubernetes workload monitoring, cluster lifecycle, and pod diagnostics. |
+| **Modules & Values** | `list_modules`, `install_module`, `uninstall_module`, `get_module_values`, `update_config` | Dynamically deploy and manage any of the 12 security modules with custom values. |
+| **Threat Simulation** | `list_threat_playbooks`, `execute_threat_playbook`, `generate_traffic` | Inject simulated cyber attacks and synthetic traffic into SIEM pipelines. |
+| **Vulnerability Scanners**| `run_nuclei_scan`, `run_trivy_scan`, `run_kubeaudit_scan`, `run_netexec_scan`, `run_zap_scan`, `run_openvas_scan` | Multi-engine CVE scanning across container images, manifests, and web apps. |
+| **SOAR Active Containment**| `isolate_pod`, `freeze_pod`, `block_ip`, `quarantine_account`, `list_containments`, `release_containment` | Sub-second zero-trust network quarantine, container freezing (`SIGSTOP`), and IP blocking. |
+| **SOC & Intelligence** | `run_agent_soc_investigation`, `sync_threat_intel`, `generate_mitre_report` | Autonomous ReAct investigation loops, Feodo/URLhaus CTI sync, and ATT&CK matrix generation. |
+| **Posture & Shift-Left** | `audit_kspm_posture`, `run_pipeline_audit` | In-cluster PSS benchmarking and CI/CD pre-commit scanning with SARIF v2.1.0 output. |
+| **kCTF & OOB Management**| `list_kctf_challenges`, `deploy_kctf_challenge`, `delete_kctf_challenge`, `run_oob_scan`, `dump_rakp2_hashes` | Google kCTF challenge deployment and BMC/IPMI RAKP-2 hash dumping. |
+| **Next-Gen Autonomous** | `list_canary_tokens`, `deploy_canary_asset`, `run_purple_simulation`, `auto_remediate_finding`, `query_security_datalake`, `audit_cloud_security` | Canary honeytokens, Red vs. Blue wargames, auto-patching, embedded SQL data lake, and CSPM. |
 
 ---
 
@@ -946,83 +998,118 @@ tail -f /tmp/.vigilante.log
 vigilante/
 ├── bin/
 │   └── vigilante.js              # Executable entry point (Meow CLI & MCP dispatcher)
+├── docs/                         # Comprehensive Technical Documentation Library
+│   ├── ARCHITECTURE.md           # Deep architectural specification & data flow diagrams
+│   ├── CLI_REFERENCE.md          # Complete reference manual for all 26 CLI commands
+│   ├── MODULES_CATALOG.md        # Technical guide for all 12 security modules
+│   ├── ENGINES_REFERENCE.md      # Technical manual for all 24 security engines
+│   ├── MCP_CATALOG.md            # Model Context Protocol catalog (54 tools & 16 resources)
+│   └── DEVELOPMENT_AND_TESTING.md # Developer setup, testing, and contribution guide
 ├── src/
 │   ├── index.js                  # Programmatic library exports
 │   ├── mcp/
 │   │   └── server.js             # Model Context Protocol (MCP) Server for LLMs
-│   ├── engine/
-│   │   ├── prereqs.js            # Tooling verification (docker, k3d, mkcert, kubectl, helm)
-│   │   ├── certs.js              # mkcert CA & TLS certificates manager
-│   │   ├── cluster.js            # k3d cluster lifecycle provisioner
-│   │   ├── k8s.js                # Kubernetes safety apply & API readiness engine
-│   │   ├── hosts.js              # /etc/hosts domain resolution sync & cleanup (hostr)
-│   │   ├── pods.js               # Live Kubernetes pods querying & watch poller (-A -o wide)
-│   │   ├── helm.js               # Dynamic Helm values resolver, renderer & exporter
-│   │   ├── config.js             # XDG Base Directory configuration & theme resolver
-│   │   ├── instances.js          # Multi-instance k3d orchestration & metadata isolation
-│   │   ├── nmap.js               # Network reconnaissance & subnet scanner
-│   │   ├── nmap-xml.js           # Nmap XML parser & topology graph builder
+│   ├── engine/                   # Core Security & Orchestration Engines (24 Engines)
+│   │   ├── soar.js               # SOAR Active Containment Engine (isolate, freeze, block, quarantine)
+│   │   ├── agent-soc.js          # Autonomous Agentic SOC Loop (ReAct investigator & NIST manifests)
+│   │   ├── deception.js          # Autonomous Deception Mesh ("Canary Kube" honeytokens & decoys)
+│   │   ├── purpleteam.js         # Autonomous Purple Team Arena (Red vs. Blue wargames & scorecards)
+│   │   ├── remediation.js        # Self-Healing Auto-Remediator (unified diffs & auto-patching)
+│   │   ├── forensics.js          # Deep PCAP Forensic Extraction (carving, TLS decryption, flow ladders)
+│   │   ├── lineage.js            # Kernel-Native eBPF Lineage Tree (process hierarchy & LOLBins)
+│   │   ├── cloudsec.js           # Multi-Cloud Workload Identity (IRSA/GCP WI) & CSPM storage audit
+│   │   ├── datalake.js           # High-Throughput Security Data Lake (node:sqlite + DuckDB adapter)
+│   │   ├── wasm.js               # Sandboxed WebAssembly (Wasm) Plugin Detection Engine
+│   │   ├── cti.js                # Cyber Threat Intelligence Sync (Feodo, URLhaus, Suricata ET rules)
+│   │   ├── kspm.js               # Continuous Kubernetes Security Posture Management (PSS/CIS)
+│   │   ├── audit.js              # Shift-Left CI/CD Pipeline Auditor & SARIF v2.1.0 generator
+│   │   ├── oobscan.js            # Out-of-Band Management Scanner (BMC, IPMI 2.0, RAKP-2 dump)
+│   │   ├── dossier.js            # Unified Host Security Dossier & Composite CVSS Scorer
+│   │   ├── mitre.js              # MITRE ATT&CK Matrix & Coverage Gap Engine
+│   │   ├── recon.js              # Subnet Discovery & Passive Network Listening
+│   │   ├── nuclei.js             # ProjectDiscovery Nuclei Template Vulnerability Scanner
+│   │   ├── trivy.js              # Aqua Security Trivy Container & Filesystem Scanner
+│   │   ├── kubeaudit.js          # Kubernetes Pod & SecurityContext Auditor
+│   │   ├── netexec.js            # NetExec (nxc) Protocol Automation & Credential Tester
+│   │   ├── zap.js                # OWASP ZAP Automated Web Application Security Scanner
+│   │   ├── traffic.js            # Synthetic Network Traffic Generator for SIEM Validation
 │   │   ├── evidence.js           # Incident Response Evidence Vault (net/host/data.ext)
-│   │   ├── gpg.js                # GPG cryptographic non-repudiation signing & verification
-│   │   └── diagnostics.js        # Host diagnostic probes (ping, ab, mtr, curl, dig, tls, arp)
-│   ├── modules/
-│   │   ├── base.js               # Abstract BaseModule contract
-│   │   ├── registry.js           # Module registry & dependency resolver
-│   │   ├── opensearch/           # Package 1: OpenSearch SIEM Analytics & Dashboards
-│   │   │   ├── index.js          # OpenSearchModule lifecycle implementation
-│   │   │   ├── values/           # Default Helm values templates (opensearch, opensearch-dashboards)
-│   │   │   └── manifests/        # SIGMA threat rules & threat simulation Job
-│   │   ├── wazuh/                # Wazuh open-source XDR/SIEM (indexer, manager, dashboard)
-│   │   │   ├── index.js          # WazuhModule lifecycle implementation
-│   │   │   ├── charts/           # Single-node lab Helm chart (charts/wazuh)
-│   │   │   └── values/           # Default Helm values template (wazuh.yaml)
-│   │   └── vigil-soc/            # Package 2: Vigil AI-Native SOC Investigation Platform
-│   │       ├── index.js          # VigilSOCModule lifecycle implementation
-│   │       ├── charts/           # Vendored Helm charts (charts/vigil)
-│   │       └── values/           # Default Helm values templates (vigil.yaml)
-│   ├── ui/                       # React & Ink UI Components
-│   │   ├── App.js                # Master terminal view controller & router
-│   │   ├── Header.js             # Terminal banner & ASCII styling
-│   │   ├── MenuBar.js            # Globally context-sensitive keyboard action menu
-│   │   ├── NavHub.js             # Central operations hub & workflow dispatcher ([Tab])
-│   │   ├── TaskRunner.js         # Animated task spinner & log viewer
-│   │   ├── SelectModules.js      # Interactive package selector & namespace switcher ([n])
-│   │   ├── StatusDashboard.js    # Comprehensive diagnostics dashboard
-│   │   ├── ThreatSimView.js      # Network threat simulation runner
-│   │   ├── ValuesView.js         # Interactive Values & $EDITOR manager
-│   │   ├── ModulesView.js        # Interactive Security Modules & Package Manager
-│   │   ├── PodsView.js           # Live Kubernetes Pods Monitor (-A -o wide table)
-│   │   ├── DataCollectionView.js # Interactive Nmap reconnaissance & subnet sweeper
-│   │   ├── NmapVisualizerView.js # Interactive XML network topology & port matrix visualizer
-│   │   ├── InstancesView.js      # Multi-instance k3d manager
-│   │   ├── ClipboardManager.js   # Click-to-copy provider & SGR mouse tracker
-│   │   └── theme.js              # Theme context & color palette definitions
+│   │   ├── gpg.js                # GPG Cryptographic Non-Repudiation Signing & Verification
+│   │   ├── certs.js              # mkcert CA & TLS Certificates Manager
+│   │   ├── cluster.js            # k3d Cluster Lifecycle Provisioner
+│   │   ├── k8s.js                # Kubernetes Safety Apply & API Readiness Engine
+│   │   ├── hosts.js              # /etc/hosts Domain Resolution Sync & Cleanup (hostr)
+│   │   ├── pods.js               # Live Kubernetes Pods Monitor (-A -o wide)
+│   │   ├── helm.js               # Dynamic Helm Values Resolver & Exporter
+│   │   ├── config.js             # XDG Base Directory Configuration & Theme Resolver
+│   │   ├── instances.js          # Multi-Instance k3d Orchestration & Metadata Isolation
+│   │   ├── nmap.js               # Network Reconnaissance & Subnet Scanner
+│   │   ├── nmap-xml.js           # Nmap XML Parser & Topology Graph Builder
+│   │   └── diagnostics.js        # Host Diagnostic Probes (ping, ab, mtr, curl, dig, tls, arp)
+│   ├── modules/                  # Modular Security Stack (12 Packages)
+│   │   ├── base.js               # Abstract BaseModule Contract & Lifecycle Interface
+│   │   ├── registry.js           # Module Registry & Dependency Resolver
+│   │   ├── vigil-soc/            # Vigil AI-Native SOC Investigation Platform
+│   │   ├── vigil-local/          # Lightweight Local Agent Sandbox for Developers
+│   │   ├── opensearch/           # OpenSearch SIEM Analytics & Dashboards
+│   │   ├── wazuh/                # Wazuh Open-Source XDR/SIEM (indexer, manager, dashboard)
+│   │   ├── bloodhound/           # BloodHound CE + Neo4j Graph Attack Paths
+│   │   ├── falco/                # Falco eBPF Kernel Threat Detection DaemonSet
+│   │   ├── suricata/             # Suricata High-Speed Network IDS/IPS Engine
+│   │   ├── zeek/                 # Zeek Deep Network Protocol Metadata Engine
+│   │   ├── zap/                  # OWASP ZAP Web Application Security Scanner
+│   │   ├── flamingo/             # OpenSearch Flamingo Modern Web Interface
+│   │   ├── kctf/                 # Google kCTF Cyber Range Platform
+│   │   └── openvas/              # Greenbone Vulnerability Management (GVM) / OpenVAS
+│   ├── ui/                       # React & Ink Terminal UI Components (19 Views)
+│   │   ├── App.js                # Master Terminal View Controller & Router
+│   │   ├── NavHub.js             # Central Operations Hub & 25-Action Dispatcher ([Tab])
+│   │   ├── CommandPalette.js     # Global Command Palette Indexing 30 Workflows ([:])
+│   │   ├── BattleStationView.js  # Cyber Defense Operations BattleStation ([b])
+│   │   ├── DeceptionView.js      # Autonomous Canary Deception Mesh View ([y])
+│   │   ├── PurpleTeamView.js     # Autonomous Purple Team Wargame Arena View ([w])
+│   │   ├── ForensicsView.js      # Deep PCAP Forensic Extraction View ([z])
+│   │   ├── LineageView.js        # Kernel-Native eBPF Process Lineage Tree View ([e])
+│   │   ├── CloudSecView.js       # Multi-Cloud Workload Identity & CSPM View ([c])
+│   │   ├── KspmView.js           # Continuous Kubernetes Posture Management View ([k])
+│   │   ├── AuditView.js          # Shift-Left CI/CD Audit & SARIF View ([a])
+│   │   ├── VulnView.js           # Unified Host Vulnerability Dossier View ([l])
+│   │   ├── OOBScanView.js        # Out-of-Band Management & IPMI View ([o])
+│   │   ├── KCTFView.js           # Google kCTF Cyber Range Challenge Manager ([k])
+│   │   ├── PodsView.js           # Live Kubernetes Pods Monitor (-A -o wide table) ([p])
+│   │   ├── ModulesView.js        # Interactive Security Modules Manager ([m])
+│   │   ├── ValuesView.js         # Interactive Helm Values & $EDITOR Manager ([v])
+│   │   ├── DataCollectionView.js # Interactive Nmap Scanner & Subnet Sweeper ([s])
+│   │   ├── NmapVisualizerView.js # Interactive XML Topology & Port Matrix Visualizer ([x])
+│   │   ├── ThreatSimView.js      # Network Threat Simulation Playbook Runner ([t])
+│   │   ├── StatusDashboard.js    # Comprehensive Diagnostics Dashboard
+│   │   ├── MenuBar.js            # Globally Context-Sensitive Keyboard Menu
+│   │   ├── Header.js             # Terminal Banner & ASCII Styling
+│   │   ├── TaskRunner.js         # Animated Task Spinner & Log Streamer
+│   │   ├── ClipboardManager.js   # Click-to-Copy Provider & SGR Mouse Tracker
+│   │   └── theme.js              # Theme Context & Color Palette Definitions
 │   └── utils/
-│       ├── exec.js               # Subprocess execution & streaming with debug logging
-│       ├── editor.js             # Terminal TTY suspension & $EDITOR launcher
-│       ├── clipboard.js          # Multi-platform clipboard copy utility (OSC 52, Wayland, X11, macOS)
-│       └── logger.js             # Centralized debug file logger (/tmp/.vigilante.log)
-├── tests/
-│   ├── test-values.js            # Unit test suite for Helm values engine & template rendering
-│   ├── test-editor.js            # Unit test suite for editor & starter file initialization
-│   ├── test-modules.js           # Unit test suite for module registry & dependency resolver
-│   ├── test-pods.js              # Unit test suite for pod status formatting & live watcher
-│   ├── test-clipboard.js         # Unit test suite for clipboard & ANSI stripping
-│   ├── test-config.js            # Unit test suite for XDG config & themes
-│   ├── test-nmap.js              # Unit test suite for Nmap scanner & subnet calculation
-│   ├── test-nmap-xml.js          # Unit test suite for XML parser & topology graph
-│   ├── test-diagnostics.js       # Unit test suite for host diagnostic probes
-│   ├── test-menubar.js           # Unit test suite for context-sensitive menu bar
-│   ├── test-evidence.js          # Unit test suite for Evidence Vault hierarchy
-│   ├── test-gpg.js               # Unit test suite for GPG digital signing & verification
-│   ├── test-instances.js         # Unit test suite for multi-instance k3d isolation
-│   ├── test-namespaces.js        # Unit test suite for namespaced module deployments
-│   ├── test-k8s.js               # Unit test suite for safe kubectl apply pipeline
-│   ├── test-hub.js               # Unit test suite for operations hub & dispatcher
-│   ├── test-mcp.js               # Unit test suite for Model Context Protocol (MCP) server
-│   └── test-llm.js               # Unit test suite for AI Security Analyst engine
+│       ├── exec.js               # Subprocess Execution & Streaming with Debug Logging
+│       ├── editor.js             # Terminal TTY Suspension & $EDITOR Launcher
+│       ├── clipboard.js          # Multi-Platform Clipboard Copy Utility
+│       └── logger.js             # Centralized Debug File Logger (/tmp/.vigilante.log)
+├── tests/                        # 54 Comprehensive Test Suites (100% Pass Rate)
+│   ├── test-soar.js              # SOAR active containment & network isolation tests
+│   ├── test-agent-soc.js         # Autonomous ReAct SOC & NIST incident manifest tests
+│   ├── test-deception.js         # Canary ServiceAccounts, Secrets, & honeypot tests
+│   ├── test-purpleteam.js        # Red vs. Blue wargames & MTTD/MTTR scorecard tests
+│   ├── test-remediation.js       # Auto-remediation unified diffs & file patch tests
+│   ├── test-forensics.js         # PCAP file carving, TLS decryption, & flow ladder tests
+│   ├── test-lineage.js           # Process lineage trees & LOLBin anomaly tests
+│   ├── test-cloudsec.js          # Multi-cloud workload identity & CSPM posture tests
+│   ├── test-datalake.js          # Embedded Data Lake (SQLite & DuckDB) & threat hunt tests
+│   ├── test-wasm.js              # Sandboxed WebAssembly plugin detection tests
+│   ├── test-mcp.js               # Model Context Protocol (MCP) 54-tool verification tests
+│   └── ... (43 additional unit and integration test suites)
 ├── values/                       # Exported starter & custom user Helm values overrides
+├── values.example/               # Upstream Helm chart values templates
 ├── FIRSTRESPONSE.md              # Emergency Incident Response Playbook for breaches
+├── design.md                     # Production System Design & Architectural Blueprint
 ├── package.json
 └── README.md
 ```

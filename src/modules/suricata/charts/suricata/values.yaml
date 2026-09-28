@@ -1,0 +1,34 @@
+image:
+  repository: jasonish/suricata
+  tag: "7.0.3"
+  pullPolicy: IfNotPresent
+
+interface: any
+mirrored: true
+runMode: workers
+
+pcapSpool:
+  enabled: true
+  path: /var/log/vigilante/pcap-spool
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+    - host: suricata.vigilante.local
+  tls:
+    - secretName: suricata-tls
+      hosts:
+        - suricata.vigilante.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

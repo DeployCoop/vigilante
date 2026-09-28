@@ -1,0 +1,14 @@
+apiVersion: v2
+name: bloodhound
+description: BloodHound Community Edition (CE) Active Directory & Cloud Attack Path Graph Analysis
+type: application
+version: 0.1.0
+appVersion: "5.14.0"
+keywords:
+  - security
+  - active-directory
+  - attack-paths
+  - bloodhound
+  - graph-database
+maintainers:
+  - name: Vigilante Security Team

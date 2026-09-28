@@ -22,7 +22,7 @@ export class VigilLocalModule extends BaseModule {
       name: 'Vigil AI SOC (Local Source / Dev)',
       description: 'Vigil Autonomous AI-Native SOC Platform installed directly from local checkout',
       category: 'soc',
-      version: '0.5.0',
+      version: '0.6.0',
       dependencies: ['opensearch'],
       defaultEnabled: false
     });

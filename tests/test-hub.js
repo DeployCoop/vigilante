@@ -42,13 +42,14 @@ async function runTests() {
   const xmlItem = HUB_ITEMS.find(i => i.action === 'XML_VISUALIZER');
   const openvasItem = HUB_ITEMS.find(i => i.action === 'OPENVAS');
   const kctfItem = HUB_ITEMS.find(i => i.action === 'KCTF');
+  const oobscanItem = HUB_ITEMS.find(i => i.action === 'OOBSCAN');
 
-  if (!upItem || !modItem || !nmapItem || !podItem || !xmlItem || !openvasItem || !kctfItem) {
-    throw new Error('Core hub items missing (including OpenVAS & kCTF)');
+  if (!upItem || !modItem || !nmapItem || !podItem || !xmlItem || !openvasItem || !kctfItem || !oobscanItem) {
+    throw new Error('Core hub items missing (including OpenVAS, kCTF & OOBscan)');
   }
 
-  if (nmapItem.key !== '5' || modItem.key !== '0' || kctfItem.key !== 'f') {
-    throw new Error(`Unexpected hotkey mapping: nmap=${nmapItem.key}, modules=${modItem.key}, kctf=${kctfItem?.key}`);
+  if (nmapItem.key !== '5' || modItem.key !== '0' || kctfItem.key !== 'f' || oobscanItem.key !== 'b') {
+    throw new Error(`Unexpected hotkey mapping: nmap=${nmapItem.key}, modules=${modItem.key}, kctf=${kctfItem?.key}, oobscan=${oobscanItem?.key}`);
   }
   console.log('✔ Test 4 passed: Number and letter hotkeys cleanly disambiguate Namespace, Nmap, Modules, and Pods.');
 

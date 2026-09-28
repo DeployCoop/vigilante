@@ -1,0 +1,14 @@
+apiVersion: v2
+name: suricata
+description: High-performance Network Threat Detection, IDS/IPS, and Network Security Monitoring
+type: application
+version: 0.1.0
+appVersion: "7.0.3"
+keywords:
+  - security
+  - ids
+  - ips
+  - suricata
+  - nsm
+maintainers:
+  - name: Vigilante Security Team

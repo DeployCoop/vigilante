@@ -1,0 +1,17 @@
+# Example user override for Falco module
+ingress:
+  enabled: true
+  hosts:
+    - host: falco.vigilante.local
+  tls:
+    - secretName: falco-tls
+      hosts:
+        - falco.vigilante.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

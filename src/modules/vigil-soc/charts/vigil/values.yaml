@@ -1,6 +1,6 @@
 # Default values for the Vigil SOC Helm chart.
 # This is a YAML-formatted file.
-# See docs/HELM.md for a full reference of all values.
+# See https://vigilsoc.org/docs/helm/ for a full reference of all values.
 
 # -----------------------------------------------------------------------------
 # Global
@@ -247,8 +247,8 @@ agentServe:
 postgresql:
   enabled: true
   image:
-    repository: pgvector/pgvector
-    tag: "pg16"
+    repository: postgres
+    tag: "16-alpine"
     pullPolicy: IfNotPresent
   auth:
     database: deeptempo_soc
@@ -280,7 +280,8 @@ postgresql:
     # Either set .existingSecret + .existingSecretKey OR provide password via secrets.postgresPassword.
     existingSecret: ""
     existingSecretKey: POSTGRES_PASSWORD
-    # If true, append ?sslmode=require to the DATABASE_URL.
+    # Unused: Helm injects discrete POSTGRES_* vars, not a DSN. Require SSL with
+    # POSTGRES_SSL_MODE=require via extraConfig / extraEnv.
     sslRequired: false
 
   # Bitnami postgresql subchart (issue #114). When enabled, the MVP in-chart
@@ -382,8 +383,8 @@ dbInit:
   enabled: true
   image:
     # Uses the same image as Postgres so psql is available.
-    repository: pgvector/pgvector
-    tag: "pg16"
+    repository: postgres
+    tag: "16-alpine"
     pullPolicy: IfNotPresent
   # Explicit ordering — files added under infra/database/init/ will NOT auto-run.
   # Update this list when new init SQL lands.
@@ -408,6 +409,20 @@ dbInit:
     - 19_agent_ledger.sql
     - 20_agent_directives.sql
     - 21_agent_run_leases.sql
+    - 22_workflow_run_deleted.sql
+    - 23_drop_finding_embedding.sql
+    - 24_finding_mitre_predictions.sql
+    - 25_nullable_finding_score_timestamp.sql
+    - 26_episodic_memory.sql
+    - 27_episodic_read_log.sql
+    - 28_case_closure_actor.sql
+    - 29_episodic_distil_failures.sql
+    - 30_approval_action_reversibility.sql
+    - 30_vigil_app_role.sql
+    - 31_agent_ledger_hash_chain.sql
+    - 32_drop_attack_layers.sql
+    - 33_episodic_verdict_techniques.sql
+    - 35_ip_exclusions.sql
   resources:
     requests:
       cpu: 50m
@@ -428,6 +443,8 @@ ingress:
   hosts:
     - host: vigil.local
       paths:
+        # Subdirectory deploys (e.g. /vigil) must set config.VIGIL_CONTEXT_PATH
+        # to the same string; the chart does not derive one from the other.
         - path: /
           pathType: Prefix
   tls: []
@@ -443,6 +460,53 @@ serviceAccount:
   name: ""
   annotations: {}
   automountServiceAccountToken: false
+
+# -----------------------------------------------------------------------------
+# State Directory
+# -----------------------------------------------------------------------------
+# Where Vigil keeps what the database does not: the secrets store, MCP enable
+# flags, detection sources. Exported as VIGIL_DIR to the backend, daemon and
+# llm-worker.
+#
+# The emptyDir default is per-pod and cleared on restart, deliberately: a
+# ReadWriteOnce disk cannot be shared by backend.replicaCount > 1, and
+# ReadWriteMany is not available on every cluster. So supply credentials through
+# `secrets.existingSecret` or ExternalSecrets, not the Settings UI.
+#
+# For durability on a cluster with ReadWriteMany storage:
+#   stateDirectory.volume:
+#     persistentVolumeClaim:
+#       claimName: vigil-state
+stateDirectory:
+  mountPath: /var/lib/vigil
+  volume:
+    emptyDir: {}
+
+# -----------------------------------------------------------------------------
+# Custom CA bundle (TLS-inspecting proxies)
+# -----------------------------------------------------------------------------
+# Mount an operator-supplied PEM into backend, daemon, llm-worker, agent-worker,
+# and agent-serve, and set SSL_CERT_FILE, REQUESTS_CA_BUNDLE, and
+# NODE_EXTRA_CA_CERTS to that path. Python and Node then trust the inspecting
+# CA with verification still enabled. MCP children inherit the same vars.
+# SSL_CERT_FILE replaces the default store — the PEM should include public CAs
+# as well as the inspecting one. NODE_EXTRA_CA_CERTS appends.
+#
+# Point at an existing Secret or ConfigMap — this chart does not create one.
+# Leave both names empty (the default) to skip the mount. Prefer the Secret
+# when both are set.
+#
+#   kubectl create secret generic vigil-proxy-ca \
+#     --from-file=ca.crt=/path/to/corporate-ca.pem
+#
+#   caBundle:
+#     existingSecret: vigil-proxy-ca
+#     key: ca.crt
+caBundle:
+  existingSecret: ""
+  existingConfigMap: ""
+  key: ca.crt
+  mountPath: /etc/vigil/ca-bundle.pem
 
 # -----------------------------------------------------------------------------
 # Pod security
@@ -501,7 +565,8 @@ secrets:
   # Required (at least one of these must be set for the backend to do useful work).
   anthropicApiKey: ""
 
-  # DB. Used by dbInit and DATABASE_URL assembly.
+  # DB password. Materialized as POSTGRES_PASSWORD; db-init and app pods
+  # consume the discrete POSTGRES_* parts, not an assembled DSN.
   postgresPassword: "change-me-before-production"
 
   # Required when DEV_MODE=false (see env.example). Generate with:
@@ -567,6 +632,7 @@ config:
   AUTH_MIN_PASSWORD_LENGTH: "12"
   AUTH_PASSWORD_HISTORY_LIMIT: "5"
   PASSWORD_RESET_TTL_SECONDS: "3600"
+  # Include the context path under a subdirectory (e.g. https://example.com/vigil).
   VIGIL_FRONTEND_URL: ""
 
   # Email backend
@@ -579,6 +645,10 @@ config:
 
   # HTTP security headers + CORS
   VIGIL_CORS_ORIGINS: ""
+  # Sub-directory the app is served under (e.g. "/vigil"). Empty = root.
+  # Must match ingress path; the chart does not derive one from the other.
+  # The reverse proxy must forward the prefix unchanged.
+  VIGIL_CONTEXT_PATH: ""
   VIGIL_HSTS_ENABLED: "true"
   VIGIL_HSTS_MAX_AGE: "31536000"
   VIGIL_FRAME_OPTIONS_ENABLED: "true"
@@ -590,15 +660,14 @@ config:
   # CSRF
   VIGIL_CSRF_ENABLED: "true"
   VIGIL_CSRF_REPORT_ONLY: "true"
+  # Added to the always-exempt set (webhooks, ingestion, the /mcp surface,
+  # the agent layer's /internal endpoints) rather than replacing it.
+  # App-root relative; the API prefixes each entry with VIGIL_CONTEXT_PATH.
   VIGIL_CSRF_EXEMPT_PATHS: "/api/webhooks/,/api/ingest/"
 
   # Auth cookies
   VIGIL_COOKIE_SECURE: "true"
   VIGIL_COOKIE_SAMESITE: "strict"
-
-  # MemPalace
-  MEMPALACE_PALACE_PATH: "/app/data/mempalace/palace"
-  MEMPALACE_DAEMON_ENABLED: "false"
 
   # Integrations — non-secret URLs/usernames
   SPLUNK_URL: ""
@@ -672,17 +741,9 @@ config:
   ORCHESTRATOR_MAX_COST: "5.0"
   ORCHESTRATOR_MAX_RUNTIME: "3600"
   ORCHESTRATOR_MAX_HOURLY_COST: "20.0"
-  ORCHESTRATOR_MAX_DAILY_COST: "100.0"
   ORCHESTRATOR_STALE_THRESHOLD: "300"
   ORCHESTRATOR_WORKDIR: "/app/data/investigations"
-  ORCHESTRATOR_AUTO_ASSIGN: "true"
-  ORCHESTRATOR_AUTO_SEVERITIES: "critical,high"
   ORCHESTRATOR_DRY_RUN: "false"
-  ORCHESTRATOR_DEDUP_WINDOW: "30"
-  ORCHESTRATOR_AGENT_LOOP_DELAY: "2"
-  ORCHESTRATOR_CONTEXT_MAX_CHARS: "10000"
-  ORCHESTRATOR_PLAN_MODEL: "claude-sonnet-4-5-20250929"
-  ORCHESTRATOR_REVIEW_MODEL: "claude-sonnet-4-5-20250929"
 
   # OTEL — disabled by default; turn on when an OTEL collector is reachable.
   VIGIL_OTEL_ENABLED: "false"

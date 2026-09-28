@@ -1,0 +1,14 @@
+apiVersion: v2
+name: zap
+description: OWASP Zed Attack Proxy (ZAP) Headless DAST Scanner Daemon and Web UI
+type: application
+version: 0.1.0
+appVersion: "2.14.0"
+keywords:
+  - security
+  - dast
+  - zap
+  - owasp
+  - web-scanner
+maintainers:
+  - name: Vigilante Security Team

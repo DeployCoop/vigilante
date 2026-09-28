@@ -3,6 +3,10 @@
  * Generates multi-layout graph topologies (Force 2D, Radial, Traceroute Hop Tree, Subnet Clusters).
  */
 
+import fsSync from 'node:fs';
+import path from 'node:path';
+import { getVigilanteDossiersDir } from '../config.js';
+
 function getSubnetFromIp(ip) {
   if (!ip || ip.includes(':')) return 'IPv6 / Other';
   const parts = ip.split('.');
@@ -61,21 +65,21 @@ export function generateTopology(scan, options = {}) {
 
   // 2. Iterate through all hosts in scan
   for (const host of scan.hosts || []) {
-    const ip = host.ipv4 || host.ipv6 || host.id;
+    const ip = host.ipv4 || host.ipv6 || host.ip || host.id;
     const subnet = getSubnetFromIp(ip);
     subnetsSet.add(subnet);
 
-    const openPorts = (host.ports || []).filter((p) => p.state === 'open').map((p) => p.portid);
+    const openPorts = (host.ports || []).filter((p) => p.state === 'open').map((p) => p.portid || p.port);
     const openPortDetails = (host.ports || []).filter((p) => p.state === 'open');
     const hopsAway = host.distance || (host.trace?.hops ? host.trace.hops.length : 1);
 
     const hostNode = {
       id: ip,
-      label: host.primaryHostname || ip,
+      label: host.primaryHostname || host.hostname || ip,
       ip,
-      hostname: host.primaryHostname,
+      hostname: host.primaryHostname || host.hostname,
       nodeType: host.deviceType === 'router' ? 'router' : 'host',
-      status: host.status?.state === 'up' ? 'up' : 'down',
+      status: (host.status?.state || host.status) === 'up' ? 'up' : 'down',
       osFamily: host.osFamily || 'Unknown',
       osName: host.primaryOs || 'Unknown OS',
       deviceType: host.deviceType || 'general purpose',
@@ -91,6 +95,39 @@ export function generateTopology(scan, options = {}) {
       radius: Math.max(14, Math.min(24, 14 + openPorts.length)),
       color: getOsColor(host.osFamily)
     };
+
+    // Load Dossier Intelligence if available
+    let dossier = null;
+    if (options.dossiers && (options.dossiers[ip] || options.dossiers.get?.(ip))) {
+      dossier = options.dossiers[ip] || options.dossiers.get(ip);
+    } else {
+      try {
+        const dossiersDir = getVigilanteDossiersDir();
+        const dFile = path.join(dossiersDir, `${ip.replace(/[^a-zA-Z0-9.-]/g, '_')}.json`);
+        if (fsSync.existsSync(dFile)) {
+          dossier = JSON.parse(fsSync.readFileSync(dFile, 'utf8'));
+        }
+      } catch {
+        // Ignore fallback
+      }
+    }
+
+    if (dossier) {
+      hostNode.riskScore = dossier.riskScore || 0;
+      hostNode.riskTier = dossier.riskTier || 'CLEAN';
+      hostNode.riskColor = dossier.riskColor || 'green';
+      hostNode.dossier = dossier;
+
+      if (dossier.riskTier === 'CRITICAL') {
+        hostNode.color = '#ef4444'; // Red
+        hostNode.isCritical = true;
+      } else if (dossier.riskTier === 'HIGH') {
+        hostNode.color = '#f97316'; // Orange
+      } else if (dossier.riskTier === 'MEDIUM') {
+        hostNode.color = '#eab308'; // Yellow
+      }
+    }
+
     nodesMap.set(ip, hostNode);
 
     // 3. Connect Traceroute Hops or Subnet links
@@ -158,6 +195,37 @@ export function generateTopology(scan, options = {}) {
         type: 'subnet',
         label: subnet
       });
+    }
+  }
+
+  // 3b. Detect Potential Lateral Movement & Attack Paths
+  for (const [srcIp, srcNode] of nodesMap.entries()) {
+    if (srcNode.nodeType === 'scanner') continue;
+    const d = srcNode.dossier;
+    const isVulnerable = (srcNode.openPorts || []).includes(445) || (srcNode.openPorts || []).includes(3389) || (d && d.riskScore >= 50);
+
+    if (isVulnerable) {
+      for (const [dstIp, dstNode] of nodesMap.entries()) {
+        if (srcIp === dstIp || dstNode.nodeType === 'scanner') continue;
+        const dstPorts = dstNode.openPorts || [];
+        const hasAdminPort = dstPorts.some(p => [22, 445, 3389, 8080].includes(p));
+        if (hasAdminPort) {
+          const attackKey = `lateral:${srcIp}->${dstIp}`;
+          if (!linksMap.has(attackKey)) {
+            linksMap.set(attackKey, {
+              id: attackKey,
+              source: srcIp,
+              target: dstIp,
+              type: 'lateral-attack-path',
+              relationship: 'lateral-attack-path',
+              technique: 'T1021.002',
+              label: 'Lateral Attack Path (T1021.002)',
+              style: 'dashed',
+              color: '#dc2626'
+            });
+          }
+        }
+      }
     }
   }
 

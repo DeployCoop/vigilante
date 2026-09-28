@@ -1,0 +1,51 @@
+image:
+  repository: specterops/bloodhound
+  tag: "v5.14.0"
+  pullPolicy: IfNotPresent
+
+postgres:
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  database: bloodhound
+  username: bloodhound
+  password: "BloodHoundPostgresSecret123!"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+neo4j:
+  image:
+    repository: neo4j
+    tag: "4.4.35"
+  password: "BloodHoundAdminSecret123!"
+
+admin:
+  principalName: admin
+  password: "BloodHoundAdminSecret123!"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+    - host: bloodhound.vigilante.local
+  tls:
+    - secretName: bloodhound-tls
+      hosts:
+        - bloodhound.vigilante.local
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi

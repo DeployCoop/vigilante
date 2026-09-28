@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bloodhound.fullname" . }}-neo4j
+  namespace: {{ include "bloodhound.namespace" . }}
+  labels:
+    {{- include "bloodhound.labels" . | nindent 4 }}
+    app.kubernetes.io/component: neo4j
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bloodhound.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bloodhound.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: neo4j
+    spec:
+      containers:
+        - name: neo4j
+          image: "{{ .Values.neo4j.image.repository }}:{{ .Values.neo4j.image.tag }}"
+          env:
+            - name: NEO4J_AUTH
+              value: "neo4j/{{ .Values.neo4j.password }}"
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bloodhound.fullname" . }}-neo4j
+  namespace: {{ include "bloodhound.namespace" . }}
+spec:
+  ports:
+    - port: 7687
+      name: bolt
+    - port: 7474
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "bloodhound.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: neo4j

@@ -1,0 +1,158 @@
+# Default values for flamingo.
+# This is a YAML-formatted file.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/joshuacox/flamingo
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext:
+  # Capabilities required to bind to privileged ports (e.g., 21, 22, 53, 80, 161, 389, 443)
+  capabilities:
+    add:
+      - NET_BIND_SERVICE
+
+# Flamingo configuration options
+config:
+  # Comma-separated list of protocols to enable: ssh,snmp,ldap,http,dns,ftp
+  protocols: "ssh,snmp,ldap,http,dns,ftp"
+
+  # Verbose / Quiet flags
+  verbose: false
+  quiet: false
+  dontIgnoreFailures: false
+
+  # Protocol specific port configurations
+  ports:
+    ftp: "21"
+    dns: "53,5353"
+    dnsResolveToIP: ""
+    snmp: "161"
+    ssh: "22"
+    ldap: "389"
+    ldaps: "636"
+    http: "80"
+    https: "443"
+
+  # HTTP options
+  httpRealm: "Administration"
+  httpAuthMode: "ntlm" # ntlm or basic
+
+  # TLS options
+  tlsName: "localhost"
+  tlsOrg: "Flamingo Feed, Inc."
+  # Set to name of secret containing tls.crt and tls.key
+  customTlsSecret: ""
+
+  # Output destinations passed as positional arguments to flamingo
+  # Examples:
+  #   - "stdout"
+  #   - "/var/log/flamingo/creds.log"
+  #   - "https://webhook.site/..."
+  #   - "syslog:udp:syslog-server:514"
+  outputs:
+    - "stdout"
+
+# Persistence configuration (useful if logging to file)
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /var/log/flamingo
+
+# Service configuration
+# Exposes listener ports on Kubernetes
+service:
+  type: ClusterIP
+  # Annotations for cloud provider load balancers (e.g. AWS NLB, MetalLB)
+  annotations: {}
+  # List of ports to expose on the service
+  ports:
+    ftp:
+      enabled: true
+      port: 21
+      targetPort: 21
+      protocol: TCP
+    ssh:
+      enabled: true
+      port: 22
+      targetPort: 22
+      protocol: TCP
+    dnsTcp:
+      enabled: true
+      port: 53
+      targetPort: 53
+      protocol: TCP
+    dnsUdp:
+      enabled: true
+      port: 53
+      targetPort: 53
+      protocol: UDP
+    http:
+      enabled: true
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    snmp:
+      enabled: true
+      port: 161
+      targetPort: 161
+      protocol: UDP
+    ldap:
+      enabled: true
+      port: 389
+      targetPort: 389
+      protocol: TCP
+    https:
+      enabled: true
+      port: 443
+      targetPort: 443
+      protocol: TCP
+    ldaps:
+      enabled: true
+      port: 636
+      targetPort: 636
+      protocol: TCP
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+    - host: flamingo.vigilante.local
+  tls:
+    - secretName: flamingo-tls
+      hosts:
+        - flamingo.vigilante.local
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

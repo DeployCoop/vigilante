@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bloodhound.fullname" . }}
+  namespace: {{ include "bloodhound.namespace" . }}
+  labels:
+    {{- include "bloodhound.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "bloodhound.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "bloodhound.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: app
+    spec:
+      containers:
+        - name: bloodhound
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: bhe_database_connection
+              value: "postgresql://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@{{ include "bloodhound.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}?sslmode=disable"
+            - name: bhe_database_addr
+              value: "{{ include "bloodhound.fullname" . }}-postgres:5432"
+            - name: bhe_database_database
+              value: {{ .Values.postgres.database | quote }}
+            - name: bhe_database_username
+              value: {{ .Values.postgres.username | quote }}
+            - name: bhe_database_password
+              value: {{ .Values.postgres.password | quote }}
+            - name: bhe_neo4j_connection
+              value: "neo4j://{{ include "bloodhound.fullname" . }}-neo4j:7687"
+            - name: bhe_neo4j_addr
+              value: "{{ include "bloodhound.fullname" . }}-neo4j:7687"
+            - name: bhe_neo4j_username
+              value: "neo4j"
+            - name: bhe_neo4j_password
+              value: {{ .Values.neo4j.password | quote }}
+            - name: bhe_default_admin_principal_name
+              value: {{ .Values.admin.principalName | quote }}
+            - name: bhe_default_admin_password
+              value: {{ .Values.admin.password | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

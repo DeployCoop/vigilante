@@ -4,6 +4,12 @@ import { VigilLocalModule } from './vigil-local/index.js';
 import { KCTFModule } from './kctf/index.js';
 import { OpenVASModule } from './openvas/index.js';
 import { WazuhModule } from './wazuh/index.js';
+import { FlamingoModule } from './flamingo/index.js';
+import { FalcoModule } from './falco/index.js';
+import { SuricataModule } from './suricata/index.js';
+import { ZeekModule } from './zeek/index.js';
+import { ZAPModule } from './zap/index.js';
+import { BloodHoundModule } from './bloodhound/index.js';
 
 export class ModuleRegistry {
   constructor() {
@@ -18,6 +24,12 @@ export class ModuleRegistry {
     this.register(new KCTFModule());
     this.register(new OpenVASModule());
     this.register(new WazuhModule());
+    this.register(new FlamingoModule());
+    this.register(new FalcoModule());
+    this.register(new SuricataModule());
+    this.register(new ZeekModule());
+    this.register(new ZAPModule());
+    this.register(new BloodHoundModule());
   }
 
   /**

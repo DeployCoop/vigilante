@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zeek.fullname" . }}
+  namespace: {{ include "zeek.namespace" . }}
+  labels:
+    {{- include "zeek.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: logs
+  selector:
+    app.kubernetes.io/name: {{ include "zeek.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}

@@ -19,7 +19,7 @@ export const HUB_ITEMS = [
     title: 'Configuration & Cryptographic Identity',
     subtitle: 'Inspect config.yaml, GPG keys, color themes & defaults',
     key: '2',
-    altKey: 'c',
+    altKey: null,
     action: 'CONFIG'
   },
   {
@@ -37,7 +37,7 @@ export const HUB_ITEMS = [
     title: 'Helm Values Editor & Overrides',
     subtitle: 'Inspect and configure chart parameters and XDG overrides',
     key: '4',
-    altKey: 'v',
+    altKey: null,
     action: 'VALUES'
   },
 
@@ -84,11 +84,101 @@ export const HUB_ITEMS = [
     title: 'OpenVAS / Greenbone Vulnerability Scanner',
     subtitle: 'CVE scans, port audits, compliance checks & GMP reports',
     key: 'o',
-    altKey: 'v',
+    altKey: null,
     action: 'OPENVAS'
+  },
+  {
+    id: 'oobscan',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'OOBscan BMC & Out-of-Band Hardware Audit',
+    subtitle: 'Audit IPMI, Redfish, iLO, iDRAC, Intel AMT, RAKP hashes & BMC link-local',
+    key: 'b',
+    altKey: null,
+    action: 'OOBSCAN'
+  },
+  {
+    id: 'vuln',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Vulnerability & Threat Center (Dossiers & Brain)',
+    subtitle: 'Unified host dossiers, CVEs, PCAP replay, identity graph & MITRE ATT&CK',
+    key: 'v',
+    altKey: null,
+    action: 'VULN'
+  },
+  {
+    id: 'battlestation',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Battle Station (Falco eBPF & IDS Dual Stream)',
+    subtitle: 'Live runtime & network forensics with quick SOAR active containment',
+    key: 'l',
+    altKey: null,
+    action: 'BATTLESTATION'
+  },
+  {
+    id: 'kspm',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Kubernetes Security Posture Management (KSPM)',
+    subtitle: 'Continuous CIS benchmarks, Pod Security Standards (PSS) & scorecard',
+    key: 'k',
+    altKey: null,
+    action: 'KSPM'
+  },
+  {
+    id: 'forensics',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'PCAP Forensics & Protocol Reconstruction',
+    subtitle: 'Carve files from packet flows, inspect decrypted TLS & TCP ladders',
+    key: 'z',
+    altKey: null,
+    action: 'FORENSICS'
+  },
+  {
+    id: 'lineage',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Kernel eBPF Process Lineage Tree',
+    subtitle: 'Container process hierarchy, shell breakout detection & LOLBins',
+    key: 'e',
+    altKey: null,
+    action: 'LINEAGE'
+  },
+  {
+    id: 'cloudsec',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Multi-Cloud Workload Identity & CSPM',
+    subtitle: 'Audit AWS IRSA, GCP Workload Identity & storage exposure',
+    key: 'c',
+    altKey: null,
+    action: 'CLOUDSEC'
   },
 
   // Section 3: NIST Phase 3: Containment, Eradication & Recovery
+  {
+    id: 'audit',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Shift-Left CI/CD Security Audit',
+    subtitle: 'Scan K8s manifests & Dockerfiles with SARIF output and gating',
+    key: 'g',
+    altKey: null,
+    action: 'AUDIT'
+  },
+  {
+    id: 'canary',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Autonomous Deception Mesh (Canary Kube)',
+    subtitle: 'Deploy decoy ServiceAccounts, honeytoken secrets & honeypots',
+    key: 'y',
+    altKey: null,
+    action: 'CANARY'
+  },
+  {
+    id: 'purple',
+    section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',
+    title: 'Autonomous Purple Team Arena (Wargames)',
+    subtitle: 'Multi-agent adversarial simulation: Red Adversary vs. Blue ReAct SOC',
+    key: 'w',
+    altKey: null,
+    action: 'PURPLE'
+  },
   {
     id: 'threat-sim',
     section: '⚡ NIST Phase 3: Containment, Eradication & Recovery',

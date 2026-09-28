@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flamingo.fullname" . }}
+  namespace: {{ include "flamingo.namespace" . }}
+  labels:
+    {{- include "flamingo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "flamingo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "flamingo.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "flamingo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- if .Values.config.protocols }}
+            - "--protocols={{ .Values.config.protocols }}"
+            {{- end }}
+            {{- if .Values.config.verbose }}
+            - "--verbose"
+            {{- end }}
+            {{- if .Values.config.quiet }}
+            - "--quiet"
+            {{- end }}
+            {{- if .Values.config.dontIgnoreFailures }}
+            - "--dont-ignore"
+            {{- end }}
+            {{- if .Values.config.ports.ftp }}
+            - "--ftp-ports={{ .Values.config.ports.ftp }}"
+            {{- end }}
+            {{- if .Values.config.ports.dns }}
+            - "--dns-ports={{ .Values.config.ports.dns }}"
+            {{- end }}
+            {{- if .Values.config.ports.dnsResolveToIP }}
+            - "--dns-resolve-to={{ .Values.config.ports.dnsResolveToIP }}"
+            {{- end }}
+            {{- if .Values.config.ports.snmp }}
+            - "--snmp-ports={{ .Values.config.ports.snmp }}"
+            {{- end }}
+            {{- if .Values.config.ports.ssh }}
+            - "--ssh-ports={{ .Values.config.ports.ssh }}"
+            {{- end }}
+            {{- if .Values.config.ports.ldap }}
+            - "--ldap-ports={{ .Values.config.ports.ldap }}"
+            {{- end }}
+            {{- if .Values.config.ports.ldaps }}
+            - "--ldaps-ports={{ .Values.config.ports.ldaps }}"
+            {{- end }}
+            {{- if .Values.config.ports.http }}
+            - "--http-ports={{ .Values.config.ports.http }}"
+            {{- end }}
+            {{- if .Values.config.ports.https }}
+            - "--https-ports={{ .Values.config.ports.https }}"
+            {{- end }}
+            {{- if .Values.config.httpRealm }}
+            - "--http-realm={{ .Values.config.httpRealm }}"
+            {{- end }}
+            {{- if .Values.config.httpAuthMode }}
+            - "--http-auth-mode={{ .Values.config.httpAuthMode }}"
+            {{- end }}
+            {{- if .Values.config.tlsName }}
+            - "--tls-name={{ .Values.config.tlsName }}"
+            {{- end }}
+            {{- if .Values.config.tlsOrg }}
+            - "--tls-org={{ .Values.config.tlsOrg }}"
+            {{- end }}
+            {{- if .Values.config.customTlsSecret }}
+            - "--tls-cert=/etc/flamingo/tls/tls.crt"
+            - "--tls-key=/etc/flamingo/tls/tls.key"
+            {{- end }}
+            {{- range .Values.config.outputs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            {{- if .Values.service.ports.ftp.enabled }}
+            - name: ftp
+              containerPort: {{ .Values.service.ports.ftp.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.ssh.enabled }}
+            - name: ssh
+              containerPort: {{ .Values.service.ports.ssh.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.dnsTcp.enabled }}
+            - name: dns-tcp
+              containerPort: {{ .Values.service.ports.dnsTcp.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.dnsUdp.enabled }}
+            - name: dns-udp
+              containerPort: {{ .Values.service.ports.dnsUdp.targetPort }}
+              protocol: UDP
+            {{- end }}
+            {{- if .Values.service.ports.http.enabled }}
+            - name: http
+              containerPort: {{ .Values.service.ports.http.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.snmp.enabled }}
+            - name: snmp
+              containerPort: {{ .Values.service.ports.snmp.targetPort }}
+              protocol: UDP
+            {{- end }}
+            {{- if .Values.service.ports.ldap.enabled }}
+            - name: ldap
+              containerPort: {{ .Values.service.ports.ldap.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.https.enabled }}
+            - name: https
+              containerPort: {{ .Values.service.ports.https.targetPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.service.ports.ldaps.enabled }}
+            - name: ldaps
+              containerPort: {{ .Values.service.ports.ldaps.targetPort }}
+              protocol: TCP
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.config.customTlsSecret }}
+            - name: tls
+              mountPath: /etc/flamingo/tls
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "flamingo.fullname" . }}
+        {{- end }}
+        {{- if .Values.config.customTlsSecret }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.config.customTlsSecret }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

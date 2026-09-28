@@ -1,0 +1,14 @@
+apiVersion: v2
+name: zeek
+description: Powerful Network Security Monitoring and Structured Behavioral Protocol Analysis
+type: application
+version: 0.1.0
+appVersion: "6.0.4"
+keywords:
+  - security
+  - nsm
+  - zeek
+  - bro
+  - network-analysis
+maintainers:
+  - name: Vigilante Security Team

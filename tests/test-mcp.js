@@ -163,6 +163,38 @@ async function runTests() {
   }
   console.log(`✔ Test 10 passed: list_threat_playbooks returned ${parsedPlaybooks.playbooks.length} modular attack scenarios.`);
 
+  // Test 11: Call new threat scanner tools via MCP
+  const nucleiToolRes = await client.callTool({
+    name: 'run_nuclei_scan',
+    arguments: { target: '127.0.0.1', profile: 'cves' }
+  });
+  const parsedNuclei = JSON.parse(nucleiToolRes.content[0].text);
+  if (parsedNuclei.status !== 'success' || !parsedNuclei.id) {
+    throw new Error('run_nuclei_scan did not return success status');
+  }
+  console.log('✔ Test 11 passed: run_nuclei_scan executed successfully via MCP.');
+
+  // Test 12: Call get_host_dossier via MCP
+  const dossierRes = await client.callTool({
+    name: 'get_host_dossier',
+    arguments: { target: '127.0.0.1' }
+  });
+  const parsedDossier = JSON.parse(dossierRes.content[0].text);
+  if (!parsedDossier.target || typeof parsedDossier.riskScore !== 'number') {
+    throw new Error('get_host_dossier did not return valid dossier');
+  }
+  console.log(`✔ Test 12 passed: get_host_dossier executed via MCP (Risk: ${parsedDossier.riskScore}/100 [${parsedDossier.riskTier}]).`);
+
+  // Test 13: Call generate_mitre_report via MCP
+  const mitreRes = await client.callTool({
+    name: 'generate_mitre_report',
+    arguments: { saveEvidence: false }
+  });
+  if (!mitreRes.content[0]?.text?.includes('MITRE ATT&CK')) {
+    throw new Error('generate_mitre_report did not return markdown report');
+  }
+  console.log('✔ Test 13 passed: generate_mitre_report returned MITRE ATT&CK matrix via MCP.');
+
   await client.close();
   console.log('🎉 All Model Context Protocol (MCP) Server tests passed successfully!');
 }

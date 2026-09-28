@@ -52,6 +52,57 @@ import {
   deleteChallenge,
   testChallengeConnection
 } from '../engine/kctf.js';
+import {
+  checkOobscanInstalled,
+  runOobScan,
+  listSavedOobScans,
+  readSavedOobScan,
+  deleteSavedOobScan,
+  exportRakpHashes,
+  OOB_SCAN_PROFILES
+} from '../engine/oobscan.js';
+import { runReconScan, listSavedReconScans, checkReconToolsInstalled } from '../engine/recon.js';
+import { runNucleiScan, listSavedNucleiScans, checkNucleiInstalled } from '../engine/nuclei.js';
+import { runTrivyAudit, listSavedTrivyScans, checkTrivyInstalled } from '../engine/trivy.js';
+import { runKubeAudit, listSavedKubeAudits, checkKubeAuditToolsInstalled } from '../engine/kubeaudit.js';
+import { runNetexecAudit, listSavedNetexecAudits, checkNetexecInstalled } from '../engine/netexec.js';
+import { runZapScan, listSavedZapScans, checkZapAvailable } from '../engine/zap.js';
+import { getHostDossier, buildHostDossier, listHostDossiers } from '../engine/dossier.js';
+import { replayPcap, listPcapRecordings, parseSuricataEve, parseZeekConnLogs, summarizeTrafficAlerts } from '../engine/traffic.js';
+import { ingestBloodhoundData, listBloodhoundIngests, checkBloodhoundAvailable } from '../engine/bloodhound.js';
+import { generateMitreCoverageMatrix, generateMitreMarkdownReport, saveMitreReport } from '../engine/mitre.js';
+import {
+  isolatePod,
+  freezePod,
+  blockIp,
+  quarantineAccount,
+  listActiveContainments,
+  releaseContainment
+} from '../engine/soar.js';
+import { runAgentSocInvestigation } from '../engine/agent-soc.js';
+import { syncFeodoTrackerC2, syncUrlhausThreats, matchCtiIndicators, updateSuricataRules } from '../engine/cti.js';
+import { generateKspmScorecard, saveKspmReport } from '../engine/kspm.js';
+import { runPipelineAudit, generateSarifReport } from '../engine/audit.js';
+import { listActiveCanaries, generateCanaryServiceAccount, generateCanarySecret, generateDecoyDeploymentYaml, registerCanaryAsset } from '../engine/deception.js';
+import { runPurpleTeamSimulation, calculatePurpleScorecard, savePurpleReport } from '../engine/purpleteam.js';
+import { generatePatchForFinding, applyPatchToFile, generateUnifiedDiff } from '../engine/remediation.js';
+import { queryDataLake, runRetrospectiveThreatHunt, getDataLakeBackend } from '../engine/datalake.js';
+import { auditWorkloadIdentity, auditCloudStorageExposure, calculateCloudRiskScore, generateCloudSecReport } from '../engine/cloudsec.js';
+import { listCarvedFiles } from '../engine/forensics.js';
+import { transpileSigmaToSql, runSigmaThreatHunt } from '../engine/sigma.js';
+import { simulateDynamicAttackChain } from '../engine/adversary.js';
+import { detectMemoryAnomalies, parseProcessMemoryMaps } from '../engine/memdump.js';
+import { generateCloudHoneytoken, startCanaryWebhookListener } from '../engine/deception.js';
+import { generateCycloneDxSbom, generateSpdxSbom, verifyCosignSignature } from '../engine/supplychain.js';
+import { buildSocketConnectionMatrix, detectAnomalousSocketConnections } from '../engine/observability.js';
+import { createFederationNode, signThreatRecord, broadcastThreatIndicator, ingestFederatedThreatRecord } from '../engine/federation.js';
+import { generateBpfLsmPolicy, simulateLsmPolicyEvaluation, exportLsmCSource } from '../engine/lsm.js';
+import { detectBeaconingPeriodicity, detectDnsTunneling } from '../engine/beaconing.js';
+import { calculateFileEntropy, generateRansomwareCanaryFiles, detectRansomwareEncryption } from '../engine/ransomware.js';
+import { conveneIncidentWarRoom, generateWarRoomTranscript } from '../engine/warroom.js';
+import { semanticThreatSearch } from '../engine/vectorcti.js';
+import { appendLedgerEntry, verifyLedgerIntegrity, exportLegalChainOfCustody } from '../engine/ledger.js';
+import { calculateBlastRadius, renderAsciiAttackGraph, buildCompositeAttackGraph, findShortestAttackPath } from '../engine/attackgraph.js';
 
 /**
  * Creates and configures the Vigilante MCP Server
@@ -159,6 +210,18 @@ export function createVigilanteMcpServer() {
           name: 'kCTF Cyber Range Challenges & Templates',
           description: 'List of deployed kCTF challenges and available challenge archetypes (Web, Pwn/nsjail, Crypto, Rev, Forensics, Misc).',
           mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://oob/scans',
+          name: 'Saved Out-of-Band (OOB) Scans',
+          description: 'List of all archived BMC / IPMI / Redfish out-of-band management scan reports in $XDG_CONFIG_HOME/vigilante/oobscans.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://oob/hashes',
+          name: 'IPMI RAKP-2 Hashes Vault',
+          description: 'Aggregated RAKP-2 password authentication hashes extracted from IPMI 2.0 services, formatted for Hashcat (-m 7300).',
+          mimeType: 'text/plain'
         }
       ]
     };
@@ -193,6 +256,12 @@ export function createVigilanteMcpServer() {
           name: 'Raw Nmap Scan Report',
           description: 'Raw text or XML content of a saved Nmap scan report.',
           mimeType: 'text/plain'
+        },
+        {
+          uriTemplate: 'vigilante://oob/scan/{filename}',
+          name: 'Out-of-Band Scan Report Details',
+          description: 'Parsed BMC hardware inventory, discovered management protocols, CVEs, default credentials, and raw NDJSON events for a specific OOB scan report.',
+          mimeType: 'application/json'
         }
       ]
     };
@@ -577,6 +646,56 @@ export function createVigilanteMcpServer() {
             uri,
             mimeType: filename.endsWith('.xml') ? 'application/xml' : 'text/plain',
             text: content
+          }
+        ]
+      };
+    }
+
+    // OOB Scans List (vigilante://oob/scans)
+    if (uri === 'vigilante://oob/scans') {
+      const scans = await listSavedOobScans();
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ total: scans.length, scans }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // OOB RAKP Hashes (vigilante://oob/hashes)
+    if (uri === 'vigilante://oob/hashes') {
+      const scans = await listSavedOobScans();
+      const allHashes = [];
+      for (const s of scans) {
+        if (s.rakpHashes && s.rakpHashes.length > 0) {
+          allHashes.push(...s.rakpHashes.map(h => h.hashcatLine));
+        }
+      }
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'text/plain',
+            text: allHashes.join('\n')
+          }
+        ]
+      };
+    }
+
+    // Parameterized URI: OOB Scan Detail (vigilante://oob/scan/{filename})
+    const oobScanMatch = uri.match(/^vigilante:\/\/oob\/scan\/([^/]+)$/);
+    if (oobScanMatch) {
+      const filename = decodeURIComponent(oobScanMatch[1]);
+      const scan = await readSavedOobScan(filename);
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify(scan, null, 2)
           }
         ]
       };
@@ -1184,6 +1303,833 @@ export function createVigilanteMcpServer() {
               }
             },
             required: ['moduleId']
+          }
+        },
+        {
+          name: 'check_oobscan',
+          description: 'Check whether the out-of-band management scanner (oobscan) binary is installed on the host and return path and version.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'run_oob_scan',
+          description: 'Run an out-of-band management scan using runZero oobscan against BMCs, IPMI, Redfish, iLO, iDRAC, or IPv6 multicast.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target IP, hostname, CIDR subnet, or IPv6 multicast group (e.g. 192.168.1.0/24 or ff02::1%eth0)'
+              },
+              profile: {
+                type: 'string',
+                description: 'Scan profile: quick, standard, ipmi, ipv6, passive',
+                enum: ['quick', 'standard', 'ipmi', 'ipv6', 'passive']
+              },
+              customArgs: {
+                type: 'string',
+                description: 'Additional custom CLI arguments to pass to oobscan'
+              },
+              disableLogins: {
+                type: 'boolean',
+                description: 'Disable default credential checks (safety mode)'
+              },
+              ipmiFull: {
+                type: 'boolean',
+                description: 'Enable full IPMI cipher probing and RAKP hash retrieval'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'list_oob_scans',
+          description: 'List all saved out-of-band management scans from $XDG_CONFIG_HOME/vigilante/oobscans.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'get_oob_scan_details',
+          description: 'Retrieve full parsed BMC inventory, CVEs, default credentials, and RAKP hashcat lines from a saved OOB scan report.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scanId: {
+                type: 'string',
+                description: 'Filename or scan ID of the saved scan (e.g. oob-2026-09-25T12-00-00-000Z.jsonl)'
+              }
+            },
+            required: ['scanId']
+          }
+        },
+        {
+          name: 'export_rakp_hashes',
+          description: 'Export all IPMI 2.0 RAKP-2 authentication hashes from saved OOB scans into a single Hashcat -m 7300 crackable text file.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              outputFile: {
+                type: 'string',
+                description: 'Custom output file path (defaults to $XDG_CONFIG_HOME/vigilante/oobscans/hashes_all.txt)'
+              }
+            }
+          }
+        },
+        {
+          name: 'run_recon_scan',
+          description: 'High-speed asynchronous port discovery and HTTP service probing using Naabu & Httpx engines.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target IP, hostname, or URL to probe'
+              },
+              profile: {
+                type: 'string',
+                enum: ['fast-ports', 'full-ports', 'web-probe', 'deep-recon'],
+                description: 'Recon scan profile to execute'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'run_nuclei_scan',
+          description: 'Template-driven vulnerability and CVE scanning against targets using the Nuclei engine.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target URL or IP to scan with Nuclei'
+              },
+              profile: {
+                type: 'string',
+                enum: ['cves', 'critical-high', 'misconfigs', 'default-logins', 'ssl'],
+                description: 'Nuclei scan profile'
+              },
+              severity: {
+                type: 'string',
+                description: 'Filter findings by severity (e.g. critical,high,medium)'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'run_trivy_audit',
+          description: 'Security audit of container images, Kubernetes workloads, and secret leaks using Trivy.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Container image name (e.g. alpine:latest) or target'
+              },
+              profile: {
+                type: 'string',
+                enum: ['image', 'k8s', 'secrets', 'sbom'],
+                description: 'Trivy audit profile'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'run_kube_audit',
+          description: 'Audit Kubernetes cluster security against CIS benchmarks (Kube-Bench) or penetration test exposure (Kube-Hunter).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Cluster identifier or node IP (default: cluster)'
+              },
+              profile: {
+                type: 'string',
+                enum: ['kube-bench', 'kube-hunter'],
+                description: 'KubeAudit profile to run'
+              }
+            }
+          }
+        },
+        {
+          name: 'run_netexec_audit',
+          description: 'Network protocol and authentication security audit (SMB signing, null sessions, password policies) using NetExec.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target IP or hostname to audit'
+              },
+              profile: {
+                type: 'string',
+                enum: ['smb-signing', 'null-sessions', 'pass-policy', 'protocol-sweep'],
+                description: 'NetExec audit profile'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'run_zap_scan',
+          description: 'Automated DAST spidering and web application security scanning with OWASP ZAP.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetUrl: {
+                type: 'string',
+                description: 'Target web application URL to crawl and audit'
+              },
+              profile: {
+                type: 'string',
+                enum: ['spider', 'active', 'quick'],
+                description: 'ZAP scan profile'
+              }
+            },
+            required: ['targetUrl']
+          }
+        },
+        {
+          name: 'get_host_dossier',
+          description: 'Retrieve or build a Unified Host Dossier ("Vigilante Brain") aggregating Nmap, Naabu, Httpx, Nuclei, Trivy, oobscan, NetExec, ZAP, and runtime alerts into a composite 0-100 risk score.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target IP address or hostname to evaluate'
+              },
+              refresh: {
+                type: 'boolean',
+                description: 'Force re-compilation of dossier across local evidence sources'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'replay_pcap',
+          description: 'Drop and replay a PCAP file through Vigilante dropzone and dispatch to Suricata/Zeek in-cluster sensor pods for IDS/NSM inspection.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              pcapFilePath: {
+                type: 'string',
+                description: 'Local file path to .pcap or .pcapng recording'
+              },
+              namespace: {
+                type: 'string',
+                description: 'Kubernetes namespace where Suricata and Zeek run (default: vigilante)'
+              }
+            },
+            required: ['pcapFilePath']
+          }
+        },
+        {
+          name: 'ingest_bloodhound_data',
+          description: 'Ingest BloodHound / SharpHound Active Directory JSON data, identify privilege escalation paths, and cross-correlate against Flamingo captured credentials.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Path to SharpHound JSON export (users.json, computers.json, or zip extract)'
+              }
+            },
+            required: ['filePath']
+          }
+        },
+        {
+          name: 'generate_mitre_report',
+          description: 'Generate comprehensive MITRE ATT&CK coverage matrix and gap analysis comparing simulation playbooks and deployed sensors (Suricata, Zeek, Falco, Wazuh).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              saveEvidence: {
+                type: 'boolean',
+                description: 'Save signed JSON and Markdown evidence records (default: true)'
+              }
+            }
+          }
+        },
+        {
+          name: 'isolate_workload',
+          description: 'Apply an immediate zero-trust quarantine NetworkPolicy to a Kubernetes pod, severing all ingress and egress.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              podName: {
+                type: 'string',
+                description: 'Name of the compromised Kubernetes pod'
+              },
+              namespace: {
+                type: 'string',
+                description: 'Target Kubernetes namespace (default: default)'
+              },
+              reason: {
+                type: 'string',
+                description: 'Operational justification for emergency containment'
+              }
+            },
+            required: ['podName']
+          }
+        },
+        {
+          name: 'release_isolation',
+          description: 'Release an active SOAR containment policy on a Kubernetes pod or IP.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              containmentId: {
+                type: 'string',
+                description: 'Unique containment ID (e.g. cont-...) to revoke'
+              }
+            },
+            required: ['containmentId']
+          }
+        },
+        {
+          name: 'investigate_incident',
+          description: 'Trigger autonomous ReAct Agentic SOC investigation loop with tool-use, MITRE mapping, automated containment, and signed NIST post-mortem artifact creation.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              target: {
+                type: 'string',
+                description: 'Target IP, hostname, or Kubernetes pod name'
+              },
+              incidentId: {
+                type: 'string',
+                description: 'Optional incident identifier (auto-generated if omitted)'
+              },
+              triggerAlert: {
+                type: 'object',
+                description: 'Alert metadata including source, title, severity, details'
+              },
+              automatedContainment: {
+                type: 'boolean',
+                description: 'Whether to automatically isolate target if classified as CRITICAL (default: true)'
+              }
+            },
+            required: ['target']
+          }
+        },
+        {
+          name: 'query_cti',
+          description: 'Check indicators of compromise (IPs, domains, hashes) against synchronized Feodo C2, URLhaus, and Emerging Threats threat intelligence.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              indicators: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'List of IP addresses, hostnames, or URLs to evaluate'
+              }
+            },
+            required: ['indicators']
+          }
+        },
+        {
+          name: 'generate_kspm_scorecard',
+          description: 'Evaluate live Kubernetes workloads against CIS Benchmarks and Pod Security Standards (PSS), generating posture grade, score, and remediation steps.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              namespace: {
+                type: 'string',
+                description: 'Kubernetes namespace filter (optional)'
+              },
+              saveEvidence: {
+                type: 'boolean',
+                description: 'Save signed JSON and Markdown evidence records (default: true)'
+              }
+            }
+          }
+        },
+        {
+          name: 'run_pipeline_audit',
+          description: 'Execute shift-left security audit across Kubernetes manifests, Helm templates, and Dockerfiles with SARIF v2.1.0 output and policy failure gating.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetPath: {
+                type: 'string',
+                description: 'Path to directory or manifest file to audit (default: .)'
+              },
+              failOn: {
+                type: 'string',
+                enum: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+                description: 'Severity threshold that triggers a failed gate (default: HIGH)'
+              }
+            },
+            required: ['targetPath']
+          }
+        },
+        {
+          name: 'list_canary_tokens',
+          description: 'Enumerate all active deception canary assets (ServiceAccounts, Secrets, and network honeypots) with trip status.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'deploy_canary_asset',
+          description: 'Deploy a new deception asset: decoy ServiceAccount (sa), deceptive credentials Secret (secret), or honeypot (decoy).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['sa', 'secret', 'decoy'],
+                description: 'Type of canary to deploy'
+              },
+              name: {
+                type: 'string',
+                description: 'Name of the canary asset'
+              },
+              namespace: {
+                type: 'string',
+                description: 'Target namespace (default: default)'
+              }
+            },
+            required: ['type']
+          }
+        },
+        {
+          name: 'run_purple_simulation',
+          description: 'Execute an autonomous adversarial Purple Team wargame simulation between Red Adversary and Blue ReAct SOC.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenario: {
+                type: 'string',
+                enum: ['lateral-smb-exfil', 'container-escape-privileged'],
+                description: 'Adversary scenario to execute (default: lateral-smb-exfil)'
+              }
+            }
+          }
+        },
+        {
+          name: 'auto_remediate_finding',
+          description: 'Generate an automated unified patch for a Kubernetes manifest or Dockerfile finding, hardening securityContext and pinning images.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              finding: {
+                type: 'object',
+                description: 'Finding object { ruleId, message }'
+              },
+              fileContent: {
+                type: 'string',
+                description: 'Raw content of the file to remediate'
+              },
+              fileType: {
+                type: 'string',
+                enum: ['k8s', 'dockerfile'],
+                description: 'Format of the file'
+              }
+            },
+            required: ['finding', 'fileContent']
+          }
+        },
+        {
+          name: 'query_security_datalake',
+          description: 'Execute high-performance analytical SQL query across ingested security telemetry events (Falco, Zeek, Suricata, Audit).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              sql: {
+                type: 'string',
+                description: 'SQL query to execute (e.g. SELECT event_type, count(*) FROM security_events GROUP BY event_type)'
+              }
+            },
+            required: ['sql']
+          }
+        },
+        {
+          name: 'audit_cloud_security',
+          description: 'Audit multi-cloud workload identity (AWS IRSA, GCP Workload Identity, Azure Client ID) and cloud bucket posture.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              workloads: {
+                type: 'array',
+                description: 'Optional list of K8s workload manifests to audit'
+              },
+              storageConfigs: {
+                type: 'array',
+                description: 'Optional list of bucket configurations to audit'
+              }
+            }
+          }
+        },
+        {
+          name: 'transpile_sigma_to_sql',
+          description: 'Transpile SIGMA YAML or JSON detection rule into ANSI SQL query for SQLite or DuckDB.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              rule: {
+                type: 'string',
+                description: 'SIGMA rule YAML or JSON string or file path'
+              },
+              targetBackend: {
+                type: 'string',
+                enum: ['sqlite', 'duckdb'],
+                description: 'Target database SQL dialect (default: sqlite)'
+              }
+            },
+            required: ['rule']
+          }
+        },
+        {
+          name: 'run_sigma_threat_hunt',
+          description: 'Execute automated SIGMA rule threat hunt against historical telemetry in the Security Data Lake.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              rule: {
+                type: 'string',
+                description: 'SIGMA rule YAML/JSON string or object'
+              },
+              targetBackend: {
+                type: 'string',
+                enum: ['sqlite', 'duckdb'],
+                description: 'SQL backend engine'
+              }
+            },
+            required: ['rule']
+          }
+        },
+        {
+          name: 'run_dynamic_adversary_simulation',
+          description: 'Simulate multi-step dynamic adversary attack chain traversing BloodHound identity paths and evaluating resilience.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              attackGraph: {
+                type: 'object',
+                description: 'BloodHound graph nodes and edges'
+              },
+              targetPrincipal: {
+                type: 'string',
+                description: 'High-value target principal (e.g. DOMAIN ADMINS)'
+              },
+              autoContain: {
+                type: 'boolean',
+                description: 'Trigger automated SOAR containment upon compromise'
+              }
+            },
+            required: ['attackGraph', 'targetPrincipal']
+          }
+        },
+        {
+          name: 'inspect_process_memory',
+          description: 'Perform live in-memory triage of process maps (/proc/$PID/maps), detecting RWX regions, unlinked binaries, and fileless execution.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              pid: {
+                type: 'number',
+                description: 'Target process ID to inspect'
+              },
+              mapsContent: {
+                type: 'string',
+                description: 'Optional raw /proc/$PID/maps text content'
+              }
+            },
+            required: ['pid']
+          }
+        },
+        {
+          name: 'generate_cloud_honeytoken',
+          description: 'Generate realistic decoy cloud credentials (AWS STS, GitHub PAT, Slack webhook, Kubeconfig) to lure adversaries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              provider: {
+                type: 'string',
+                enum: ['aws', 'github', 'slack', 'kubeconfig'],
+                description: 'Cloud honeytoken credential provider'
+              },
+              accountId: {
+                type: 'string',
+                description: 'Optional AWS account ID or org'
+              }
+            },
+            required: ['provider']
+          }
+        },
+        {
+          name: 'start_canary_webhook_listener',
+          description: 'Start in-process HTTP webhook honeytoken trap server to catch live decoy triggers.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              port: {
+                type: 'number',
+                description: 'Port to bind canary listener (default: 9099)'
+              },
+              webhookPath: {
+                type: 'string',
+                description: 'URL path for canary trap (default: /api/v1/trap)'
+              }
+            }
+          }
+        },
+        {
+          name: 'generate_container_sbom',
+          description: 'Generate standard CycloneDX v1.5 or SPDX v2.3 Software Bill of Materials (SBOM) for containers.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              format: {
+                type: 'string',
+                enum: ['cyclonedx', 'spdx'],
+                description: 'SBOM format standard (default: cyclonedx)'
+              },
+              manifests: {
+                type: 'array',
+                description: 'List of package manifests or dependency items'
+              },
+              componentName: {
+                type: 'string',
+                description: 'Container or component name'
+              }
+            }
+          }
+        },
+        {
+          name: 'verify_cosign_signature',
+          description: 'Verify digital signatures and Rekor transparency log receipts on container images using Cosign/Sigstore.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              imageDigest: {
+                type: 'string',
+                description: 'Container image digest (e.g. sha256:...)'
+              },
+              signaturePayload: {
+                type: 'object',
+                description: 'Cosign signature envelope containing payload and signature'
+              },
+              publicKeyPem: {
+                type: 'string',
+                description: 'Cosign public key in PEM format'
+              }
+            },
+            required: ['imageDigest', 'signaturePayload', 'publicKeyPem']
+          }
+        },
+        {
+          name: 'get_socket_connection_matrix',
+          description: 'Build real-time socket connection matrix and detect anomalous lateral connections and C2 egress.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              networkEvents: {
+                type: 'array',
+                description: 'Optional list of raw network socket events to aggregate'
+              }
+            }
+          }
+        },
+        {
+          name: 'render_mitre_heatmap',
+          description: 'Render ANSI colored MITRE ATT&CK coverage heatmap grid with detection gap analysis.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              coverageMap: {
+                type: 'object',
+                description: 'Optional MITRE coverage mapping'
+              }
+            }
+          }
+        },
+        {
+          name: 'broadcast_mesh_threat',
+          description: 'Cryptographically sign and broadcast a threat indicator across multi-cluster defense federation mesh.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              indicator: {
+                type: 'string',
+                description: 'Malicious IP, domain, hash, or container signature'
+              },
+              type: {
+                type: 'string',
+                description: 'Threat type (e.g. IP, DOMAIN, HASH)'
+              },
+              severity: {
+                type: 'string',
+                enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+                description: 'Severity level'
+              },
+              reason: {
+                type: 'string',
+                description: 'Detection reason or trigger context'
+              },
+              peers: {
+                type: 'array',
+                description: 'Optional list of peer node addresses'
+              }
+            },
+            required: ['indicator']
+          }
+        },
+        {
+          name: 'get_mesh_peers_status',
+          description: 'Inspect status of multi-cluster federation defense mesh and local Ed25519 node identity.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'synthesize_bpf_lsm_policy',
+          description: 'Synthesize Linux Security Module (eBPF LSM) declarative security rules into C kernel hooks or YAML policies.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              rules: { type: 'array', description: 'Array of rule objects defining bprm, file_open, or socket_connect constraints' },
+              format: { type: 'string', description: 'Output format: yaml or c', default: 'yaml' }
+            }
+          }
+        },
+        {
+          name: 'evaluate_bpf_lsm_event',
+          description: 'Simulate high-speed evaluation of process execution or file open event against synthesized LSM policies.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              policy: { type: 'object', description: 'Synthesized LSM policy object' },
+              event: { type: 'object', description: 'Security event with comm, uid, path, destPort, etc.' }
+            },
+            required: ['event']
+          }
+        },
+        {
+          name: 'detect_c2_beaconing',
+          description: 'Statistical C2 beaconing and discrete Fourier transform (DFT) periodicity detector for network connection intervals.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              intervals: { type: 'array', description: 'Array of inter-arrival timestamp deltas or event timestamps' },
+              jitterPercent: { type: 'number', description: 'Expected beacon jitter tolerance percentage (default: 15)' }
+            },
+            required: ['intervals']
+          }
+        },
+        {
+          name: 'detect_dns_tunneling',
+          description: 'Detect covert data exfiltration and DNS tunneling using Shannon entropy analysis on query domains.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              queries: { type: 'array', description: 'Array of domain string queries or DNS event objects' },
+              entropyThreshold: { type: 'number', description: 'Entropy threshold (default: 4.0)' }
+            },
+            required: ['queries']
+          }
+        },
+        {
+          name: 'scan_file_entropy',
+          description: 'Calculate 8-bit Shannon entropy across file bytes to detect ransomware encryption spikes or encrypted payloads.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: 'String or base64 file content' },
+              filePath: { type: 'string', description: 'Path to file on disk to evaluate' }
+            }
+          }
+        },
+        {
+          name: 'deploy_ransomware_canaries',
+          description: 'Deploy honeypot canary decoy files with known entropy baseline to detect ransomware encryption attempts.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetDirectory: { type: 'string', description: 'Directory to plant canary files in' },
+              count: { type: 'number', description: 'Number of canaries to plant (default: 4)' }
+            }
+          }
+        },
+        {
+          name: 'convene_agent_warroom',
+          description: 'Convene an autonomous multi-agent incident war room (Forensics, Threat Intel, SRE Blast Radius, Incident Commander) to debate consensus containment verdict.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              incidentId: { type: 'string', description: 'Unique incident ID' },
+              evidence: { type: 'object', description: 'Incident evidence, alerts, or telemetry' },
+              quorumThreshold: { type: 'number', description: 'Quorum consensus percentage (default: 75)' }
+            }
+          }
+        },
+        {
+          name: 'search_semantic_cti',
+          description: 'Perform air-gapped semantic vector search across MITRE ATT&CK techniques and Sigma rules.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Natural language threat description or query' },
+              topK: { type: 'number', description: 'Number of ranked matches to return (default: 5)' }
+            },
+            required: ['query']
+          }
+        },
+        {
+          name: 'append_audit_ledger',
+          description: 'Append an immutable, SHA-256 hash-chained entry to the cryptographic evidence ledger.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              entryType: { type: 'string', description: 'Type of audit record (e.g. INCIDENT_VERDICT, CONTAINMENT_ACTION)' },
+              payload: { type: 'object', description: 'Evidence or event payload' },
+              signerRole: { type: 'string', description: 'Signer role (default: IncidentCommander)' }
+            },
+            required: ['entryType', 'payload']
+          }
+        },
+        {
+          name: 'verify_ledger_integrity',
+          description: 'Traverse the cryptographic Merkle ledger to verify hash chaining, signatures, and tamper-free audit integrity.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              ledgerDir: { type: 'string', description: 'Ledger directory to verify (default: .vigilante/ledger)' }
+            }
+          }
+        },
+        {
+          name: 'calculate_attack_blast_radius',
+          description: 'Calculate downstream blast radius impact and discover shortest pivot paths to high-value Crown Jewels from a compromised asset.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              nodeId: { type: 'string', description: 'Node ID in the attack graph (e.g. ext-attacker, web-frontend, api-gateway)' }
+            },
+            required: ['nodeId']
+          }
+        },
+        {
+          name: 'render_terminal_attack_graph',
+          description: 'Render ANSI/ASCII terminal composite attack graph with colored node tiers and highlighted shortest attack paths.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              highlightFrom: { type: 'string', description: 'Optional starting node to trace path' },
+              highlightTo: { type: 'string', description: 'Optional target crown jewel node to trace path' }
+            }
           }
         }
       ]
@@ -1960,6 +2906,712 @@ export function createVigilanteMcpServer() {
             text: JSON.stringify(result, null, 2)
           }
         ]
+      };
+    }
+
+    // Tool: check_oobscan
+    if (name === 'check_oobscan') {
+      const status = await checkOobscanInstalled();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(status, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_oob_scan
+    if (name === 'run_oob_scan') {
+      const { target, profile = 'standard', customArgs = '', disableLogins = false, ipmiFull = true } = args;
+      if (!target) {
+        throw new Error("Argument 'target' is required.");
+      }
+      const scanResult = await runOobScan({
+        target,
+        profile,
+        customArgs,
+        disableLogins,
+        ipmiFull
+      });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(scanResult, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: list_oob_scans
+    if (name === 'list_oob_scans') {
+      const scans = await listSavedOobScans();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ total: scans.length, scans }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: get_oob_scan_details
+    if (name === 'get_oob_scan_details') {
+      const { scanId } = args;
+      if (!scanId) {
+        throw new Error("Argument 'scanId' is required.");
+      }
+      const details = await readSavedOobScan(scanId);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(details, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: export_rakp_hashes
+    if (name === 'export_rakp_hashes') {
+      const result = await exportRakpHashes(args.outputFile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_recon_scan
+    if (name === 'run_recon_scan') {
+      const { target, profile = 'fast-ports' } = args;
+      if (!target) throw new Error("Argument 'target' is required.");
+      const result = await runReconScan(target, profile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              profile: result.profile,
+              openPorts: result.openPorts,
+              webServices: result.webServices,
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_nuclei_scan
+    if (name === 'run_nuclei_scan') {
+      const { target, profile = 'cves', severity } = args;
+      if (!target) throw new Error("Argument 'target' is required.");
+      const result = await runNucleiScan(target, profile, { severity });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              profile: result.profile,
+              stats: result.stats,
+              findingsCount: result.findings.length,
+              findingsSample: result.findings.slice(0, 10),
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_trivy_audit
+    if (name === 'run_trivy_audit') {
+      const { target, profile = 'image' } = args;
+      if (!target) throw new Error("Argument 'target' is required.");
+      const result = await runTrivyAudit(target, profile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              profile: result.profile,
+              summary: result.summary,
+              vulnerabilitiesCount: result.vulnerabilities.length,
+              misconfigurationsCount: result.misconfigurations.length,
+              secretsCount: result.secrets.length,
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_kube_audit
+    if (name === 'run_kube_audit') {
+      const { target = 'cluster', profile = 'kube-bench' } = args;
+      const result = await runKubeAudit(target, profile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              tool: result.tool,
+              profile: result.profile,
+              totals: result.totals,
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_netexec_audit
+    if (name === 'run_netexec_audit') {
+      const { target, profile = 'smb-signing' } = args;
+      if (!target) throw new Error("Argument 'target' is required.");
+      const result = await runNetexecAudit(target, profile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              profile: result.profile,
+              findingsCount: result.findings.length,
+              findings: result.findings,
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_zap_scan
+    if (name === 'run_zap_scan') {
+      const { targetUrl, profile = 'spider' } = args;
+      if (!targetUrl) throw new Error("Argument 'targetUrl' is required.");
+      const result = await runZapScan(targetUrl, profile);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              status: 'success',
+              id: result.id,
+              target: result.target,
+              profile: result.profile,
+              alertsCount: result.alerts.length,
+              alerts: result.alerts,
+              filePath: result.filePath
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: get_host_dossier
+    if (name === 'get_host_dossier') {
+      const { target, refresh = false } = args;
+      if (!target) throw new Error("Argument 'target' is required.");
+      const dossier = refresh ? await buildHostDossier(target) : await getHostDossier(target);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(dossier, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: replay_pcap
+    if (name === 'replay_pcap') {
+      const { pcapFilePath, namespace = 'vigilante' } = args;
+      if (!pcapFilePath) throw new Error("Argument 'pcapFilePath' is required.");
+      const result = await replayPcap(pcapFilePath, { namespace });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: ingest_bloodhound_data
+    if (name === 'ingest_bloodhound_data') {
+      const { filePath } = args;
+      if (!filePath) throw new Error("Argument 'filePath' is required.");
+      const result = await ingestBloodhoundData(filePath);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: generate_mitre_report
+    if (name === 'generate_mitre_report') {
+      const { saveEvidence = true } = args;
+      const result = saveEvidence
+        ? await saveMitreReport()
+        : { matrix: generateMitreCoverageMatrix(), markdown: generateMitreMarkdownReport(generateMitreCoverageMatrix()) };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.markdown || JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: isolate_workload
+    if (name === 'isolate_workload') {
+      const { podName, namespace = 'default', reason = 'Emergency containment via MCP' } = args;
+      const result = await isolatePod({ podName, namespace, reason });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: release_isolation
+    if (name === 'release_isolation') {
+      const { containmentId } = args;
+      const result = await releaseContainment(containmentId);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: investigate_incident
+    if (name === 'investigate_incident') {
+      const { target, incidentId, triggerAlert, automatedContainment = true } = args;
+      const result = await runAgentSocInvestigation({
+        target,
+        incidentId,
+        triggerAlert,
+        automatedContainment
+      });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: query_cti
+    if (name === 'query_cti') {
+      const { indicators } = args;
+      const result = await matchCtiIndicators(indicators);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: generate_kspm_scorecard
+    if (name === 'generate_kspm_scorecard') {
+      const { namespace, saveEvidence = true } = args;
+      const scorecard = await generateKspmScorecard({ namespace });
+      const report = saveEvidence ? await saveKspmReport(scorecard) : null;
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ scorecard, reportPath: report?.reportPath }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_pipeline_audit
+    if (name === 'run_pipeline_audit') {
+      const { targetPath, failOn = 'HIGH' } = args;
+      const result = await runPipelineAudit(targetPath, { failOn });
+      const sarif = generateSarifReport(result.findings);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ auditResult: result, sarif }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: list_canary_tokens
+    if (name === 'list_canary_tokens') {
+      const canaries = await listActiveCanaries();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ total: canaries.length, canaries }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: deploy_canary_asset
+    if (name === 'deploy_canary_asset') {
+      const { type, name: assetName, namespace = 'default' } = args;
+      let asset;
+      if (type === 'secret') asset = generateCanarySecret(assetName || 'vault-prod-creds', namespace, 'aws_key');
+      else if (type === 'decoy') asset = generateDecoyDeploymentYaml('smb', { name: assetName, namespace });
+      else asset = generateCanaryServiceAccount(assetName || 'cluster-admin-decoy', namespace);
+
+      await registerCanaryAsset(asset.canary);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ canary: asset.canary, yaml: asset.yaml }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: run_purple_simulation
+    if (name === 'run_purple_simulation') {
+      const { scenario = 'lateral-smb-exfil' } = args;
+      const sim = await runPurpleTeamSimulation(scenario);
+      const scorecard = calculatePurpleScorecard(sim);
+      const reportPath = await savePurpleReport(sim, scorecard);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ simulationId: sim.simulationId, scorecard, reportPath, timeline: sim.timeline }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: auto_remediate_finding
+    if (name === 'auto_remediate_finding') {
+      const { finding, fileContent, fileType = 'k8s' } = args;
+      const patchRes = generatePatchForFinding(finding, fileContent, fileType);
+      const diff = generateUnifiedDiff(fileContent, patchRes.patchedContent);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ modified: patchRes.modified, description: patchRes.description, diff, patchedContent: patchRes.patchedContent }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: query_security_datalake
+    if (name === 'query_security_datalake') {
+      const { sql } = args;
+      const rows = queryDataLake(sql);
+      const backend = getDataLakeBackend();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ backend, rowCount: rows.length, rows }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: audit_cloud_security
+    if (name === 'audit_cloud_security') {
+      const { workloads = [], storageConfigs = [] } = args;
+      const idFindings = auditWorkloadIdentity(workloads);
+      const storageFindings = auditCloudStorageExposure(storageConfigs);
+      const risk = calculateCloudRiskScore([...idFindings, ...storageFindings]);
+      const report = generateCloudSecReport(idFindings, storageFindings);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ risk, idFindings, storageFindings, report }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // Tool: transpile_sigma_to_sql
+    if (name === 'transpile_sigma_to_sql') {
+      const { rule, targetBackend = 'sqlite' } = args;
+      const transpiled = transpileSigmaToSql(rule, targetBackend);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(transpiled, null, 2) }]
+      };
+    }
+
+    // Tool: run_sigma_threat_hunt
+    if (name === 'run_sigma_threat_hunt') {
+      const { rule, targetBackend = 'sqlite' } = args;
+      const hunt = runSigmaThreatHunt(rule, null, targetBackend);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(hunt, null, 2) }]
+      };
+    }
+
+    // Tool: run_dynamic_adversary_simulation
+    if (name === 'run_dynamic_adversary_simulation') {
+      const { attackGraph, targetPrincipal, autoContain = false } = args;
+      const result = await simulateDynamicAttackChain(attackGraph, targetPrincipal, { apply: autoContain });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: inspect_process_memory
+    if (name === 'inspect_process_memory') {
+      const { pid, mapsContent } = args;
+      const anomalies = detectMemoryAnomalies(pid, mapsContent);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ pid, anomaliesCount: anomalies.length, anomalies }, null, 2) }]
+      };
+    }
+
+    // Tool: generate_cloud_honeytoken
+    if (name === 'generate_cloud_honeytoken') {
+      const { provider, ...opts } = args;
+      const honeytoken = generateCloudHoneytoken(provider, opts);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(honeytoken, null, 2) }]
+      };
+    }
+
+    // Tool: start_canary_webhook_listener
+    if (name === 'start_canary_webhook_listener') {
+      const { port = 9099, webhookPath = '/api/v1/trap' } = args;
+      const listener = await startCanaryWebhookListener({ port, path: webhookPath, autoContain: false });
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ status: 'LISTENING', port: listener.port, path: listener.path }, null, 2) }]
+      };
+    }
+
+    // Tool: generate_container_sbom
+    if (name === 'generate_container_sbom') {
+      const { format = 'cyclonedx', manifests = [], componentName = 'vigilante-container' } = args;
+      const sbom = format === 'spdx'
+        ? generateSpdxSbom(manifests, { documentName: componentName })
+        : generateCycloneDxSbom(manifests, { componentName });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(sbom, null, 2) }]
+      };
+    }
+
+    // Tool: verify_cosign_signature
+    if (name === 'verify_cosign_signature') {
+      const { imageDigest, signaturePayload, publicKeyPem } = args;
+      const verification = verifyCosignSignature(imageDigest, signaturePayload, publicKeyPem);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(verification, null, 2) }]
+      };
+    }
+
+    // Tool: get_socket_connection_matrix
+    if (name === 'get_socket_connection_matrix') {
+      const { networkEvents = [] } = args;
+      const matrix = buildSocketConnectionMatrix(networkEvents);
+      const anomalies = detectAnomalousSocketConnections(matrix);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ matrix, anomalies }, null, 2) }]
+      };
+    }
+
+    // Tool: render_mitre_heatmap
+    if (name === 'render_mitre_heatmap') {
+      const { coverageMap = {} } = args;
+      const rendered = renderMitreHeatmapGrid(coverageMap);
+      return {
+        content: [{ type: 'text', text: rendered }]
+      };
+    }
+
+    // Tool: broadcast_mesh_threat
+    if (name === 'broadcast_mesh_threat') {
+      const { indicator, type = 'IP', severity = 'CRITICAL', reason = 'Manual alert', peers = [] } = args;
+      const node = await createFederationNode({ peers });
+      const envelope = signThreatRecord({ indicator, type, severity, reason }, node.privateKey, { nodeId: node.nodeId, publicKey: node.publicKey });
+      const broadcast = broadcastThreatIndicator(envelope, node.peers);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ envelope, broadcast }, null, 2) }]
+      };
+    }
+
+    // Tool: get_mesh_peers_status
+    if (name === 'get_mesh_peers_status') {
+      const node = await createFederationNode();
+      const safeNode = {
+        nodeId: node.nodeId,
+        clusterName: node.clusterName,
+        peers: node.peers,
+        status: node.status,
+        createdAt: node.createdAt,
+        publicKeyPreview: node.publicKey ? node.publicKey.substring(0, 40) + '...' : null
+      };
+      return {
+        content: [{ type: 'text', text: JSON.stringify(safeNode, null, 2) }]
+      };
+    }
+
+    // Tool: synthesize_bpf_lsm_policy
+    if (name === 'synthesize_bpf_lsm_policy') {
+      const policy = generateBpfLsmPolicy(args.rules || [], args);
+      let output = policy;
+      if (args.format === 'c') {
+        output = {
+          policy,
+          cSource: exportLsmCSource(policy)
+        };
+      }
+      return {
+        content: [{ type: 'text', text: JSON.stringify(output, null, 2) }]
+      };
+    }
+
+    // Tool: evaluate_bpf_lsm_event
+    if (name === 'evaluate_bpf_lsm_event') {
+      const policy = args.policy || generateBpfLsmPolicy([], {});
+      const evaluation = simulateLsmPolicyEvaluation(policy, args.event || {});
+      return {
+        content: [{ type: 'text', text: JSON.stringify(evaluation, null, 2) }]
+      };
+    }
+
+    // Tool: detect_c2_beaconing
+    if (name === 'detect_c2_beaconing') {
+      const result = detectBeaconingPeriodicity(args.intervals || [], args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: detect_dns_tunneling
+    if (name === 'detect_dns_tunneling') {
+      const result = detectDnsTunneling(args.queries || [], args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: scan_file_entropy
+    if (name === 'scan_file_entropy') {
+      const entropyResult = calculateFileEntropy(args.content || args.filePath);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(entropyResult, null, 2) }]
+      };
+    }
+
+    // Tool: deploy_ransomware_canaries
+    if (name === 'deploy_ransomware_canaries') {
+      const canaries = await generateRansomwareCanaryFiles(args.targetDirectory, args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(canaries, null, 2) }]
+      };
+    }
+
+    // Tool: convene_agent_warroom
+    if (name === 'convene_agent_warroom') {
+      const session = await conveneIncidentWarRoom(
+        { incidentId: args.incidentId, evidence: args.evidence },
+        args
+      );
+      const transcript = generateWarRoomTranscript(session);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ session, transcript }, null, 2) }]
+      };
+    }
+
+    // Tool: search_semantic_cti
+    if (name === 'search_semantic_cti') {
+      const matches = semanticThreatSearch(args.query, args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(matches, null, 2) }]
+      };
+    }
+
+    // Tool: append_audit_ledger
+    if (name === 'append_audit_ledger') {
+      const entry = await appendLedgerEntry(
+        args.entryType,
+        args.payload,
+        { role: args.signerRole || 'IncidentCommander' },
+        args
+      );
+      return {
+        content: [{ type: 'text', text: JSON.stringify(entry, null, 2) }]
+      };
+    }
+
+    // Tool: verify_ledger_integrity
+    if (name === 'verify_ledger_integrity') {
+      const verification = await verifyLedgerIntegrity(args.ledgerDir);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(verification, null, 2) }]
+      };
+    }
+
+    // Tool: calculate_attack_blast_radius
+    if (name === 'calculate_attack_blast_radius') {
+      const graph = buildCompositeAttackGraph();
+      const blast = calculateBlastRadius(args.nodeId, graph);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(blast, null, 2) }]
+      };
+    }
+
+    // Tool: render_terminal_attack_graph
+    if (name === 'render_terminal_attack_graph') {
+      const graph = buildCompositeAttackGraph();
+      let highlightPath = [];
+      if (args.highlightFrom && args.highlightTo) {
+        const pathRes = findShortestAttackPath(args.highlightFrom, args.highlightTo, graph);
+        highlightPath = pathRes.nodePath;
+      }
+      const rendered = renderAsciiAttackGraph(graph, { highlightPath });
+      return {
+        content: [{ type: 'text', text: rendered }]
       };
     }
 

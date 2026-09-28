@@ -14,6 +14,17 @@ import { InstancesView } from './InstancesView.js';
 import { LLMView } from './LLMView.js';
 import { OpenVASView } from './OpenVASView.js';
 import { KCTFView } from './KCTFView.js';
+import { OOBScanView } from './OOBScanView.js';
+import { VulnView } from './VulnView.js';
+import { BattleStationView } from './BattleStationView.js';
+import { KspmView } from './KspmView.js';
+import { AuditView } from './AuditView.js';
+import { DeceptionView } from './DeceptionView.js';
+import { PurpleTeamView } from './PurpleTeamView.js';
+import { ForensicsView } from './ForensicsView.js';
+import { LineageView } from './LineageView.js';
+import { CloudSecView } from './CloudSecView.js';
+import { CommandPalette } from './CommandPalette.js';
 import { NavHub } from './NavHub.js';
 import { MenuBar } from './MenuBar.js';
 import { ClipboardProvider, ToastBanner, useClipboard } from './ClipboardManager.js';
@@ -53,11 +64,22 @@ const AppContent = ({
   const [viewState, setViewState] = useState(() => {
     if (command === 'menu' || command === 'hub') return 'MENU';
     if (command === 'ai' || command === 'ask' || command === 'analyst' || command === 'llm') return 'AI_ANALYST';
-    if (command === 'openvas' || command === 'gvm' || command === 'vuln') return 'OPENVAS';
+    if (command === 'vuln' || command === 'threat' || command === 'dossier') return 'VULN';
+    if (command === 'openvas' || command === 'gvm') return 'OPENVAS';
     if (command === 'kctf' || command === 'ctf') return 'KCTF';
+    if (command === 'oobscan' || command === 'oob') return 'OOBSCAN';
+    if (command === 'battlestation' || command === 'bs' || command === 'live') return 'BATTLESTATION';
+    if (command === 'kspm' || command === 'cis' || command === 'posture') return 'KSPM';
+    if (command === 'audit') return 'AUDIT';
+    if (command === 'canary' || command === 'deception') return 'CANARY';
+    if (command === 'purple' || command === 'purpleteam' || command === 'wargame') return 'PURPLE';
+    if (command === 'forensics' || command === 'carve') return 'FORENSICS';
+    if (command === 'lineage' || command === 'tree') return 'LINEAGE';
+    if (command === 'cloudsec' || command === 'cspm' || command === 'ciem') return 'CLOUDSEC';
     if (command === 'up' && !cliSelectedModules && !nonInteractive) return 'SELECT_MODULES';
     return 'RUNNING';
   });
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [chosenModules, setChosenModules] = useState(
     cliSelectedModules || ['vigil-soc']
   );
@@ -101,8 +123,18 @@ const AppContent = ({
 
   // Keyboard navigation & interactive menu shortcuts
   useInput((input, key) => {
+    // Toggle Command Palette (Ctrl+P)
+    if (key.ctrl && (input === 'p' || input === 'P')) {
+      setIsPaletteOpen(prev => !prev);
+      return;
+    }
+
+    if (isPaletteOpen) {
+      return;
+    }
+
     // If inside a subview that has its own input handling, skip top-level keys except Tab
-    if (viewState === 'MENU' || viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER' || viewState === 'INSTANCES' || viewState === 'AI_ANALYST' || viewState === 'OPENVAS' || viewState === 'KCTF') {
+    if (viewState === 'MENU' || viewState === 'SELECT_MODULES' || viewState === 'VALUES' || viewState === 'MODULES' || viewState === 'PODS' || viewState === 'NMAP' || viewState === 'XML_VISUALIZER' || viewState === 'INSTANCES' || viewState === 'AI_ANALYST' || viewState === 'OPENVAS' || viewState === 'KCTF' || viewState === 'OOBSCAN' || viewState === 'VULN' || viewState === 'BATTLESTATION' || viewState === 'KSPM' || viewState === 'AUDIT' || viewState === 'CANARY' || viewState === 'PURPLE' || viewState === 'FORENSICS' || viewState === 'LINEAGE' || viewState === 'CLOUDSEC') {
       if (key.tab) {
         if (viewState === 'MENU') {
           setViewState(previousViewState || 'DASHBOARD');
@@ -240,6 +272,78 @@ const AppContent = ({
       logger.info('UI:ACTION', 'User pressed [f] -> Switching to KCTF view');
       setFatalError(null);
       setViewState('KCTF');
+      return;
+    }
+
+    // Trigger OOBscan BMC Hardware Audit
+    if (keyChar === 'b') {
+      logger.info('UI:ACTION', 'User pressed [b] -> Switching to OOBSCAN view');
+      setFatalError(null);
+      setViewState('OOBSCAN');
+      return;
+    }
+
+    // Trigger Battle Station View
+    if (keyChar === 'l') {
+      logger.info('UI:ACTION', 'User pressed [l] -> Switching to BATTLESTATION view');
+      setFatalError(null);
+      setViewState('BATTLESTATION');
+      return;
+    }
+
+    // Trigger KSPM View
+    if (keyChar === 'k') {
+      logger.info('UI:ACTION', 'User pressed [k] -> Switching to KSPM view');
+      setFatalError(null);
+      setViewState('KSPM');
+      return;
+    }
+
+    // Trigger Shift-Left Audit View
+    if (keyChar === 'g') {
+      logger.info('UI:ACTION', 'User pressed [g] -> Switching to AUDIT view');
+      setFatalError(null);
+      setViewState('AUDIT');
+      return;
+    }
+
+    // Trigger Autonomous Deception View
+    if (keyChar === 'y') {
+      logger.info('UI:ACTION', 'User pressed [y] -> Switching to CANARY view');
+      setFatalError(null);
+      setViewState('CANARY');
+      return;
+    }
+
+    // Trigger Purple Team Arena View
+    if (keyChar === 'w') {
+      logger.info('UI:ACTION', 'User pressed [w] -> Switching to PURPLE view');
+      setFatalError(null);
+      setViewState('PURPLE');
+      return;
+    }
+
+    // Trigger PCAP Forensics View
+    if (keyChar === 'z') {
+      logger.info('UI:ACTION', 'User pressed [z] -> Switching to FORENSICS view');
+      setFatalError(null);
+      setViewState('FORENSICS');
+      return;
+    }
+
+    // Trigger eBPF Process Lineage View
+    if (keyChar === 'e') {
+      logger.info('UI:ACTION', 'User pressed [e] -> Switching to LINEAGE view');
+      setFatalError(null);
+      setViewState('LINEAGE');
+      return;
+    }
+
+    // Trigger Multi-Cloud Identity & CSPM View
+    if (keyChar === 'c') {
+      logger.info('UI:ACTION', 'User pressed [c] -> Switching to CLOUDSEC view');
+      setFatalError(null);
+      setViewState('CLOUDSEC');
       return;
     }
 
@@ -991,6 +1095,8 @@ const AppContent = ({
       }
     } else if (command === 'kctf' || command === 'ctf') {
       setViewState('KCTF');
+    } else if (command === 'oobscan' || command === 'oob') {
+      setViewState('OOBSCAN');
     } else if (command === 'uninstall' || (command === 'modules' && subCommand === 'uninstall')) {
       const targetMod = (cliSelectedModules && cliSelectedModules[0]) || 'vigil-soc';
       runUninstallModuleWorkflow({ moduleId: targetMod, namespace: targetNamespace, deleteNamespace: Boolean(deleteNamespace) });
@@ -1007,6 +1113,31 @@ const AppContent = ({
     Box,
     { flexDirection: 'column', padding: 1 },
     React.createElement(Header, { command, domain, namespace: targetNamespace }),
+
+    // Command Palette Modal Overlay
+    React.createElement(CommandPalette, {
+      isOpen: isPaletteOpen,
+      onSelect: (action) => {
+        setIsPaletteOpen(false);
+        setFatalError(null);
+        if (action === 'UP') {
+          setViewState('SELECT_MODULES');
+        } else if (action === 'DOWN') {
+          runDownWorkflow();
+        } else if (action === 'DASHBOARD') {
+          if (dashboardData) setViewState('DASHBOARD');
+          else runStatusWorkflow();
+        } else if (action === 'SYNC_CTI') {
+          import('../engine/cti.js').then(({ updateSuricataRules }) => {
+            updateSuricataRules().catch(() => {});
+          });
+          setViewState('BATTLESTATION');
+        } else {
+          setViewState(action);
+        }
+      },
+      onClose: () => setIsPaletteOpen(false)
+    }),
 
     // State 0: Overall Operations Hub & Workflow Dispatcher
     viewState === 'MENU'
@@ -1049,6 +1180,26 @@ const AppContent = ({
               setViewState('OPENVAS');
             } else if (action === 'KCTF') {
               setViewState('KCTF');
+            } else if (action === 'OOBSCAN') {
+              setViewState('OOBSCAN');
+            } else if (action === 'VULN') {
+              setViewState('VULN');
+            } else if (action === 'BATTLESTATION') {
+              setViewState('BATTLESTATION');
+            } else if (action === 'KSPM') {
+              setViewState('KSPM');
+            } else if (action === 'AUDIT') {
+              setViewState('AUDIT');
+            } else if (action === 'CANARY') {
+              setViewState('CANARY');
+            } else if (action === 'PURPLE') {
+              setViewState('PURPLE');
+            } else if (action === 'FORENSICS') {
+              setViewState('FORENSICS');
+            } else if (action === 'LINEAGE') {
+              setViewState('LINEAGE');
+            } else if (action === 'CLOUDSEC') {
+              setViewState('CLOUDSEC');
             } else if (action === 'CONFIG') {
               setViewState('VALUES');
             } else {
@@ -1427,6 +1578,166 @@ const AppContent = ({
             } else {
               exit();
             }
+          }
+        })
+      : null,
+
+    // State 14: OOBscan BMC & Out-of-Band Hardware Security View
+    viewState === 'OOBSCAN'
+      ? React.createElement(OOBScanView, {
+          domain,
+          ip: ip || '127.0.0.1',
+          onNavigate: (target) => {
+            if (target === 'HUB' || target === 'menu') {
+              setPreviousViewState('OOBSCAN');
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 15: Vulnerability & Threat Center (Dossiers & Brain)
+    viewState === 'VULN'
+      ? React.createElement(VulnView, {
+          domain,
+          ip: ip || '127.0.0.1',
+          onNavigate: (target) => {
+            if (target === 'HUB' || target === 'menu') {
+              setPreviousViewState('VULN');
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 16: Battle Station View
+    viewState === 'BATTLESTATION'
+      ? React.createElement(BattleStationView, {
+          domain,
+          clusterName,
+          namespace: targetNamespace,
+          onNavigate: (target) => {
+            if (target === 'HUB' || target === 'menu') {
+              setPreviousViewState('BATTLESTATION');
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 17: Kubernetes Security Posture Management View
+    viewState === 'KSPM'
+      ? React.createElement(KspmView, {
+          clusterName,
+          namespace: targetNamespace,
+          onNavigate: (target) => {
+            if (target === 'HUB' || target === 'menu') {
+              setPreviousViewState('KSPM');
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 18: Shift-Left CI/CD Audit View
+    viewState === 'AUDIT'
+      ? React.createElement(AuditView, {
+          targetPath: '.',
+          onNavigate: (target) => {
+            if (target === 'HUB' || target === 'menu') {
+              setPreviousViewState('AUDIT');
+              setViewState('MENU');
+            } else if (target === 'dashboard') {
+              if (dashboardData) {
+                setViewState('DASHBOARD');
+              } else {
+                runStatusWorkflow();
+              }
+            } else {
+              exit();
+            }
+          }
+        })
+      : null,
+
+    // State 19: Autonomous Deception Mesh View
+    viewState === 'CANARY'
+      ? React.createElement(DeceptionView, {
+          onBack: () => {
+            setPreviousViewState('CANARY');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 20: Purple Team Arena View
+    viewState === 'PURPLE'
+      ? React.createElement(PurpleTeamView, {
+          onBack: () => {
+            setPreviousViewState('PURPLE');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 21: PCAP Forensics View
+    viewState === 'FORENSICS'
+      ? React.createElement(ForensicsView, {
+          onBack: () => {
+            setPreviousViewState('FORENSICS');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 22: Kernel eBPF Process Lineage View
+    viewState === 'LINEAGE'
+      ? React.createElement(LineageView, {
+          onBack: () => {
+            setPreviousViewState('LINEAGE');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 23: Multi-Cloud Identity & CSPM View
+    viewState === 'CLOUDSEC'
+      ? React.createElement(CloudSecView, {
+          onBack: () => {
+            setPreviousViewState('CLOUDSEC');
+            setViewState('MENU');
           }
         })
       : null,

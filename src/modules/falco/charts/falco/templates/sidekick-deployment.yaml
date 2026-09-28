@@ -1,0 +1,40 @@
+{{- if .Values.falcosidekick.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "falco.fullname" . }}-sidekick
+  namespace: {{ include "falco.namespace" . }}
+  labels:
+    {{- include "falco.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidekick
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "falco.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: sidekick
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "falco.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: sidekick
+    spec:
+      containers:
+        - name: falcosidekick
+          image: "{{ .Values.falcosidekick.image.repository }}:{{ .Values.falcosidekick.image.tag }}"
+          ports:
+            - containerPort: 2801
+              name: sidekick
+          env:
+            - name: WEBHOOK_CUSTOM_HEADERS
+              value: ""
+        {{- if .Values.falcosidekick.ui.enabled }}
+        - name: falcosidekick-ui
+          image: "{{ .Values.falcosidekick.ui.image.repository }}:{{ .Values.falcosidekick.ui.image.tag }}"
+          ports:
+            - containerPort: 2802
+              name: sidekick-ui
+        {{- end }}
+{{- end }}

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "suricata.fullname" . }}
+  namespace: {{ include "suricata.namespace" . }}
+  labels:
+    {{- include "suricata.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "suricata.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "suricata.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      hostNetwork: true
+      containers:
+        - name: suricata
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_NICE
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "[suricata] Starting in mirrored mode on {{ .Values.interface }}..."
+              {{- if .Values.pcapSpool.enabled }}
+              mkdir -p /var/log/suricata /pcap-spool
+              # Background watcher to replay PCAPs dropped into spool directory
+              (while true; do
+                for f in /pcap-spool/*.pcap /pcap-spool/*.pcapng; do
+                  if [ -f "$f" ]; then
+                    echo "[suricata:pcap] Replaying $f..."
+                    suricata -r "$f" -l /var/log/suricata --runmode single || true
+                    mv "$f" "$f.processed"
+                  fi
+                done
+                sleep 2
+              done) &
+              {{- end }}
+              exec suricata -i {{ .Values.interface }} --runmode {{ .Values.runMode }} -l /var/log/suricata
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - mountPath: /var/log/suricata
+              name: var-log-suricata
+            {{- if .Values.pcapSpool.enabled }}
+            - mountPath: /pcap-spool
+              name: pcap-spool
+            {{- end }}
+      volumes:
+        - name: var-log-suricata
+          emptyDir: {}
+        {{- if .Values.pcapSpool.enabled }}
+        - name: pcap-spool
+          hostPath:
+            path: {{ .Values.pcapSpool.path }}
+            type: DirectoryOrCreate
+        {{- end }}

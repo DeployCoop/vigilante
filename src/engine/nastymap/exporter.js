@@ -25,19 +25,26 @@ export function generateHeadlessSvg(graph, options = {}) {
     const t = nodeMap.get(tId);
     if (!s || !t) continue;
 
-    const strokeColor = link.type === 'traceroute' ? '#38bdf8' : '#64748b';
-    const strokeWidth = link.type === 'traceroute' ? 2 : 1.5;
-    const strokeDash = link.type === 'subnet' ? 'stroke-dasharray="4,4"' : '';
+    let strokeColor = link.type === 'traceroute' ? '#38bdf8' : '#64748b';
+    let strokeWidth = link.type === 'traceroute' ? 2 : 1.5;
+    let strokeDash = link.type === 'subnet' ? 'stroke-dasharray="4,4"' : '';
+
+    if (link.type === 'lateral-attack-path') {
+      strokeColor = '#ef4444';
+      strokeWidth = 2.5;
+      strokeDash = 'stroke-dasharray="6,3"';
+    }
 
     linksSvg += `
-      <line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${strokeDash} opacity="0.6" />
+      <line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${strokeDash} opacity="0.8" />
     `;
 
     if (link.label) {
       const midX = (s.x + t.x) / 2;
       const midY = (s.y + t.y) / 2;
+      const labelColor = link.type === 'lateral-attack-path' ? '#f87171' : '#94a3b8';
       linksSvg += `
-        <text x="${midX}" y="${midY - 4}" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">${link.label}</text>
+        <text x="${midX}" y="${midY - 4}" fill="${labelColor}" font-size="10" font-family="monospace" font-weight="${link.type === 'lateral-attack-path' ? 'bold' : 'normal'}" text-anchor="middle">${link.label}</text>
       `;
     }
   }
@@ -46,13 +53,17 @@ export function generateHeadlessSvg(graph, options = {}) {
   for (const node of graph.nodes || []) {
     const isScanner = node.nodeType === 'scanner';
     const fill = node.color || '#3b82f6';
-    const stroke = isScanner ? '#a855f7' : node.status === 'up' ? '#22c55e' : '#ef4444';
+    const stroke = isScanner ? '#a855f7' : node.riskTier === 'CRITICAL' ? '#ef4444' : node.status === 'up' ? '#22c55e' : '#ef4444';
+    const riskBadge = typeof node.riskScore === 'number'
+      ? `<text y="${node.radius + 38}" fill="${node.riskTier === 'CRITICAL' ? '#f87171' : node.riskTier === 'HIGH' ? '#fbbf24' : '#22c55e'}" font-size="9" font-family="monospace" font-weight="bold" text-anchor="middle">RISK: ${node.riskScore}/100 [${node.riskTier || 'CLEAN'}]</text>`
+      : '';
 
     nodesSvg += `
       <g transform="translate(${node.x}, ${node.y})">
-        <circle r="${node.radius}" fill="${fill}" stroke="${stroke}" stroke-width="2.5" />
+        <circle r="${node.radius}" fill="${fill}" stroke="${stroke}" stroke-width="${node.riskTier === 'CRITICAL' ? '3.5' : '2.5'}" />
         <text y="${node.radius + 14}" fill="#f8fafc" font-size="11" font-family="system-ui, sans-serif" font-weight="600" text-anchor="middle">${node.label}</text>
         <text y="${node.radius + 26}" fill="#94a3b8" font-size="9" font-family="monospace" text-anchor="middle">${node.ip}</text>
+        ${riskBadge}
       </g>
     `;
   }

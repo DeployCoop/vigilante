@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zap.fullname" . }}
+  namespace: {{ include "zap.namespace" . }}
+  labels:
+    {{- include "zap.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "zap.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}

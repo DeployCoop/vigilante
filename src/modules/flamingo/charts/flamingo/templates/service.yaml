@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "flamingo.fullname" . }}
+  namespace: {{ include "flamingo.namespace" . }}
+  labels:
+    {{- include "flamingo.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "flamingo.selectorLabels" . | nindent 4 }}
+  ports:
+    {{- if .Values.service.ports.ftp.enabled }}
+    - port: {{ .Values.service.ports.ftp.port }}
+      targetPort: {{ .Values.service.ports.ftp.targetPort }}
+      protocol: {{ .Values.service.ports.ftp.protocol | default "TCP" }}
+      name: ftp
+    {{- end }}
+    {{- if .Values.service.ports.ssh.enabled }}
+    - port: {{ .Values.service.ports.ssh.port }}
+      targetPort: {{ .Values.service.ports.ssh.targetPort }}
+      protocol: {{ .Values.service.ports.ssh.protocol | default "TCP" }}
+      name: ssh
+    {{- end }}
+    {{- if .Values.service.ports.dnsTcp.enabled }}
+    - port: {{ .Values.service.ports.dnsTcp.port }}
+      targetPort: {{ .Values.service.ports.dnsTcp.targetPort }}
+      protocol: {{ .Values.service.ports.dnsTcp.protocol | default "TCP" }}
+      name: dns-tcp
+    {{- end }}
+    {{- if .Values.service.ports.dnsUdp.enabled }}
+    - port: {{ .Values.service.ports.dnsUdp.port }}
+      targetPort: {{ .Values.service.ports.dnsUdp.targetPort }}
+      protocol: {{ .Values.service.ports.dnsUdp.protocol | default "UDP" }}
+      name: dns-udp
+    {{- end }}
+    {{- if .Values.service.ports.http.enabled }}
+    - port: {{ .Values.service.ports.http.port }}
+      targetPort: {{ .Values.service.ports.http.targetPort }}
+      protocol: {{ .Values.service.ports.http.protocol | default "TCP" }}
+      name: http
+    {{- end }}
+    {{- if .Values.service.ports.snmp.enabled }}
+    - port: {{ .Values.service.ports.snmp.port }}
+      targetPort: {{ .Values.service.ports.snmp.targetPort }}
+      protocol: {{ .Values.service.ports.snmp.protocol | default "UDP" }}
+      name: snmp
+    {{- end }}
+    {{- if .Values.service.ports.ldap.enabled }}
+    - port: {{ .Values.service.ports.ldap.port }}
+      targetPort: {{ .Values.service.ports.ldap.targetPort }}
+      protocol: {{ .Values.service.ports.ldap.protocol | default "TCP" }}
+      name: ldap
+    {{- end }}
+    {{- if .Values.service.ports.https.enabled }}
+    - port: {{ .Values.service.ports.https.port }}
+      targetPort: {{ .Values.service.ports.https.targetPort }}
+      protocol: {{ .Values.service.ports.https.protocol | default "TCP" }}
+      name: https
+    {{- end }}
+    {{- if .Values.service.ports.ldaps.enabled }}
+    - port: {{ .Values.service.ports.ldaps.port }}
+      targetPort: {{ .Values.service.ports.ldaps.targetPort }}
+      protocol: {{ .Values.service.ports.ldaps.protocol | default "TCP" }}
+      name: ldaps
+    {{- end }}

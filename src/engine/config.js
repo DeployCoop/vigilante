@@ -56,6 +56,142 @@ export function getVigilanteNmapsDir() {
 }
 
 /**
+ * Get the oobscans directory within XDG_CONFIG_HOME for saved out-of-band management scans
+ * @returns {string}
+ */
+export function getVigilanteOobscansDir() {
+  return path.join(getVigilanteConfigDir(), 'oobscans');
+}
+
+/**
+ * Get the recon directory within XDG_CONFIG_HOME for fast network discovery scans (naabu/httpx)
+ * @returns {string}
+ */
+export function getVigilanteReconDir() {
+  return path.join(getVigilanteConfigDir(), 'recon');
+}
+
+/**
+ * Get the nuclei directory within XDG_CONFIG_HOME for template-based CVE/vulnerability scans
+ * @returns {string}
+ */
+export function getVigilanteNucleiDir() {
+  return path.join(getVigilanteConfigDir(), 'nuclei');
+}
+
+/**
+ * Get the trivy directory within XDG_CONFIG_HOME for container/k8s vulnerability audits
+ * @returns {string}
+ */
+export function getVigilanteTrivyDir() {
+  return path.join(getVigilanteConfigDir(), 'trivy');
+}
+
+/**
+ * Get the kubeaudit directory within XDG_CONFIG_HOME for kube-bench and kube-hunter audits
+ * @returns {string}
+ */
+export function getVigilanteKubeAuditDir() {
+  return path.join(getVigilanteConfigDir(), 'kubeaudit');
+}
+
+/**
+ * Get the netexec directory within XDG_CONFIG_HOME for protocol/credential audits
+ * @returns {string}
+ */
+export function getVigilanteNetexecDir() {
+  return path.join(getVigilanteConfigDir(), 'netexec');
+}
+
+/**
+ * Get the zap directory within XDG_CONFIG_HOME for DAST web security audits
+ * @returns {string}
+ */
+export function getVigilanteZapDir() {
+  return path.join(getVigilanteConfigDir(), 'zap');
+}
+
+/**
+ * Get the pcap dropzone/replay directory within XDG_CONFIG_HOME
+ * @returns {string}
+ */
+export function getVigilantePcapDir() {
+  return path.join(getVigilanteConfigDir(), 'pcap');
+}
+
+/**
+ * Get the dossiers directory within XDG_CONFIG_HOME for Unified Host Dossiers
+ * @returns {string}
+ */
+export function getVigilanteDossiersDir() {
+  return path.join(getVigilanteConfigDir(), 'dossiers');
+}
+
+/**
+ * Get the bloodhound directory within XDG_CONFIG_HOME for identity graph data
+ * @returns {string}
+ */
+export function getVigilanteBloodhoundDir() {
+  return path.join(getVigilanteConfigDir(), 'bloodhound');
+}
+
+/**
+ * Get the containments directory within XDG_CONFIG_HOME for active SOAR isolation records
+ * @returns {string}
+ */
+export function getVigilanteContainmentsDir() {
+  return path.join(getVigilanteConfigDir(), 'containments');
+}
+
+/**
+ * Get the cti directory within XDG_CONFIG_HOME for threat intelligence feeds and caches
+ * @returns {string}
+ */
+export function getVigilanteCtiDir() {
+  return path.join(getVigilanteConfigDir(), 'cti');
+}
+
+/**
+ * Get the canary directory within XDG_CONFIG_HOME for honeytokens and deception assets
+ * @returns {string}
+ */
+export function getVigilanteCanaryDir() {
+  return path.join(getVigilanteConfigDir(), 'canary');
+}
+
+/**
+ * Get the carved directory within XDG_CONFIG_HOME for files extracted from PCAPs
+ * @returns {string}
+ */
+export function getVigilanteCarveDir() {
+  return path.join(getVigilanteConfigDir(), 'carved');
+}
+
+/**
+ * Get the datalake directory within XDG_CONFIG_HOME for embedded DuckDB analytics
+ * @returns {string}
+ */
+export function getVigilanteDatalakeDir() {
+  return path.join(getVigilanteConfigDir(), 'datalake');
+}
+
+/**
+ * Get the wasm plugins directory within XDG_CONFIG_HOME for sandboxed extensions
+ * @returns {string}
+ */
+export function getVigilanteWasmDir() {
+  return path.join(getVigilanteConfigDir(), 'wasm');
+}
+
+/**
+ * Get the purpleteam directory within XDG_CONFIG_HOME for adversarial wargame records
+ * @returns {string}
+ */
+export function getVigilantePurpleDir() {
+  return path.join(getVigilanteConfigDir(), 'purpleteam');
+}
+
+/**
  * Get the evidence directory within XDG_CONFIG_HOME for incident response artifacts
  * @returns {string}
  */
@@ -202,6 +338,51 @@ export const DEFAULT_CONFIG = {
     wazuh: {
       enabled: false,
       version: '4.14.7'
+    },
+    flamingo: {
+      enabled: false,
+      protocols: 'ssh,snmp,ldap,http,dns,ftp'
+    },
+    oobscan: {
+      enabled: true,
+      defaultProfile: 'standard',
+      disableLogins: false,
+      linkLocalWait: '3s'
+    },
+    nuclei: {
+      enabled: true,
+      concurrency: 25,
+      rateLimit: 150,
+      severity: 'critical,high,medium'
+    },
+    recon: {
+      enabled: true,
+      naabuRate: 1000
+    },
+    trivy: {
+      enabled: true,
+      severity: 'CRITICAL,HIGH,MEDIUM'
+    },
+    kubeaudit: {
+      enabled: true
+    },
+    netexec: {
+      enabled: true
+    },
+    falco: {
+      enabled: false
+    },
+    suricata: {
+      enabled: false
+    },
+    zeek: {
+      enabled: false
+    },
+    zap: {
+      enabled: false
+    },
+    bloodhound: {
+      enabled: false
     }
   },
   behavior: {
@@ -303,6 +484,28 @@ modules:
   vigilLocal:
     # Path to local checkout of Vigil SOC repository helm chart
     chartPath: "/home/djehauti/git/vigil/infra/helm/vigil"
+  flamingo:
+    enabled: false
+    protocols: "ssh,snmp,ldap,http,dns,ftp"
+  falco:
+    enabled: false
+  suricata:
+    enabled: false
+  zeek:
+    enabled: false
+  zap:
+    enabled: false
+  bloodhound:
+    enabled: false
+  nuclei:
+    enabled: true
+    concurrency: 25
+    rateLimit: 150
+  trivy:
+    enabled: true
+    severity: "CRITICAL,HIGH,MEDIUM"
+  recon:
+    enabled: true
 
 # Runtime Monitor Behavior
 behavior:
@@ -318,15 +521,50 @@ export async function ensureVigilanteConfig() {
   const configDir = getVigilanteConfigDir();
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
+  const oobscansDir = getVigilanteOobscansDir();
+  const reconDir = getVigilanteReconDir();
+  const nucleiDir = getVigilanteNucleiDir();
+  const trivyDir = getVigilanteTrivyDir();
+  const kubeauditDir = getVigilanteKubeAuditDir();
+  const netexecDir = getVigilanteNetexecDir();
+  const zapDir = getVigilanteZapDir();
+  const pcapDir = getVigilantePcapDir();
+  const dossiersDir = getVigilanteDossiersDir();
+  const bloodhoundDir = getVigilanteBloodhoundDir();
+  const containmentsDir = getVigilanteContainmentsDir();
+  const ctiDir = getVigilanteCtiDir();
+  const canaryDir = getVigilanteCanaryDir();
+  const carveDir = getVigilanteCarveDir();
+  const datalakeDir = getVigilanteDatalakeDir();
+  const wasmDir = getVigilanteWasmDir();
+  const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
+
   let created = false;
 
   try {
     await fs.mkdir(valuesDir, { recursive: true });
     await fs.mkdir(nmapsDir, { recursive: true });
+    await fs.mkdir(oobscansDir, { recursive: true });
+    await fs.mkdir(reconDir, { recursive: true });
+    await fs.mkdir(nucleiDir, { recursive: true });
+    await fs.mkdir(trivyDir, { recursive: true });
+    await fs.mkdir(kubeauditDir, { recursive: true });
+    await fs.mkdir(netexecDir, { recursive: true });
+    await fs.mkdir(zapDir, { recursive: true });
+    await fs.mkdir(pcapDir, { recursive: true });
+    await fs.mkdir(dossiersDir, { recursive: true });
+    await fs.mkdir(bloodhoundDir, { recursive: true });
+    await fs.mkdir(containmentsDir, { recursive: true });
+    await fs.mkdir(ctiDir, { recursive: true });
+    await fs.mkdir(canaryDir, { recursive: true });
+    await fs.mkdir(carveDir, { recursive: true });
+    await fs.mkdir(datalakeDir, { recursive: true });
+    await fs.mkdir(wasmDir, { recursive: true });
+    await fs.mkdir(purpleDir, { recursive: true });
     await fs.mkdir(evidenceDir, { recursive: true });
     await fs.mkdir(playbooksDir, { recursive: true });
     await fs.mkdir(instancesDir, { recursive: true });
@@ -341,7 +579,33 @@ export async function ensureVigilanteConfig() {
     logger.warn('CONFIG', `Failed to ensure config directories: ${err.message}`);
   }
 
-  return { configDir, valuesDir, nmapsDir, evidenceDir, playbooksDir, instancesDir, configFile, created };
+  return {
+    configDir,
+    valuesDir,
+    nmapsDir,
+    oobscansDir,
+    reconDir,
+    nucleiDir,
+    trivyDir,
+    kubeauditDir,
+    netexecDir,
+    zapDir,
+    pcapDir,
+    dossiersDir,
+    bloodhoundDir,
+    containmentsDir,
+    ctiDir,
+    canaryDir,
+    carveDir,
+    datalakeDir,
+    wasmDir,
+    purpleDir,
+    evidenceDir,
+    playbooksDir,
+    instancesDir,
+    configFile,
+    created
+  };
 }
 
 /**
@@ -351,6 +615,22 @@ export function ensureVigilanteConfigSync() {
   const configDir = getVigilanteConfigDir();
   const valuesDir = getVigilanteValuesDir();
   const nmapsDir = getVigilanteNmapsDir();
+  const oobscansDir = getVigilanteOobscansDir();
+  const reconDir = getVigilanteReconDir();
+  const nucleiDir = getVigilanteNucleiDir();
+  const trivyDir = getVigilanteTrivyDir();
+  const kubeauditDir = getVigilanteKubeAuditDir();
+  const netexecDir = getVigilanteNetexecDir();
+  const zapDir = getVigilanteZapDir();
+  const pcapDir = getVigilantePcapDir();
+  const dossiersDir = getVigilanteDossiersDir();
+  const bloodhoundDir = getVigilanteBloodhoundDir();
+  const ctiDir = getVigilanteCtiDir();
+  const canaryDir = getVigilanteCanaryDir();
+  const carveDir = getVigilanteCarveDir();
+  const datalakeDir = getVigilanteDatalakeDir();
+  const wasmDir = getVigilanteWasmDir();
+  const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
   const instancesDir = getVigilanteInstancesDir();
@@ -362,6 +642,57 @@ export function ensureVigilanteConfigSync() {
     }
     if (!fsSync.existsSync(nmapsDir)) {
       fsSync.mkdirSync(nmapsDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(oobscansDir)) {
+      fsSync.mkdirSync(oobscansDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(reconDir)) {
+      fsSync.mkdirSync(reconDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(nucleiDir)) {
+      fsSync.mkdirSync(nucleiDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(trivyDir)) {
+      fsSync.mkdirSync(trivyDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(kubeauditDir)) {
+      fsSync.mkdirSync(kubeauditDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(netexecDir)) {
+      fsSync.mkdirSync(netexecDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(zapDir)) {
+      fsSync.mkdirSync(zapDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(pcapDir)) {
+      fsSync.mkdirSync(pcapDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(dossiersDir)) {
+      fsSync.mkdirSync(dossiersDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(bloodhoundDir)) {
+      fsSync.mkdirSync(bloodhoundDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(containmentsDir)) {
+      fsSync.mkdirSync(containmentsDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(ctiDir)) {
+      fsSync.mkdirSync(ctiDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(canaryDir)) {
+      fsSync.mkdirSync(canaryDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(carveDir)) {
+      fsSync.mkdirSync(carveDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(datalakeDir)) {
+      fsSync.mkdirSync(datalakeDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(wasmDir)) {
+      fsSync.mkdirSync(wasmDir, { recursive: true });
+    }
+    if (!fsSync.existsSync(purpleDir)) {
+      fsSync.mkdirSync(purpleDir, { recursive: true });
     }
     if (!fsSync.existsSync(evidenceDir)) {
       fsSync.mkdirSync(evidenceDir, { recursive: true });
@@ -379,7 +710,7 @@ export function ensureVigilanteConfigSync() {
     // Ignore sync fallback error
   }
 
-  return { configDir, valuesDir, nmapsDir, evidenceDir, instancesDir, configFile };
+  return { configDir, valuesDir, nmapsDir, oobscansDir, evidenceDir, instancesDir, configFile };
 }
 
 /**

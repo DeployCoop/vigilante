@@ -1,0 +1,33 @@
+image:
+  repository: zeek/zeek
+  tag: "6.0.4"
+  pullPolicy: IfNotPresent
+
+interface: any
+mirrored: true
+
+pcapSpool:
+  enabled: true
+  path: /var/log/vigilante/pcap-spool
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+    - host: zeek.vigilante.local
+  tls:
+    - secretName: zeek-tls
+      hosts:
+        - zeek.vigilante.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
