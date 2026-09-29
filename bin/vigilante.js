@@ -48,6 +48,15 @@ const cli = meow(`
     vector      Air-gapped offline semantic threat query against MITRE ATT&CK and Sigma
     ledger      Inspect and verify cryptographic Merkle audit ledger & chain-of-custody
     graph       Interactive terminal composite attack graph & blast-radius explorer
+    rootkit     Audit /proc/kallsyms, detect syscall table hooking & hidden LKM rootkits
+    yara        In-memory process YARA scanner and Cobalt Strike C2 beacon config extractor
+    timeline    Interactive attack timeline and automated root-cause causality DAG
+    duel        Autonomous Red Team vs Blue Team cyber range swarm battle simulator
+    stix        Ingest STIX 2.1 JSON bundles, convert MISP events, and sync TAXII feeds
+    honeynet    Deploy ephemeral deception decoys (SSH, Redis, HTTP) and plant breadcrumbs
+    snapshot    Capture live container volatile memory and overlayfs upper disk differential
+    evidencepack Export ISO/IEC 27037 & RFC 3161 court-admissible evidence bundle with verifiers
+    sniffer     Interactive terminal live packet sniffer and protocol dissector
 
   Options
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
@@ -801,6 +810,123 @@ if (command === 'mcp') {
     const graph = ag.buildCompositeAttackGraph();
     const rendered = ag.renderAsciiAttackGraph(graph);
     console.log('\n' + rendered + '\n');
+    process.exit(0);
+  });
+} else if (command === 'rootkit') {
+  import('../src/engine/rootkit.js').then(async (rk) => {
+    console.log('\n🛡️  RING-0 KERNEL HOOK & ROOTKIT HUNTER AUDIT');
+    console.log('='.repeat(70));
+    const taint = rk.analyzeKernelTaint(0);
+    const artifacts = rk.scanRootkitArtifacts();
+    const report = rk.generateRootkitReport({ taintAssessment: taint, artifacts });
+    console.log(`Status:              ${report.overallStatus}`);
+    console.log(`Kernel Taint:        ${taint.riskAssessment} (${taint.activeFlagsCount} flags active)`);
+    console.log(`Artifact Findings:   ${artifacts.length}`);
+    if (artifacts.length > 0) {
+      artifacts.forEach(a => console.log(`  • [${a.severity}] ${a.type}: ${a.details}`));
+    } else {
+      console.log('  ✔ No known user-space or LKM rootkit artifacts detected on host.');
+    }
+    console.log();
+    process.exit(0);
+  });
+} else if (command === 'yara') {
+  import('../src/engine/yarascan.js').then(async (ys) => {
+    const targetPid = cli.flags.pid || cli.input[1] || process.pid;
+    console.log(`\n🔍 IN-MEMORY PROCESS YARA SCANNER (PID ${targetPid})`);
+    console.log('='.repeat(70));
+    const defaultRule = ys.compileYaraRule(`
+rule InFlight_Suspicious_Strings {
+    strings:
+        $s1 = "eval(" nocase
+        $s2 = "/bin/sh"
+    condition:
+        $s1 or $s2
+}
+`);
+    const scan = await ys.scanProcessMemory(targetPid, [defaultRule]);
+    console.log(`Status:              ${scan.status}`);
+    console.log(`Segments Scanned:    ${scan.segmentsScanned}`);
+    console.log(`YARA Matches:        ${scan.yaraMatches.length}`);
+    console.log(`Cobalt Strike C2:    ${scan.c2Config?.detected ? 'DETECTED!' : 'None'}`);
+    console.log();
+    process.exit(0);
+  });
+} else if (command === 'duel') {
+  import('../src/engine/swarmduel.js').then(async (duel) => {
+    const rounds = cli.flags.rounds ? parseInt(cli.flags.rounds, 10) : 5;
+    const sim = duel.runFullDuelSimulation({ maxRounds: rounds });
+    console.log('\n' + sim.transcript + '\n');
+    console.log(`Metrics: Winner: ${sim.metrics.winner} | MTTD: ${sim.metrics.mttdRounds} rounds | MTTR: ${sim.metrics.mttrRounds} rounds`);
+    console.log();
+    process.exit(0);
+  });
+} else if (command === 'stix') {
+  import('../src/engine/stixmisp.js').then(async (sm) => {
+    console.log('\n🌐 STANDARDIZED STIX 2.1 / MISP THREAT FEED ENGINE');
+    console.log('='.repeat(70));
+    const sampleMisp = {
+      Event: {
+        uuid: 'd3b07384-d113-491a-a5f1-334455667788',
+        info: 'APT Ingress Telemetry',
+        Attribute: [
+          { type: 'ip-dst', value: '198.51.100.99', to_ids: true },
+          { type: 'domain', value: 'c2.threat-actor.internal', to_ids: true }
+        ]
+      }
+    };
+    const stixBundle = sm.convertMispToStix(sampleMisp);
+    console.log(`Ingested MISP Event -> Converted STIX 2.1 Bundle: [${stixBundle.id}]`);
+    console.log(`Generated Objects:   ${stixBundle.objects.length} SDOs`);
+    stixBundle.objects.filter(o => o.type === 'indicator').forEach(ind => {
+      console.log(`  • [${ind.type}] ${ind.name} (Pattern: ${ind.pattern})`);
+    });
+    console.log();
+    process.exit(0);
+  });
+} else if (command === 'honeynet') {
+  import('../src/engine/honeynet.js').then(async (hn) => {
+    console.log('\n🍯 EPHEMERAL HONEYNET & BREADCRUMB MESH');
+    console.log('='.repeat(70));
+    const mesh = await hn.createHoneynetMesh({ services: ['SSH', 'REDIS', 'HTTP'] });
+    console.log(`Mesh ID:    ${mesh.meshId} [${mesh.status}]`);
+    console.log(`Active Decoys (${mesh.decoys.length}):`);
+    mesh.decoys.forEach(d => console.log(`  • [${d.type}] Listening on port ${d.port}`));
+    await mesh.teardown();
+    console.log('Ephemeral honeynet mesh teardown completed cleanly.\n');
+    process.exit(0);
+  });
+} else if (command === 'snapshot') {
+  import('../src/engine/snapshot.js').then(async (snap) => {
+    console.log('\n📸 CONTAINER VOLATILE FORENSIC SNAPSHOT');
+    console.log('='.repeat(70));
+    const res = await snap.createForensicsSnapshot({
+      podName: cli.flags.pod || 'cluster-core-service',
+      pid: process.pid
+    });
+    console.log(`Snapshot ID:  ${res.snapshotId}`);
+    console.log(`Output Path:  ${res.snapshotDir}`);
+    console.log(`SHA-256 Seal: ${res.sha256Seal}`);
+    console.log();
+    process.exit(0);
+  });
+} else if (command === 'evidencepack') {
+  import('../src/engine/evidencepack.js').then(async (ep) => {
+    console.log('\n⚖️  RFC 3161 COURT-ADMISSIBLE EVIDENCE BUNDLE');
+    console.log('='.repeat(70));
+    const bundle = await ep.createEvidenceBundle(
+      { caseNumber: 'CASE-2026-INC-01', title: 'Kubernetes Incident Triage' },
+      [
+        { filename: 'cluster_volatiles.json', content: '{"status": "captured"}' },
+        { filename: 'network_audit.pcap', content: 'PCAP_RAW_STREAM_DATA' }
+      ]
+    );
+    console.log(`Bundle ID:     ${bundle.bundleId}`);
+    console.log(`Directory:     ${bundle.bundleDir}`);
+    console.log(`RFC 3161 Time: ${bundle.rfc3161Token.tstInfo.genTime}`);
+    console.log(`TSA Authority: ${bundle.rfc3161Token.tstInfo.tsa}`);
+    console.log(`Standalone Verifier: ${bundle.verifyBashPath}`);
+    console.log();
     process.exit(0);
   });
 } else {

@@ -103,6 +103,15 @@ import { conveneIncidentWarRoom, generateWarRoomTranscript } from '../engine/war
 import { semanticThreatSearch } from '../engine/vectorcti.js';
 import { appendLedgerEntry, verifyLedgerIntegrity, exportLegalChainOfCustody } from '../engine/ledger.js';
 import { calculateBlastRadius, renderAsciiAttackGraph, buildCompositeAttackGraph, findShortestAttackPath } from '../engine/attackgraph.js';
+import { parseKallsyms, detectSyscallHooking, detectHiddenModules, analyzeKernelTaint, scanRootkitArtifacts, generateRootkitReport } from '../engine/rootkit.js';
+import { compileYaraRule, scanBufferWithRules, extractCobaltStrikeConfig, scanProcessMemory, generateYaraMemoryReport } from '../engine/yarascan.js';
+import { buildCausalTimeline, identifyRootCause, calculateDwellTime, renderAsciiTimeline } from '../engine/timeline.js';
+import { createSwarmDuel, executeDuelRound, runFullDuelSimulation, evaluateDuelMetrics, generateDuelTranscript } from '../engine/swarmduel.js';
+import { generateStixId, parseStixBundle, convertMispToStix, convertStixToMisp, mergeThreatFeeds, filterIndicators } from '../engine/stixmisp.js';
+import { startDecoyService, createHoneynetMesh, plantBreadcrumbs } from '../engine/honeynet.js';
+import { captureContainerVolatiles, captureContainerDiff, createForensicsSnapshot, verifySnapshotIntegrity, listSavedSnapshots } from '../engine/snapshot.js';
+import { generateRfc3161Timestamp, generateChainOfCustodyRecord, createEvidenceBundle, verifyEvidenceBundle } from '../engine/evidencepack.js';
+import { dissectEthernetFrame, dissectIpPacket, dissectTcpSegment, dissectUdpDatagram, dissectDnsPayload, dissectTlsPayload, dissectFullPacket, filterPacket, formatHexDump, exportToPcap, generateSyntheticPacketStream } from '../engine/sniffer.js';
 
 /**
  * Creates and configures the Vigilante MCP Server
@@ -2131,6 +2140,149 @@ export function createVigilanteMcpServer() {
               highlightTo: { type: 'string', description: 'Optional target crown jewel node to trace path' }
             }
           }
+        },
+        {
+          name: 'scan_kernel_rootkits',
+          description: 'Audit Linux kernel symbols, detect syscall table hooking, check hidden LKM modules, and decode kernel taint bitmasks.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              kallsymsContent: { type: 'string', description: 'Optional raw /proc/kallsyms content' },
+              procModulesContent: { type: 'string', description: 'Optional raw /proc/modules content' },
+              sysModuleList: { type: 'array', description: 'Optional list of /sys/module names' },
+              taintValue: { type: 'number', description: 'Optional /proc/sys/kernel/tainted bitmask value' }
+            }
+          }
+        },
+        {
+          name: 'scan_process_yara',
+          description: 'Scan process memory or binary buffer using YARA rules supporting text, hex wildcards, and boolean conditions.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              pid: { type: 'number', description: 'Target process ID' },
+              rule: { type: 'string', description: 'YARA rule definition string or rule object' },
+              bufferBase64: { type: 'string', description: 'Optional base64 memory buffer' }
+            },
+            required: ['rule']
+          }
+        },
+        {
+          name: 'extract_cobaltstrike_config',
+          description: 'Locate, decrypt, and parse Cobalt Strike Beacon configuration blocks (XOR 0x2e/0x69) from memory dump.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              bufferBase64: { type: 'string', description: 'Base64 encoded process memory buffer or raw dump' }
+            },
+            required: ['bufferBase64']
+          }
+        },
+        {
+          name: 'synthesize_attack_dag',
+          description: 'Synthesize multi-modal incident causality DAG, pinpoint initial root cause, and calculate attacker dwell time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              events: { type: 'array', description: 'Array of security alert/telemetry event objects' }
+            },
+            required: ['events']
+          }
+        },
+        {
+          name: 'run_swarm_duel',
+          description: 'Simulate autonomous Red Team vs Blue Team cyber range battle with MTTD/MTTR metrics and round transcripts.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              maxRounds: { type: 'number', description: 'Maximum rounds to simulate (default: 5)' },
+              crownJewel: { type: 'string', description: 'Target asset name' },
+              stealthMode: { type: 'boolean', description: 'Enable stealthy APT mode' }
+            }
+          }
+        },
+        {
+          name: 'import_stix_bundle',
+          description: 'Parse, validate, and extract indicators and relationships from an OASIS STIX 2.1 JSON threat intelligence bundle.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              bundleJson: { type: 'string', description: 'STIX 2.1 JSON bundle string or object' }
+            },
+            required: ['bundleJson']
+          }
+        },
+        {
+          name: 'convert_misp_event',
+          description: 'Bidirectional conversion between MISP 2.4 Event JSON and STIX 2.1 Threat Intelligence Bundle.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              data: { type: 'object', description: 'MISP Event object or STIX Bundle object' },
+              direction: { type: 'string', description: 'misp_to_stix or stix_to_misp', default: 'misp_to_stix' }
+            },
+            required: ['data']
+          }
+        },
+        {
+          name: 'deploy_honeynet_mesh',
+          description: 'Spin up ephemeral high/low-interaction deception services (SSH, Redis, HTTP) and configure trap listeners.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              services: { type: 'array', description: 'Array of services to spin up: SSH, REDIS, HTTP' }
+            }
+          }
+        },
+        {
+          name: 'plant_deception_breadcrumbs',
+          description: 'Plant high-attractiveness canary breadcrumbs (fake AWS credentials, Kubeconfig, bash history lures).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetDir: { type: 'string', description: 'Directory to place breadcrumb lure files' },
+              types: { type: 'array', description: 'Breadcrumb types: aws, kube, history' }
+            },
+            required: ['targetDir']
+          }
+        },
+        {
+          name: 'capture_container_snapshot',
+          description: 'Capture live container volatile memory state, overlayfs upper disk differential, and create sealed forensic archive.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              podName: { type: 'string', description: 'Kubernetes pod name' },
+              containerId: { type: 'string', description: 'Container ID' },
+              pid: { type: 'number', description: 'Target process PID' },
+              rootfsDir: { type: 'string', description: 'Optional overlayfs upper rootfs directory' }
+            },
+            required: ['podName']
+          }
+        },
+        {
+          name: 'export_rfc3161_evidence_pack',
+          description: 'Export ISO/IEC 27037 and RFC 3161 compliant court-admissible forensic evidence bundle with offline verifiers.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              caseNumber: { type: 'string', description: 'Legal case number' },
+              title: { type: 'string', description: 'Incident case title' },
+              evidenceItems: { type: 'array', description: 'Array of evidence item objects: { filename, content, type }' }
+            },
+            required: ['caseNumber', 'evidenceItems']
+          }
+        },
+        {
+          name: 'dissect_network_packet',
+          description: 'Dissect raw network packet bytes through Ethernet II, IPv4, TCP/UDP, DNS, and TLS protocol layers.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              packetHex: { type: 'string', description: 'Hex-encoded raw network packet bytes' }
+            },
+            required: ['packetHex']
+          }
         }
       ]
     };
@@ -3612,6 +3764,126 @@ export function createVigilanteMcpServer() {
       const rendered = renderAsciiAttackGraph(graph, { highlightPath });
       return {
         content: [{ type: 'text', text: rendered }]
+      };
+    }
+
+    // Tool: scan_kernel_rootkits
+    if (name === 'scan_kernel_rootkits') {
+      const kallsyms = args.kallsymsContent ? parseKallsyms(args.kallsymsContent) : [];
+      const syscalls = detectSyscallHooking(kallsyms);
+      const hidden = detectHiddenModules(args.procModulesContent || '', args.sysModuleList || []);
+      const taint = analyzeKernelTaint(args.taintValue != null ? args.taintValue : 0);
+      const artifacts = scanRootkitArtifacts();
+      const report = generateRootkitReport({
+        syscallAnomalies: syscalls,
+        hiddenModules: hidden.hiddenModules,
+        taintAssessment: taint,
+        artifacts
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(report, null, 2) }]
+      };
+    }
+
+    // Tool: scan_process_yara
+    if (name === 'scan_process_yara') {
+      const rule = compileYaraRule(args.rule);
+      const buf = args.bufferBase64 ? Buffer.from(args.bufferBase64, 'base64') : null;
+      const scanRes = await scanProcessMemory(args.pid || 0, [rule], { memoryBuffer: buf });
+      const report = generateYaraMemoryReport(scanRes);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(report, null, 2) }]
+      };
+    }
+
+    // Tool: extract_cobaltstrike_config
+    if (name === 'extract_cobaltstrike_config') {
+      const buf = Buffer.from(args.bufferBase64 || '', 'base64');
+      const cs = extractCobaltStrikeConfig(buf);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(cs, null, 2) }]
+      };
+    }
+
+    // Tool: synthesize_attack_dag
+    if (name === 'synthesize_attack_dag') {
+      const dag = buildCausalTimeline(args.events || []);
+      const rootCause = identifyRootCause(dag);
+      const dwell = calculateDwellTime(dag);
+      const ascii = renderAsciiTimeline(dag);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ rootCause, dwell, ascii, dagStats: dag.stats }, null, 2) }]
+      };
+    }
+
+    // Tool: run_swarm_duel
+    if (name === 'run_swarm_duel') {
+      const sim = runFullDuelSimulation(args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ metrics: sim.metrics, transcript: sim.transcript }, null, 2) }]
+      };
+    }
+
+    // Tool: import_stix_bundle
+    if (name === 'import_stix_bundle') {
+      const parsed = parseStixBundle(args.bundleJson);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(parsed, null, 2) }]
+      };
+    }
+
+    // Tool: convert_misp_event
+    if (name === 'convert_misp_event') {
+      const result = args.direction === 'stix_to_misp' 
+        ? convertStixToMisp(args.data) 
+        : convertMispToStix(args.data);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: deploy_honeynet_mesh
+    if (name === 'deploy_honeynet_mesh') {
+      const mesh = await createHoneynetMesh({ services: args.services });
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ meshId: mesh.meshId, status: mesh.status, decoys: mesh.decoys.map(d => ({ type: d.type, port: d.port })) }, null, 2) }]
+      };
+    }
+
+    // Tool: plant_deception_breadcrumbs
+    if (name === 'plant_deception_breadcrumbs') {
+      const planted = await plantBreadcrumbs(args.targetDir, args.types);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(planted, null, 2) }]
+      };
+    }
+
+    // Tool: capture_container_snapshot
+    if (name === 'capture_container_snapshot') {
+      const snap = await createForensicsSnapshot(args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(snap, null, 2) }]
+      };
+    }
+
+    // Tool: export_rfc3161_evidence_pack
+    if (name === 'export_rfc3161_evidence_pack') {
+      const pack = await createEvidenceBundle(
+        { caseNumber: args.caseNumber, title: args.title },
+        args.evidenceItems || []
+      );
+      return {
+        content: [{ type: 'text', text: JSON.stringify(pack, null, 2) }]
+      };
+    }
+
+    // Tool: dissect_network_packet
+    if (name === 'dissect_network_packet') {
+      const buf = Buffer.from(args.packetHex || '', 'hex');
+      const pkt = dissectFullPacket(buf);
+      const hexDump = formatHexDump(buf);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ packet: pkt, hexDump }, null, 2) }]
       };
     }
 

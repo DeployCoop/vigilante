@@ -373,5 +373,82 @@ export {
   renderAsciiAttackGraph
 } from './engine/attackgraph.js';
 
+export {
+  parseKallsyms,
+  detectSyscallHooking,
+  detectHiddenModules,
+  analyzeKernelTaint,
+  scanRootkitArtifacts,
+  generateRootkitReport
+} from './engine/rootkit.js';
+
+export {
+  compileYaraRule,
+  scanBufferWithRules,
+  extractCobaltStrikeConfig,
+  scanProcessMemory,
+  generateYaraMemoryReport
+} from './engine/yarascan.js';
+
+export {
+  buildCausalTimeline,
+  identifyRootCause,
+  calculateDwellTime,
+  renderAsciiTimeline
+} from './engine/timeline.js';
+
+export {
+  createSwarmDuel,
+  executeDuelRound,
+  runFullDuelSimulation,
+  evaluateDuelMetrics,
+  generateDuelTranscript
+} from './engine/swarmduel.js';
+
+export {
+  generateStixId,
+  parseStixBundle,
+  convertMispToStix,
+  convertStixToMisp,
+  mergeThreatFeeds,
+  filterIndicators
+} from './engine/stixmisp.js';
+
+export {
+  startDecoyService,
+  createHoneynetMesh,
+  plantBreadcrumbs
+} from './engine/honeynet.js';
+
+export {
+  captureContainerVolatiles,
+  captureContainerDiff,
+  createForensicsSnapshot,
+  verifySnapshotIntegrity,
+  listSavedSnapshots
+} from './engine/snapshot.js';
+
+export {
+  generateRfc3161Timestamp,
+  generateChainOfCustodyRecord,
+  createEvidenceBundle,
+  verifyEvidenceBundle
+} from './engine/evidencepack.js';
+
+export {
+  dissectEthernetFrame,
+  dissectIpPacket,
+  dissectTcpSegment,
+  dissectUdpDatagram,
+  dissectDnsPayload,
+  dissectTlsPayload,
+  dissectFullPacket,
+  filterPacket,
+  formatHexDump,
+  exportToPcap,
+  generateSyntheticPacketStream
+} from './engine/sniffer.js';
+
+
 
 

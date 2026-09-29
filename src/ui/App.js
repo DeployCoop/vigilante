@@ -24,6 +24,8 @@ import { PurpleTeamView } from './PurpleTeamView.js';
 import { ForensicsView } from './ForensicsView.js';
 import { LineageView } from './LineageView.js';
 import { CloudSecView } from './CloudSecView.js';
+import { TimelineView } from './TimelineView.js';
+import { SnifferView } from './SnifferView.js';
 import { CommandPalette } from './CommandPalette.js';
 import { NavHub } from './NavHub.js';
 import { MenuBar } from './MenuBar.js';
@@ -76,6 +78,8 @@ const AppContent = ({
     if (command === 'forensics' || command === 'carve') return 'FORENSICS';
     if (command === 'lineage' || command === 'tree') return 'LINEAGE';
     if (command === 'cloudsec' || command === 'cspm' || command === 'ciem') return 'CLOUDSEC';
+    if (command === 'timeline' || command === 'dag') return 'TIMELINE';
+    if (command === 'sniffer' || command === 'pcap' || command === 'sniff') return 'SNIFFER';
     if (command === 'up' && !cliSelectedModules && !nonInteractive) return 'SELECT_MODULES';
     return 'RUNNING';
   });
@@ -1737,6 +1741,26 @@ const AppContent = ({
       ? React.createElement(CloudSecView, {
           onBack: () => {
             setPreviousViewState('CLOUDSEC');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 24: Attack Timeline & Causal DAG View
+    viewState === 'TIMELINE'
+      ? React.createElement(TimelineView, {
+          onReturn: () => {
+            setPreviousViewState('TIMELINE');
+            setViewState('MENU');
+          }
+        })
+      : null,
+
+    // State 25: Terminal Live Packet Sniffer & Dissector View
+    viewState === 'SNIFFER'
+      ? React.createElement(SnifferView, {
+          onReturn: () => {
+            setPreviousViewState('SNIFFER');
             setViewState('MENU');
           }
         })

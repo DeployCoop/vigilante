@@ -150,6 +150,24 @@ export const HUB_ITEMS = [
     altKey: null,
     action: 'CLOUDSEC'
   },
+  {
+    id: 'timeline',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Attack Timeline & Causal DAG Explorer',
+    subtitle: 'Reconstruct multi-stage attack chains, trace process lineage & calculate dwell time',
+    key: 't',
+    altKey: null,
+    action: 'TIMELINE'
+  },
+  {
+    id: 'sniffer',
+    section: '🔍 NIST Phase 2: Detection & Analysis',
+    title: 'Terminal Live Packet Sniffer & Dissector',
+    subtitle: 'Live Ethernet/IP/TCP/UDP/DNS/TLS packet dissection and Wireshark split-view',
+    key: 'u',
+    altKey: null,
+    action: 'SNIFFER'
+  },
 
   // Section 3: NIST Phase 3: Containment, Eradication & Recovery
   {
