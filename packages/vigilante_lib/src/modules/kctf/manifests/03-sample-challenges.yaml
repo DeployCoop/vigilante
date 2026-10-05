@@ -1,0 +1,558 @@
+# ==============================================================================
+# Category 1: Web Exploitation Dedicated Pod
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: web-flag-leak
+  namespace: kctf
+spec:
+  deployed: true
+  category: web
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: http
+        port: 8080
+        targetPort: 80
+        protocol: TCP
+  podTemplate:
+    template:
+      spec:
+        containers:
+          - name: challenge
+            image: nginx:alpine
+            env:
+              - name: CTF_FLAG
+                value: "VIGILANTE{kctf_w3b_1nj3ct10n_succ3ss}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-web-flag-leak
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-web-flag-leak
+    kctf.dev/challenge: web-flag-leak
+    kctf.dev/category: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-web-flag-leak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-web-flag-leak
+        kctf.dev/challenge: web-flag-leak
+        kctf.dev/category: web
+    spec:
+      containers:
+        - name: challenge
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: CTF_FLAG
+              value: "VIGILANTE{kctf_w3b_1nj3ct10n_succ3ss}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-web-flag-leak
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: web-flag-leak
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: chal-web-flag-leak
+
+---
+# ==============================================================================
+# Category 2: Binary Exploitation (Pwn / nsjail) Dedicated Pod
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: pwn-nsjail-echo
+  namespace: kctf
+spec:
+  deployed: true
+  category: pwn
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 31337
+        targetPort: 31337
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-pwn-nsjail-echo
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-pwn-nsjail-echo
+    kctf.dev/challenge: pwn-nsjail-echo
+    kctf.dev/category: pwn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-pwn-nsjail-echo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-pwn-nsjail-echo
+        kctf.dev/challenge: pwn-nsjail-echo
+        kctf.dev/category: pwn
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "=== kCTF nsjail Protected Sandbox ===\nTarget: echo service\nFlag is hidden in memory\nInput payload: " | nc -lp 31337 -e sh -c 'echo "FLAG: VIGILANTE{kctf_nsj41l_pwn_fl4g_c4ptur3d}"';
+              done
+          ports:
+            - containerPort: 31337
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-pwn-nsjail-echo
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: pwn-nsjail-echo
+spec:
+  type: ClusterIP
+  ports:
+    - port: 31337
+      targetPort: 31337
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-pwn-nsjail-echo
+
+---
+# ==============================================================================
+# Category 3: Cryptography Dedicated Pod (RSA Parity Oracle)
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: crypto-oracle-rsa
+  namespace: kctf
+spec:
+  deployed: true
+  category: crypto
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 20001
+        targetPort: 20001
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-crypto-oracle-rsa
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-crypto-oracle-rsa
+    kctf.dev/challenge: crypto-oracle-rsa
+    kctf.dev/category: crypto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-crypto-oracle-rsa
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-crypto-oracle-rsa
+        kctf.dev/challenge: crypto-oracle-rsa
+        kctf.dev/category: crypto
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "=== Vigilante Crypto Oracle Service ===\nN: 0xd4729fe204... e: 65537\nSend c (hex): " | nc -lp 20001 -e sh -c 'echo "LSB: 1 | FLAG: VIGILANTE{lsb_0r4cl3_b1n4ry_s34rch}"';
+              done
+          ports:
+            - containerPort: 20001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-crypto-oracle-rsa
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: crypto-oracle-rsa
+spec:
+  type: ClusterIP
+  ports:
+    - port: 20001
+      targetPort: 20001
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-crypto-oracle-rsa
+
+---
+# ==============================================================================
+# Category 4: Reverse Engineering Dedicated Pod (License Validator)
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: rev-crackme-license
+  namespace: kctf
+spec:
+  deployed: true
+  category: rev
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: http
+        port: 9001
+        targetPort: 80
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-rev-crackme-license
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-rev-crackme-license
+    kctf.dev/challenge: rev-crackme-license
+    kctf.dev/category: rev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-rev-crackme-license
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-rev-crackme-license
+        kctf.dev/challenge: rev-crackme-license
+        kctf.dev/category: rev
+    spec:
+      containers:
+        - name: challenge
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: FLAG
+              value: "VIGILANTE{s3r14l_k3y_v3r1f13d_0x99}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-rev-crackme-license
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: rev-crackme-license
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9001
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: chal-rev-crackme-license
+
+---
+# ==============================================================================
+# Category 5: Digital Forensics Dedicated Pod (PCAP Packet Stream Server)
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: forensics-pcap-extract
+  namespace: kctf
+spec:
+  deployed: true
+  category: forensics
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: http
+        port: 9101
+        targetPort: 80
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-forensics-pcap-extract
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-forensics-pcap-extract
+    kctf.dev/challenge: forensics-pcap-extract
+    kctf.dev/category: forensics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-forensics-pcap-extract
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-forensics-pcap-extract
+        kctf.dev/challenge: forensics-pcap-extract
+        kctf.dev/category: forensics
+    spec:
+      containers:
+        - name: challenge
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: FLAG
+              value: "VIGILANTE{pcap_dns_tunn3l_3xf1l}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-forensics-pcap-extract
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: forensics-pcap-extract
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9101
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: chal-forensics-pcap-extract
+
+---
+# ==============================================================================
+# Category 6: Miscellaneous & Jails Dedicated Pod (Restricted Python Sandbox)
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: misc-pyjail-escape
+  namespace: kctf
+spec:
+  deployed: true
+  category: misc
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 13337
+        targetPort: 13337
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-misc-pyjail-escape
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-misc-pyjail-escape
+    kctf.dev/challenge: misc-pyjail-escape
+    kctf.dev/category: misc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-misc-pyjail-escape
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-misc-pyjail-escape
+        kctf.dev/challenge: misc-pyjail-escape
+        kctf.dev/category: misc
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "=== Python Restricted Sandbox (Builtins Stripped) ===\nEscape to read /flag.txt\n>>> " | nc -lp 13337 -e sh -c 'echo "FLAG: VIGILANTE{pyth0n_subcl4ss3s_3sc4p3}"';
+              done
+          ports:
+            - containerPort: 13337
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-misc-pyjail-escape
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: misc-pyjail-escape
+spec:
+  type: ClusterIP
+  ports:
+    - port: 13337
+      targetPort: 13337
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-misc-pyjail-escape
+
+---
+# ==============================================================================
+# Mode Pod: Attack-Defense Vulnerable Service Dedicated Pod
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: ad-service-vault
+  namespace: kctf
+spec:
+  deployed: true
+  category: web
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 9200
+        targetPort: 9200
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-ad-service-vault
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-ad-service-vault
+    kctf.dev/challenge: ad-service-vault
+    kctf.dev/category: ad
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-ad-service-vault
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-ad-service-vault
+        kctf.dev/challenge: ad-service-vault
+        kctf.dev/category: ad
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"Vault-AD\",\"status\":\"SLA_HEALTHY\",\"flag\":\"VIGILANTE{ad_tick_vault_flag_01}\"}" | nc -lp 9200;
+              done
+          ports:
+            - containerPort: 9200
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-ad-service-vault
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: ad-service-vault
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: 9200
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-ad-service-vault
+
+---
+# ==============================================================================
+# Mode Pod: King of the Hill (KotH) The Citadel Dedicated Pod
+# ==============================================================================
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: koth-citadel-hill
+  namespace: kctf
+spec:
+  deployed: true
+  category: pwn
+  powDifficultySeconds: 0
+  network:
+    public: true
+    ports:
+      - name: tcp
+        port: 32001
+        targetPort: 32001
+        protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chal-koth-citadel-hill
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: chal-koth-citadel-hill
+    kctf.dev/challenge: koth-citadel-hill
+    kctf.dev/category: koth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chal-koth-citadel-hill
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chal-koth-citadel-hill
+        kctf.dev/challenge: koth-citadel-hill
+        kctf.dev/category: koth
+    spec:
+      containers:
+        - name: challenge
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo -e "=== [KOTH] The Citadel Hill Service ===\nCurrent King: Unclaimed\nEnter team token to claim the crown: " | nc -lp 32001 -e sh -c 'echo "CLAIM_SUCCESS: King of the Hill updated"';
+              done
+          ports:
+            - containerPort: 32001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chal-koth-citadel-hill
+  namespace: kctf
+  labels:
+    kctf.dev/challenge: koth-citadel-hill
+spec:
+  type: ClusterIP
+  ports:
+    - port: 32001
+      targetPort: 32001
+      name: tcp
+  selector:
+    app.kubernetes.io/name: chal-koth-citadel-hill

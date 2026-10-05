@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "falco.fullname" . }}
+  labels:
+    {{- include "falco.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces", "services", "events", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "falco.fullname" . }}
+  labels:
+    {{- include "falco.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "falco.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "falco.fullname" . }}
+    namespace: {{ include "falco.namespace" . }}

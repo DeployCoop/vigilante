@@ -1,4 +1,6 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
 minimumReleaseAgeExclude:
   - nastymap@1.0.1
-overrides:
-  vigilante: 'link:'

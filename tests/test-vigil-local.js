@@ -27,6 +27,10 @@ assert.strictEqual(resolved[1].id, 'vigil-local');
 console.log('✔ Test 2 passed: Dependency resolution orders opensearch before vigil-local.');
 
 // Test 3: Local Helm chart path discovery & validation
+const origConfiguredPath = moduleInstance.getChartPath();
+const fixtureChartPath = path.resolve('src/modules/vigil-soc/charts/vigil');
+await moduleInstance.setChartPath(fixtureChartPath);
+
 const configuredPath = moduleInstance.getChartPath();
 assert.ok(typeof configuredPath === 'string' && configuredPath.length > 0);
 const resolvedPath = await moduleInstance.resolveLocalChartPath();
@@ -36,15 +40,12 @@ assert.ok(chartYamlStats.isFile(), 'Chart.yaml must exist at local checkout');
 assert.ok(moduleInstance.description.includes(configuredPath), 'Module description should include configured chart path');
 
 // Test 3b: setChartPath updates configuration and validation
-const origPath = moduleInstance.getChartPath();
-const testSetRes = await moduleInstance.setChartPath('/mnt/unreal/git/vigil/infra/helm/vigil');
-assert.strictEqual(testSetRes.path, '/mnt/unreal/git/vigil/infra/helm/vigil');
+const testSetRes = await moduleInstance.setChartPath(fixtureChartPath);
+assert.strictEqual(testSetRes.path, fixtureChartPath);
 assert.strictEqual(testSetRes.exists, true);
-assert.strictEqual(moduleInstance.getChartPath(), '/mnt/unreal/git/vigil/infra/helm/vigil');
-// Restore original if different
-if (origPath !== '/mnt/unreal/git/vigil/infra/helm/vigil') {
-  await moduleInstance.setChartPath(origPath);
-}
+assert.strictEqual(moduleInstance.getChartPath(), fixtureChartPath);
+// Restore original
+await moduleInstance.setChartPath(origConfiguredPath);
 console.log(`✔ Test 3 passed: Verified local Helm chart path getter/setter and validation at '${resolvedPath}'.`);
 
 // Test 4: Domain hosts mapping

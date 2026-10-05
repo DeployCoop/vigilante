@@ -2,11 +2,11 @@
 ingress:
   enabled: true
   hosts:
-    - host: falco.vigilante.local
+    - host: falco.{{DOMAIN}}
   tls:
-    - secretName: falco-tls
+    - secretName: {{TLS_SECRET}}
       hosts:
-        - falco.vigilante.local
+        - falco.{{DOMAIN}}
 
 resources:
   requests:

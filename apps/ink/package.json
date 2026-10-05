@@ -1,0 +1,25 @@
+{
+  "name": "@vigilante/ink",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/ui/App.js",
+  "bin": {
+    "vigilante": "./bin/vigilante.js"
+  },
+  "scripts": {
+    "start": "node ./bin/vigilante.js"
+  },
+  "dependencies": {
+    "vigilante_lib": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "execa": "^8.0.1",
+    "fast-xml-parser": "^5.11.0",
+    "ink": "^4.4.1",
+    "ink-select-input": "^5.0.0",
+    "ink-spinner": "^5.0.0",
+    "js-yaml": "^5.3.0",
+    "meow": "^12.1.1",
+    "nastymap": "^1.0.1",
+    "react": "^18.2.0"
+  }
+}

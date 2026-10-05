@@ -1,0 +1,1 @@
+{"version":1,"functions":{"/api/ctf/mentor":{},"/api/ctf/challenges":{},"/api/falco/rules":{},"/api/falco/simulate":{},"/api/ctf/sandboxes":{},"/api/events/stream":{},"/api/falco/status":{},"/api/graph":{},"/api/status":{},"/api/scans":{},"/api/scans/diff":{},"/api/nastymap/topology":{},"/":{}}}

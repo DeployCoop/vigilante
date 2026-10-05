@@ -195,6 +195,50 @@ async function runTests() {
   }
   console.log('✔ Test 13 passed: generate_mitre_report returned MITRE ATT&CK matrix via MCP.');
 
+  // Test 14: Call spawn_ctf_sandbox via MCP
+  const spawnRes = await client.callTool({
+    name: 'spawn_ctf_sandbox',
+    arguments: { challengeId: 'web-flag-leak', teamId: 'mcp-test-team', mock: true }
+  });
+  const parsedSpawn = JSON.parse(spawnRes.content[0].text);
+  if (!parsedSpawn.id || !parsedSpawn.connectionUrl || !parsedSpawn.flag) {
+    throw new Error('spawn_ctf_sandbox failed to return valid sandbox record');
+  }
+  console.log(`✔ Test 14 passed: spawn_ctf_sandbox provisioned isolated sandbox (${parsedSpawn.id}) via MCP.`);
+
+  // Test 15: Call list_ctf_sandboxes via MCP
+  const listSbxRes = await client.callTool({
+    name: 'list_ctf_sandboxes',
+    arguments: { teamId: 'mcp-test-team' }
+  });
+  const parsedListSbx = JSON.parse(listSbxRes.content[0].text);
+  if (!Array.isArray(parsedListSbx.sandboxes) || parsedListSbx.count < 1) {
+    throw new Error('list_ctf_sandboxes failed to find spawned sandbox');
+  }
+  console.log(`✔ Test 15 passed: list_ctf_sandboxes returned ${parsedListSbx.count} active sandboxes via MCP.`);
+
+  // Test 16: Call ctf_weak_rsa_analyzer via MCP
+  const rsaRes = await client.callTool({
+    name: 'ctf_weak_rsa_analyzer',
+    arguments: { n: '3233', e: '17', method: 'trial_division' }
+  });
+  const parsedRsa = JSON.parse(rsaRes.content[0].text);
+  if (!parsedRsa.factorized || parsedRsa.p !== '53' || parsedRsa.q !== '61') {
+    throw new Error('ctf_weak_rsa_analyzer failed to factor weak modulus');
+  }
+  console.log('✔ Test 16 passed: ctf_weak_rsa_analyzer factored composite modulus via MCP.');
+
+  // Test 17: Call ask_ctf_crash_analyzer via MCP
+  const crashRes = await client.callTool({
+    name: 'ask_ctf_crash_analyzer',
+    arguments: { crashLog: 'Program received signal SIGSEGV, Segmentation fault. $rip: 0x0000000041346141' }
+  });
+  const parsedCrash = JSON.parse(crashRes.content[0].text);
+  if (!parsedCrash.signal?.includes('SIGSEGV') || parsedCrash.deBruijnOffset !== 12) {
+    throw new Error('ask_ctf_crash_analyzer failed to detect SIGSEGV or De Bruijn cyclic offset');
+  }
+  console.log(`✔ Test 17 passed: ask_ctf_crash_analyzer extracted offset ${parsedCrash.deBruijnOffset} via MCP.`);
+
   await client.close();
   console.log('🎉 All Model Context Protocol (MCP) Server tests passed successfully!');
 }

@@ -1,0 +1,23 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/analyst/page": "app/analyst/page.js",
+  "/battlestation/page": "app/battlestation/page.js",
+  "/ctf/page": "app/ctf/page.js",
+  "/graph/page": "app/graph/page.js",
+  "/modules/page": "app/modules/page.js",
+  "/nastymap/page": "app/nastymap/page.js",
+  "/posture/page": "app/posture/page.js",
+  "/api/ctf/challenges/route": "app/api/ctf/challenges/route.js",
+  "/api/ctf/mentor/route": "app/api/ctf/mentor/route.js",
+  "/api/ctf/sandboxes/route": "app/api/ctf/sandboxes/route.js",
+  "/api/events/stream/route": "app/api/events/stream/route.js",
+  "/api/falco/simulate/route": "app/api/falco/simulate/route.js",
+  "/api/falco/rules/route": "app/api/falco/rules/route.js",
+  "/api/falco/status/route": "app/api/falco/status/route.js",
+  "/api/graph/route": "app/api/graph/route.js",
+  "/api/status/route": "app/api/status/route.js",
+  "/api/scans/diff/route": "app/api/scans/diff/route.js",
+  "/api/scans/route": "app/api/scans/route.js",
+  "/api/nastymap/topology/route": "app/api/nastymap/topology/route.js",
+  "/page": "app/page.js"
+}

@@ -1,0 +1,35 @@
+# Example Helm Values for kCTF Platform & Tournament Arena
+domain: "{{DOMAIN}}"
+namespace: "{{NAMESPACE}}"
+tlsSecretName: "{{TLS_SECRET}}"
+clusterName: "{{CLUSTER_NAME}}"
+
+tournament:
+  enabled: true
+  title: "Vigilante Cyber Defense CTF"
+  modes:
+    - jeopardy
+    - attack-defense
+    - koth
+  activeMode: "jeopardy"
+  socraticAi:
+    enabled: true
+    strictMode: true
+  scoring:
+    type: "dynamic"
+    initialPoints: 500
+    minimumPoints: 100
+    decaySolves: 30
+    firstBloodBonusPercent: 10
+  instances:
+    maxPerTeam: 6
+    defaultTtlMinutes: 45
+    podPerCategory: true
+
+portal:
+  replicaCount: 1
+  image: "nginx:alpine"
+  ingress:
+    enabled: true
+    host: "ctf.{{DOMAIN}}"
+    kctfHost: "kctf.{{DOMAIN}}"

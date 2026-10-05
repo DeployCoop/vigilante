@@ -1,0 +1,565 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kctf-portal-html
+  namespace: kctf
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>🚩 Vigilante CTF Arena & Scoreboard | Multi-Mode Tournament</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        :root {
+          --bg: #0b0f19;
+          --card: #151b28;
+          --card-hover: #1c2436;
+          --border: #273142;
+          --text: #e2e8f0;
+          --text-muted: #94a3b8;
+          --accent: #38bdf8;
+          --accent-glow: rgba(56, 189, 248, 0.25);
+          --success: #34d399;
+          --warning: #fbbf24;
+          --danger: #f87171;
+          --purple: #c084fc;
+          --code-bg: #080c14;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+          background: var(--bg);
+          color: var(--text);
+          min-height: 100vh;
+          padding: 20px;
+        }
+        .header-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-bottom: 20px;
+          border-bottom: 1px solid var(--border);
+          margin-bottom: 24px;
+        }
+        .logo-group h1 {
+          font-size: 24px;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .tagline { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        .live-status {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: rgba(52, 211, 153, 0.1);
+          border: 1px solid rgba(52, 211, 153, 0.3);
+          color: var(--success);
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .pulse-dot {
+          width: 8px;
+          height: 8px;
+          background: var(--success);
+          border-radius: 50%;
+          box-shadow: 0 0 8px var(--success);
+          animation: pulse 1.8s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+        
+        .mode-nav {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 24px;
+          border-bottom: 1px solid var(--border);
+          padding-bottom: 12px;
+        }
+        .mode-btn {
+          background: transparent;
+          border: 1px solid var(--border);
+          color: var(--text-muted);
+          padding: 8px 18px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .mode-btn:hover { color: #fff; border-color: var(--accent); }
+        .mode-btn.active {
+          background: var(--accent-glow);
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Scoreboard Table */
+        .scoreboard-card {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 20px;
+          margin-bottom: 24px;
+        }
+        .section-title {
+          font-size: 18px;
+          color: #fff;
+          margin-bottom: 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+        th, td {
+          padding: 12px 16px;
+          text-align: left;
+          border-bottom: 1px solid var(--border);
+        }
+        th { color: var(--text-muted); font-size: 12px; text-transform: uppercase; font-weight: 600; }
+        tr:hover { background: var(--card-hover); }
+        .rank-badge {
+          display: inline-block;
+          width: 24px;
+          height: 24px;
+          line-height: 24px;
+          text-align: center;
+          border-radius: 50%;
+          font-weight: bold;
+          font-size: 12px;
+        }
+        .rank-1 { background: #ffd700; color: #000; }
+        .rank-2 { background: #c0c0c0; color: #000; }
+        .rank-3 { background: #cd7f32; color: #000; }
+
+        /* Challenge Cards Grid */
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 16px;
+        }
+        .card {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          transition: transform 0.15s, border-color 0.15s;
+        }
+        .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+        .badge {
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: bold;
+          text-transform: uppercase;
+        }
+        .badge.web { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
+        .badge.pwn { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
+        .badge.crypto { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
+        .badge.rev { background: rgba(192, 132, 252, 0.15); color: var(--purple); }
+        .badge.forensics { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+        .badge.misc { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+        .badge.koth { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+        .badge.points { background: #1e293b; color: #f8fafc; }
+        
+        .code-snippet {
+          background: var(--code-bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          padding: 8px 12px;
+          font-family: monospace;
+          font-size: 12px;
+          color: #38bdf8;
+          margin: 12px 0;
+          word-break: break-all;
+        }
+
+        /* KotH Crown Box */
+        .koth-hero {
+          background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(15, 23, 42, 0.8));
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          border-radius: 12px;
+          padding: 24px;
+          text-align: center;
+          margin-bottom: 24px;
+        }
+        .crown-icon { font-size: 48px; margin-bottom: 8px; }
+        .reigning-king { font-size: 26px; font-weight: bold; color: #fff; margin-bottom: 6px; }
+
+        /* Flag Submitter */
+        .submit-box {
+          display: flex;
+          gap: 10px;
+          margin-top: 20px;
+        }
+        .submit-box input {
+          flex: 1;
+          background: var(--code-bg);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 10px 14px;
+          color: #fff;
+          font-family: monospace;
+          font-size: 14px;
+        }
+        .submit-box button {
+          background: var(--accent);
+          color: #0b0f19;
+          border: none;
+          font-weight: bold;
+          padding: 10px 20px;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        .submit-box button:hover { opacity: 0.9; }
+
+        footer {
+          margin-top: 40px;
+          padding-top: 16px;
+          border-top: 1px solid var(--border);
+          font-size: 12px;
+          color: var(--text-muted);
+          text-align: center;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <header class="header-bar">
+          <div class="logo-group">
+            <h1>🚩 Vigilante CTF Arena</h1>
+            <div class="tagline">Zero-Trust Cyber Range &amp; Modular Tournament Engine &middot; Embedded Cluster Scoreboard</div>
+          </div>
+          <div class="live-status">
+            <div class="pulse-dot"></div>
+            <span>TOURNAMENT LIVE &middot; TICK 42</span>
+          </div>
+        </header>
+
+        <!-- Mode Navigation Tabs -->
+        <nav class="mode-nav">
+          <button class="mode-btn active" onclick="switchTab('jeopardy')">🎮 Jeopardy Scoreboard</button>
+          <button class="mode-btn" onclick="switchTab('ad')">⚔️ Attack-Defense Matrix</button>
+          <button class="mode-btn" onclick="switchTab('koth')">👑 King of the Hill (The Citadel)</button>
+          <button class="mode-btn" onclick="switchTab('participant')">🛠️ Participant Cockpit</button>
+        </nav>
+
+        <!-- TAB 1: Jeopardy -->
+        <div id="tab-jeopardy" class="tab-content active">
+          <div class="scoreboard-card">
+            <div class="section-title">
+              <span>🏆 Official Leaderboard (Dynamic Decay Scoring)</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Decay Solves: 30 &middot; Min Points: 100</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 60px;">Rank</th>
+                  <th>Team</th>
+                  <th>Solves</th>
+                  <th>First Bloods</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-body">
+                <tr>
+                  <td><span class="rank-badge rank-1">1</span></td>
+                  <td><strong>CyberWarriors</strong></td>
+                  <td>6</td>
+                  <td>🩸 2</td>
+                  <td><strong style="color: var(--accent);">2,450 pts</strong></td>
+                </tr>
+                <tr>
+                  <td><span class="rank-badge rank-2">2</span></td>
+                  <td><strong>NullPointers</strong></td>
+                  <td>5</td>
+                  <td>🩸 1</td>
+                  <td><strong style="color: var(--accent);">1,980 pts</strong></td>
+                </tr>
+                <tr>
+                  <td><span class="rank-badge rank-3">3</span></td>
+                  <td><strong>BitBusters</strong></td>
+                  <td>4</td>
+                  <td>-</td>
+                  <td><strong style="color: var(--accent);">1,520 pts</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="font-size: 18px; color: #fff; margin-bottom: 16px;">Active Tournament Challenges (Dedicated Pods)</h2>
+          <div class="grid">
+            <!-- Web -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge web">WEB</span>
+                <span class="badge points">500 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">web-flag-leak</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Inspect HTTP headers and hidden admin endpoints to uncover the leaked flag.</p>
+              <div class="code-snippet">curl -sSL https://kctf.{{DOMAIN}}:8080</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-web-flag-leak)</div>
+            </div>
+
+            <!-- Pwn -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge pwn">PWN / NSJAIL</span>
+                <span class="badge points">480 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">pwn-nsjail-echo</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Exploit sandboxed socket service running with nsjail cgroups and memory bounds.</p>
+              <div class="code-snippet">nc {{DOMAIN}} 31337</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-pwn-nsjail-echo)</div>
+            </div>
+
+            <!-- Crypto -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge crypto">CRYPTO</span>
+                <span class="badge points">450 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">crypto-oracle-rsa</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Interactive least-significant-bit parity oracle testing binary search attacks.</p>
+              <div class="code-snippet">nc {{DOMAIN}} 20001</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-crypto-oracle-rsa)</div>
+            </div>
+
+            <!-- Rev -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge rev">REV</span>
+                <span class="badge points">420 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">rev-crackme-license</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Decompile and reverse the license key algorithm to validate your serial.</p>
+              <div class="code-snippet">http://{{DOMAIN}}:9001</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-rev-crackme-license)</div>
+            </div>
+
+            <!-- Forensics -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge forensics">FORENSICS</span>
+                <span class="badge points">390 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">forensics-pcap-extract</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Analyze covert DNS exfiltration packets captured in live network streams.</p>
+              <div class="code-snippet">http://{{DOMAIN}}:9101/capture.pcap</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-forensics-pcap-extract)</div>
+            </div>
+
+            <!-- Misc -->
+            <div class="card">
+              <div class="card-header">
+                <span class="badge misc">MISC / JAIL</span>
+                <span class="badge points">410 PTS</span>
+              </div>
+              <h3 style="color: #fff; margin-bottom: 6px;">misc-pyjail-escape</h3>
+              <p style="font-size: 13px; color: var(--text-muted);">Escape restricted Python REPL with builtins stripped via subclass traversal.</p>
+              <div class="code-snippet">nc {{DOMAIN}} 13337</div>
+              <div style="font-size: 12px; color: var(--success);">🟢 Dedicated Pod Active (chal-misc-pyjail-escape)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Attack-Defense -->
+        <div id="tab-ad" class="tab-content">
+          <div class="scoreboard-card">
+            <div class="section-title">
+              <span>⚔️ Attack-Defense Round Matrix (Tick: #42 &middot; 120s / Tick)</span>
+              <span style="font-size: 12px; color: var(--success);">SLA SLA Checker Active</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>Service: Vault-AD (Port 9200)</th>
+                  <th>SLA Status</th>
+                  <th>Attack Score</th>
+                  <th>Defense Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>CyberWarriors</strong></td>
+                  <td><span style="color: var(--success);">✔ Up (Patch Active)</span></td>
+                  <td>100.0%</td>
+                  <td>+450 pts</td>
+                  <td>+620 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>NullPointers</strong></td>
+                  <td><span style="color: var(--success);">✔ Up (Intact)</span></td>
+                  <td>98.5%</td>
+                  <td>+320 pts</td>
+                  <td>+580 pts</td>
+                </tr>
+                <tr>
+                  <td><strong>BitBusters</strong></td>
+                  <td><span style="color: var(--danger);">✖ SLA Fault (Exploited)</span></td>
+                  <td>76.0%</td>
+                  <td>+180 pts</td>
+                  <td>+340 pts</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 3: King of the Hill (KotH) -->
+        <div id="tab-koth" class="tab-content">
+          <div class="koth-hero">
+            <div class="crown-icon">👑</div>
+            <div style="font-size: 14px; text-transform: uppercase; color: var(--danger); font-weight: bold; letter-spacing: 1px;">Current Reigning King of The Citadel</div>
+            <div class="reigning-king" id="koth-king-name">CyberWarriors</div>
+            <div style="color: var(--text-muted); font-size: 13px;">Holding the crown for <strong>14 consecutive ticks</strong> (+25 pts / tick)</div>
+            <div class="code-snippet" style="max-width: 480px; margin: 16px auto;">Target Port: {{DOMAIN}}:32001 (TCP Citadel Jail)</div>
+          </div>
+        </div>
+
+        <!-- TAB 4: Participant Cockpit -->
+        <div id="tab-participant" class="tab-content">
+          <div class="scoreboard-card">
+            <div class="section-title">
+              <span>🛠️ Vigilante CLI Participant Quickstart</span>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">Run the entire tournament cockpit inside your terminal:</p>
+            <div class="code-snippet">$ vigilante ctf join https://ctf.{{DOMAIN}} --token &lt;YOUR_TEAM_TOKEN&gt;</div>
+            <div class="code-snippet">$ vigilante ctf submit web-flag-leak VIGILANTE{...}</div>
+            <div class="code-snippet">$ vigilante ctf ask --socratic "What is the vulnerability in pwn-nsjail-echo?"</div>
+          </div>
+        </div>
+
+        <footer>
+          <p>Embedded Kubernetes Scoreboard powered by <strong>Vigilante CTF Arena</strong> &middot; Real-time Cluster Telemetry &middot; Socratic AI Guardrails</p>
+        </footer>
+      </div>
+
+      <script>
+        function switchTab(tabId) {
+          document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+          document.querySelectorAll('.mode-btn').forEach(el => el.classList.remove('active'));
+          
+          const target = document.getElementById('tab-' + tabId);
+          if (target) target.classList.add('active');
+
+          const btn = Array.from(document.querySelectorAll('.mode-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+          if (btn) btn.classList.add('active');
+        }
+      </script>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kctf-portal
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: kctf-portal
+    app.kubernetes.io/component: web-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kctf-portal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kctf-portal
+    spec:
+      serviceAccountName: kctf-controller
+      containers:
+        - name: web
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: html-volume
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+      volumes:
+        - name: html-volume
+          configMap:
+            name: kctf-portal-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kctf-portal
+  namespace: kctf
+  labels:
+    app.kubernetes.io/name: kctf-portal
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app.kubernetes.io/name: kctf-portal
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kctf-ingress
+  namespace: kctf
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - "kctf.{{DOMAIN}}"
+        - "ctf.{{DOMAIN}}"
+      secretName: "{{TLS_SECRET}}"
+  rules:
+    - host: "kctf.{{DOMAIN}}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kctf-portal
+                port:
+                  number: 80
+    - host: "ctf.{{DOMAIN}}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kctf-portal
+                port:
+                  number: 80
