@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -10,7 +11,7 @@ export default function Home() {
           <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">v0.1.0</span>
         </div>
         <div className="flex items-center space-x-6 text-sm text-slate-400">
-          <a href="/docs" className="hover:text-emerald-400 transition">Documentation</a>
+          <Link href="/docs" className="hover:text-emerald-400 transition">Documentation</Link>
           <a href="#features" className="hover:text-emerald-400 transition">Features</a>
           <a href="#modules" className="hover:text-emerald-400 transition">Modules</a>
           <a href="#architecture" className="hover:text-emerald-400 transition">Architecture</a>
@@ -32,9 +33,9 @@ export default function Home() {
             <a href="#quickstart" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-emerald-500/20 transition">
               Get Started
             </a>
-            <a href="/docs" className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-6 py-3 rounded-lg transition">
+            <Link href="/docs" className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-6 py-3 rounded-lg transition">
               Read Docs
-            </a>
+            </Link>
           </div>
         </section>
 
