@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { ReactNode } from "react";
+import { MobileNav } from "../components/MobileNav";
 
 const navigation = [
   { name: "Introduction", href: "/docs" },
   { name: "Getting Started", href: "/docs/getting-started" },
   { name: "Architecture", href: "/docs/architecture" },
-  { name: "Development & Testing", href: "/docs/development" },
+  { name: "CLI Reference", href: "/docs/cli" },
+  { name: "Modules Catalog", href: "/docs/modules" },
   { name: "Engines Reference", href: "/docs/engines" },
   { name: "Agents", href: "/docs/agents" },
+  { name: "MCP Catalog", href: "/docs/mcp" },
   { name: "First Response", href: "/docs/first-response" },
+  { name: "Development & Testing", href: "/docs/development" },
+  { name: "Troubleshooting", href: "/docs/troubleshooting" },
 ];
 
 export default function DocsLayout({ children }: { children: ReactNode }) {
@@ -47,6 +52,7 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
         </aside>
 
         <main className="flex-1 overflow-hidden min-w-0">
+          <MobileNav navigation={navigation} />
           <div className="prose prose-invert prose-emerald max-w-none">
             {children}
           </div>

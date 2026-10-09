@@ -1,5 +1,7 @@
 import type { MDXComponents } from "mdx/types";
 
+import { CopyButton } from "./src/app/components/CopyButton";
+
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
     h1: (props) => <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl mb-6 text-emerald-400" {...props} />,
@@ -12,8 +14,13 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     li: (props) => <li className="text-gray-300" {...props} />,
     blockquote: (props) => <blockquote className="mt-6 border-l-2 border-emerald-500 pl-6 italic text-gray-400" {...props} />,
     a: (props) => <a className="font-medium text-emerald-400 underline underline-offset-4 hover:text-emerald-300" {...props} />,
-    pre: (props) => <pre className="mb-4 mt-6 overflow-x-auto rounded-lg border border-gray-700 bg-gray-900 p-4 text-gray-300" {...props} />,
-    code: (props) => <code className="relative rounded bg-gray-800 px-[0.3rem] py-[0.2rem] font-mono text-sm text-emerald-300" {...props} />,
+    pre: (props: any) => (
+      <div className="relative group">
+        <pre className="mb-4 mt-6 overflow-x-auto rounded-lg border border-gray-700 bg-[#0d1117] p-4 text-sm" {...props} />
+        {props.rawtext && <CopyButton text={props.rawtext} />}
+      </div>
+    ),
+    code: (props) => <code className="relative rounded px-[0.3rem] py-[0.2rem] font-mono text-sm" {...props} />,
     table: (props) => <div className="my-6 w-full overflow-y-auto"><table className="w-full text-gray-300" {...props} /></div>,
     th: (props) => <th className="border border-gray-700 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right bg-gray-800 text-emerald-200" {...props} />,
     td: (props) => <td className="border border-gray-700 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right" {...props} />,

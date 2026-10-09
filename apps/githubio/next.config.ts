@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createMDX from "@next/mdx";
+import path from "path";
 
 const nextConfig: NextConfig = {
   pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
@@ -19,6 +20,18 @@ const nextConfig: NextConfig = {
   },
 };
 
-const withMDX = createMDX({});
+const options = {
+  theme: "github-dark",
+};
+
+const withMDX = createMDX({
+  options: {
+    remarkPlugins: [],
+    rehypePlugins: [
+      [path.resolve(process.cwd(), "rehype-raw-code.mjs"), {}],
+      ["rehype-pretty-code", options],
+    ],
+  },
+});
 
 export default withMDX(nextConfig);

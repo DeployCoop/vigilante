@@ -1,0 +1,67 @@
+# Troubleshooting & FAQs
+
+This guide covers common issues you might encounter when provisioning or running the Vigilante platform locally.
+
+## Local DNS Resolution Fails (`Name or service not known`)
+
+**Symptom**: You see errors in the TUI or logs like:
+`Bifrost unreachable: [Errno -2] Name or service not known`
+Or you receive a `404 page not found` when accessing `http://vigil.vigilante.local`.
+
+**Cause**: The local workstation's DNS is not routing `*.vigilante.local` to the k3d cluster ingress.
+
+**Solution**:
+Add the required hosts to your `/etc/hosts` file mapping to `127.0.0.1`.
+```bash
+sudo nano /etc/hosts
+```
+Add the following line:
+```
+127.0.0.1 vigil.vigilante.local opensearch.vigilante.local openvas.vigilante.local wazuh.vigilante.local bloodhound.vigilante.local
+```
+*Note: A future CLI update (`vigilante hosts sync`) will automate this.*
+
+---
+
+## Port Conflicts (80, 443)
+
+**Symptom**: `vigilante start` or `vigilante up` fails during the cluster creation phase with a message indicating that `0.0.0.0:80` or `0.0.0.0:443` is already in use.
+
+**Cause**: Another local service (like Apache, Nginx, or another local Kubernetes cluster) is already bound to the standard web ports that Traefik requires.
+
+**Solution**:
+Find out what is using the port:
+```bash
+sudo lsof -i :80
+sudo lsof -i :443
+```
+Stop the conflicting service, or stop any existing local clusters, then run:
+```bash
+pnpm cli
+# Then select 'Destroy Cluster' and start over.
+```
+
+---
+
+## Helm Timeout / OpenVAS PVC Hanging
+
+**Symptom**: You get an error like:
+```
+Command failed: helm upgrade --install openvas ...
+Error: failed post-install: 1 error occurred:
+* timed out waiting for the condition
+```
+
+**Cause**: This usually happens when the Persistent Volume Claim (PVC) for a module like OpenVAS or OpenSearch fails to bind due to storage class issues, or the pod takes too long to pull large container images (OpenVAS can take a long time on slower connections).
+
+**Solution**:
+1. Check the pod status inside the cluster:
+   ```bash
+   kubectl get pods -n default
+   kubectl describe pod <openvas-pod-name>
+   ```
+2. Check PVC status:
+   ```bash
+   kubectl get pvc -n default
+   ```
+3. If it's just a slow image pull, simply re-run `vigilante up` or select the module in the TUI to re-trigger the deployment. Helm is idempotent and will resume where it left off.

@@ -16,7 +16,10 @@
     "@types/mdx": "^2.0.14",
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "rehype-pretty-code": "^0.14.5",
+    "shiki": "^4.5.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
