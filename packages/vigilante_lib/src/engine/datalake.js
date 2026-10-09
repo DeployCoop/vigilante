@@ -5,7 +5,6 @@
  * Supports retrospective threat hunting against newly ingested IOCs.
  */
 
-import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -15,6 +14,18 @@ import { getVigilanteDatalakeDir } from './config.js';
 import { logger } from '../utils/logger.js';
 
 const require = createRequire(import.meta.url);
+
+let DatabaseSync = null;
+try {
+  const sqlite = require('node:sqlite');
+  DatabaseSync = sqlite.DatabaseSync || null;
+} catch {
+  try {
+    DatabaseSync = require('better-sqlite3');
+  } catch {
+    DatabaseSync = null;
+  }
+}
 
 let dbInstance = null;
 let activeBackend = 'sqlite';
@@ -125,6 +136,11 @@ export function initDataLake(customPathOrOptions = '', options = {}) {
 
   // Free First: Built-in Node.js SQLite (DatabaseSync)
   activeBackend = 'sqlite';
+  if (!DatabaseSync) {
+    throw new Error(
+      "SQLite engine unavailable: built-in 'node:sqlite' requires Node.js >= 22.5.0, or install 'better-sqlite3' / 'duckdb'."
+    );
+  }
   const db = new DatabaseSync(dbPath);
 
   // Initialize unified security events schema
