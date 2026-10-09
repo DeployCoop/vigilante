@@ -81,6 +81,7 @@ export class OpenVASModule extends BaseModule {
     const helmArgs = [
       'upgrade', '--install', releaseName, openvasChartPath,
       '--namespace', targetNamespace,
+      '--timeout', options?.timeout || '10m',
       ...openvasValuesArgs
     ];
 

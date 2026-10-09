@@ -82,10 +82,10 @@ spec:
             httpGet:
               path: /api/health
               port: http
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 5
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           securityContext:

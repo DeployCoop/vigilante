@@ -1,0 +1,73 @@
+{{- if .Values.bifrost.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vigil.bifrost.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "bifrost") | nindent 4 }}
+spec:
+  replicas: {{ .Values.bifrost.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "bifrost") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vigil.componentLabels" (dict "context" . "component" "bifrost") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/bifrost-config: {{ include (print $.Template.BasePath "/bifrost-configmap.yaml") . | sha256sum }}
+        {{- with .Values.bifrost.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "vigil.serviceAccountName" . }}
+      {{- include "vigil.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: bifrost
+          image: "{{ .Values.bifrost.image.repository }}:{{ .Values.bifrost.image.tag }}"
+          imagePullPolicy: {{ .Values.bifrost.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.bifrost.service.port | default 8080 }}
+              protocol: TCP
+          envFrom:
+            {{- include "vigil.envFrom" . | nindent 12 }}
+          env:
+            {{- with .Values.bifrost.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.bifrost.resources | nindent 12 }}
+          volumeMounts:
+            - name: bifrost-data
+              mountPath: /app/data
+            - name: bifrost-config
+              mountPath: /app/data/config.json
+              subPath: config.json
+      volumes:
+        - name: bifrost-data
+          emptyDir: {}
+        - name: bifrost-config
+          configMap:
+            name: {{ include "vigil.bifrost.fullname" . }}-config
+{{- end }}

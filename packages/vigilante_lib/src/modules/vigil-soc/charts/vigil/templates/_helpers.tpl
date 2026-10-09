@@ -81,6 +81,10 @@ Per-component names and labels.
 {{- printf "%s-redis" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "vigil.bifrost.fullname" -}}
+{{- printf "%s-bifrost" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "vigil.dbInit.fullname" -}}
 {{- printf "%s-db-init" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

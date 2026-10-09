@@ -122,7 +122,22 @@ async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog =
     return { method: 'direct' };
   } catch (err) {
     if (err.code === 'EACCES' || err.code === 'EPERM') {
-      // 2. Sudo fallback
+      // 2. Check if passwordless sudo is available to avoid hanging unattended/TTY processes
+      let hasPasswordlessSudo = false;
+      try {
+        await execa('sudo', ['-n', 'true'], { timeout: 3000 });
+        hasPasswordlessSudo = true;
+      } catch {
+        hasPasswordlessSudo = false;
+      }
+
+      if (!hasPasswordlessSudo) {
+        throw new Error(
+          `Permission denied writing to '${hostsPath}' and non-interactive sudo is unavailable. Run 'sudo vigilante hosts' or update manually.`
+        );
+      }
+
+      // 3. Sudo fallback with timeout
       if (onLog) {
         onLog(`[hostr] Root permission required to update '${hostsPath}'. Requesting sudo...`);
       }
@@ -132,7 +147,7 @@ async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog =
       
       try {
         await fs.writeFile(tmpFile, newContent, 'utf8');
-        await execa('sudo', ['cp', tmpFile, hostsPath]);
+        await execa('sudo', ['-n', 'cp', tmpFile, hostsPath], { timeout: 5000 });
         return { method: 'sudo' };
       } finally {
         await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

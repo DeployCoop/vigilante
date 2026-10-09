@@ -82,6 +82,7 @@ export class OpenSearchModule extends BaseModule {
     const osArgs = [
       'upgrade', '--install', osRelease, 'opensearch/opensearch',
       '--namespace', targetNamespace,
+      '--timeout', options?.timeout || '10m',
       ...osValuesArgs
     ];
     await execStream('helm', osArgs, { onLog });
@@ -106,6 +107,7 @@ export class OpenSearchModule extends BaseModule {
     const dashboardsArgs = [
       'upgrade', '--install', dashboardsRelease, 'opensearch/opensearch-dashboards',
       '--namespace', targetNamespace,
+      '--timeout', options?.timeout || '10m',
       ...dashboardsValuesArgs
     ];
     await execStream('helm', dashboardsArgs, { onLog });

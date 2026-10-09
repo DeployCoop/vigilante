@@ -1,0 +1,98 @@
+{{- if .Values.bifrost.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vigil.bifrost.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "bifrost") | nindent 4 }}
+data:
+  config.json: |
+    {
+      "$schema": "https://www.getbifrost.ai/schema",
+      "client": {
+        "enable_logging": true,
+        "disable_content_logging": false
+      },
+      "logs_store": {
+        "enabled": true,
+        "type": "sqlite",
+        "config": {
+          "path": "/app/data/logs.db"
+        }
+      },
+      "providers": {
+        "anthropic": {
+          "network_config": {
+            "default_request_timeout_in_seconds": 1800,
+            "stream_idle_timeout_in_seconds": 300,
+            "max_retries": 0
+          },
+          "keys": [
+            {
+              "name": "default-anthropic-key",
+              "weight": 1,
+              "value": "env.ANTHROPIC_API_KEY",
+              "models": [
+                "*"
+              ]
+            }
+          ]
+        },
+        "openai": {
+          "network_config": {
+            "default_request_timeout_in_seconds": 1800,
+            "stream_idle_timeout_in_seconds": 300,
+            "max_retries": 0
+          },
+          "keys": [
+            {
+              "name": "default-openai-key",
+              "weight": 1,
+              "value": "env.OPENAI_API_KEY",
+              "models": [
+                "*"
+              ]
+            }
+          ]
+        },
+        "gemini": {
+          "network_config": {
+            "default_request_timeout_in_seconds": 1800,
+            "stream_idle_timeout_in_seconds": 300,
+            "max_retries": 0
+          },
+          "keys": [
+            {
+              "name": "default-gemini-key",
+              "weight": 1,
+              "value": "env.GEMINI_API_KEY",
+              "models": [
+                "*"
+              ]
+            }
+          ]
+        },
+        "ollama": {
+          "network_config": {
+            "default_request_timeout_in_seconds": 1800,
+            "allow_private_network": true,
+            "stream_idle_timeout_in_seconds": 300,
+            "max_retries": 0
+          },
+          "keys": [
+            {
+              "name": "default-ollama-url",
+              "weight": 1,
+              "ollama_key_config": {
+                "url": "env.OLLAMA_URL"
+              },
+              "models": [
+                "*"
+              ]
+            }
+          ]
+        }
+      }
+    }
+{{- end }}

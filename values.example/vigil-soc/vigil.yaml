@@ -100,18 +100,18 @@ redis:
 
 ingress:
   enabled: true
+  className: "traefik"
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
   hosts:
-    - host: "vigil.vigilante.local"
+    - host: "vigil.{{DOMAIN}}"
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: "vigil-soc-tls"
+    - secretName: "{{TLS_SECRET}}"
       hosts:
-        - "vigil.vigilante.local"
+        - "vigil.{{DOMAIN}}"
 
 secrets:
   anthropicApiKey: "dummy-key-for-local-dev"

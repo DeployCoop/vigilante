@@ -80,6 +80,7 @@ export class VigilSOCModule extends BaseModule {
     const vigilArgs = [
       'upgrade', '--install', releaseName, vigilChartPath,
       '--namespace', targetNamespace,
+      '--timeout', options?.timeout || '10m',
       ...vigilValuesArgs
     ];
     await execStream('helm', vigilArgs, { onLog });

@@ -2,5 +2,11 @@ packages:
   - 'packages/*'
   - 'apps/*'
 
+allowBuilds:
+  unrs-resolver: true
+
 minimumReleaseAgeExclude:
   - nastymap@1.0.1
+
+overrides:
+  vigilante: 'link:'
