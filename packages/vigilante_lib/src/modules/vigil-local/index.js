@@ -164,7 +164,7 @@ export class VigilLocalModule extends BaseModule {
 
     // 5. Execute Helm install / upgrade from local chart directory
     const vigilArgs = [
-      'upgrade', '--install', releaseName, vigilChartPath,
+      'upgrade', '--install', '--wait', releaseName, vigilChartPath,
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...vigilValuesArgs

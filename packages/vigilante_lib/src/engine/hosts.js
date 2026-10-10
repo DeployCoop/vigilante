@@ -112,32 +112,12 @@ export function generateManagedBlock(hostnames = [], ip = '127.0.0.1') {
   return lines.join('\n');
 }
 
-/**
- * Safely write hosts content directly or via sudo fallback
- */
 async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog = null } = {}) {
   try {
-    // 1. Attempt direct write
     await fs.writeFile(hostsPath, newContent, 'utf8');
     return { method: 'direct' };
   } catch (err) {
     if (err.code === 'EACCES' || err.code === 'EPERM') {
-      // 2. Check if passwordless sudo is available to avoid hanging unattended/TTY processes
-      let hasPasswordlessSudo = false;
-      try {
-        await execa('sudo', ['-n', 'true'], { timeout: 3000 });
-        hasPasswordlessSudo = true;
-      } catch {
-        hasPasswordlessSudo = false;
-      }
-
-      if (!hasPasswordlessSudo) {
-        throw new Error(
-          `Permission denied writing to '${hostsPath}' and non-interactive sudo is unavailable. Run 'sudo vigilante hosts' or update manually.`
-        );
-      }
-
-      // 3. Sudo fallback with timeout
       if (onLog) {
         onLog(`[hostr] Root permission required to update '${hostsPath}'. Requesting sudo...`);
       }
@@ -147,7 +127,25 @@ async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog =
       
       try {
         await fs.writeFile(tmpFile, newContent, 'utf8');
-        await execa('sudo', ['-n', 'cp', tmpFile, hostsPath], { timeout: 5000 });
+        
+        let hasPasswordlessSudo = false;
+        try {
+          await execa('sudo', ['-n', 'true'], { timeout: 3000 });
+          hasPasswordlessSudo = true;
+        } catch {}
+
+        if (hasPasswordlessSudo) {
+          await execa('sudo', ['-n', 'cp', tmpFile, hostsPath], { timeout: 5000 });
+        } else {
+          // Use sudo-prompt for GUI password prompt
+          const sudo = await import('sudo-prompt');
+          await new Promise((resolve, reject) => {
+            sudo.exec(`cp "${tmpFile}" "${hostsPath}"`, { name: 'Vigilante CLI' }, (error, stdout, stderr) => {
+              if (error) reject(error);
+              else resolve(stdout);
+            });
+          });
+        }
         return { method: 'sudo' };
       } finally {
         await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

@@ -78,7 +78,7 @@ export class VigilSOCModule extends BaseModule {
     });
 
     const vigilArgs = [
-      'upgrade', '--install', releaseName, vigilChartPath,
+      'upgrade', '--install', '--wait', releaseName, vigilChartPath,
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...vigilValuesArgs

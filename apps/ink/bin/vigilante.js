@@ -269,6 +269,26 @@ if (command === 'mcp') {
     console.log('💡 Refer to FIRSTRESPONSE.md for the step-by-step incident handling guide.\n');
     process.exit(0);
   });
+} else if (command === 'doctor') {
+  import('vigilante_lib/cli/doctor.js').then(async ({ runDoctorChecks }) => {
+    console.log('\n🩺 VIGILANTE SYSTEM DOCTOR');
+    console.log('='.repeat(70));
+    const checks = await runDoctorChecks();
+    let allPassed = true;
+    checks.forEach(check => {
+      const icon = check.status === 'PASS' ? '✅' : '❌';
+      console.log(`${icon} ${check.name.padEnd(25)} : ${check.message}`);
+      if (check.status === 'FAIL') allPassed = false;
+    });
+    console.log('='.repeat(70));
+    if (allPassed) {
+      console.log('🎉 All system requirements met!');
+    } else {
+      console.log('⚠️  Some checks failed. Please resolve them before deploying.');
+      process.exit(1);
+    }
+    process.exit(0);
+  });
 } else if (command === 'playbooks' || (command === 'threat-sim' && cli.flags.list)) {
   import('../src/engine/threats.js').then(async ({ listAvailablePlaybooks }) => {
     const playbooks = await listAvailablePlaybooks({ customDir: cli.flags.playbooksDir });

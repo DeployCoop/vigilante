@@ -79,7 +79,7 @@ export class OpenVASModule extends BaseModule {
     });
 
     const helmArgs = [
-      'upgrade', '--install', releaseName, openvasChartPath,
+      'upgrade', '--install', '--wait', releaseName, openvasChartPath,
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...openvasValuesArgs

@@ -80,7 +80,7 @@ export class OpenSearchModule extends BaseModule {
     });
 
     const osArgs = [
-      'upgrade', '--install', osRelease, 'opensearch/opensearch',
+      'upgrade', '--install', '--wait', osRelease, 'opensearch/opensearch',
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...osValuesArgs
@@ -105,7 +105,7 @@ export class OpenSearchModule extends BaseModule {
     });
 
     const dashboardsArgs = [
-      'upgrade', '--install', dashboardsRelease, 'opensearch/opensearch-dashboards',
+      'upgrade', '--install', '--wait', dashboardsRelease, 'opensearch/opensearch-dashboards',
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...dashboardsValuesArgs

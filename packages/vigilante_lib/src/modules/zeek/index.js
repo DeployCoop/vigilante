@@ -74,7 +74,7 @@ export class ZeekModule extends BaseModule {
     });
 
     const helmArgs = [
-      'upgrade', '--install', releaseName, chartPath,
+      'upgrade', '--install', '--wait', releaseName, chartPath,
       '--namespace', targetNamespace,
       ...valuesArgs,
       '--set', `ingress.hosts[0].host=${ingressHost}`,
