@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 import { MobileNav } from "../components/MobileNav";
+import { Search } from "../components/Search";
 
 const navigation = [
   { name: "Introduction", href: "/docs" },
@@ -27,8 +28,9 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
           <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">Docs</span>
         </div>
         <div className="flex items-center space-x-6 text-sm text-slate-400">
-          <Link href="/" className="hover:text-emerald-400 transition">← Back to Overview</Link>
-          <a href="https://github.com/DeployCoop/vigilante" target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 transition font-medium">GitHub →</a>
+          <Search />
+          <Link href="/" className="hover:text-emerald-400 transition hidden md:block">← Back to Overview</Link>
+          <a href="https://github.com/DeployCoop/vigilante" target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 transition font-medium hidden sm:block">GitHub →</a>
         </div>
       </nav>
 
