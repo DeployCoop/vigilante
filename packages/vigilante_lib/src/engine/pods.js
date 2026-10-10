@@ -39,18 +39,50 @@ export function computePodStatus(pod) {
     return 'Terminating';
   }
 
-  const containerStatuses = [
-    ...(pod.status?.initContainerStatuses || []),
-    ...(pod.status?.containerStatuses || [])
-  ];
+  // 1. Check init container statuses
+  const initStatuses = pod.status?.initContainerStatuses || [];
+  for (let i = 0; i < initStatuses.length; i++) {
+    const cs = initStatuses[i];
+    if (cs.state?.terminated) {
+      if (cs.state.terminated.exitCode === 0 || cs.state.terminated.reason === 'Completed') {
+        continue;
+      }
+      return cs.state.terminated.reason ? `Init:${cs.state.terminated.reason}` : `Init:ExitCode:${cs.state.terminated.exitCode}`;
+    }
+    if (cs.state?.waiting && cs.state.waiting.reason && cs.state.waiting.reason !== 'PodInitializing') {
+      return `Init:${cs.state.waiting.reason}`;
+    }
+    if (cs.state?.running) {
+      return `Init:${i}/${initStatuses.length}`;
+    }
+  }
+
+  // 2. Check regular container statuses
+  const containerStatuses = pod.status?.containerStatuses || [];
+  let hasRunning = false;
+  let hasWaiting = null;
+  let hasTerminated = null;
 
   for (const cs of containerStatuses) {
     if (cs.state?.waiting?.reason) {
-      return cs.state.waiting.reason;
+      hasWaiting = cs.state.waiting.reason;
+    } else if (cs.state?.terminated?.reason) {
+      hasTerminated = cs.state.terminated.reason;
+    } else if (cs.state?.running) {
+      hasRunning = true;
     }
-    if (cs.state?.terminated?.reason) {
-      return cs.state.terminated.reason;
-    }
+  }
+
+  if (hasWaiting) {
+    return hasWaiting;
+  }
+
+  if (pod.status?.phase === 'Succeeded') {
+    return 'Completed';
+  }
+
+  if (hasTerminated && !hasRunning) {
+    return hasTerminated;
   }
 
   return pod.status?.phase || 'Unknown';

@@ -70,6 +70,18 @@ async function runTests() {
   if (computePodStatus(podRunning) !== 'Running') {
     throw new Error(`Expected Running, got: ${computePodStatus(podRunning)}`);
   }
+  const podRunningWithCompletedInit = {
+    status: {
+      phase: 'Running',
+      initContainerStatuses: [
+        { state: { terminated: { exitCode: 0, reason: 'Completed' } } }
+      ],
+      containerStatuses: [{ state: { running: {} }, ready: true }]
+    }
+  };
+  if (computePodStatus(podRunningWithCompletedInit) !== 'Running') {
+    throw new Error(`Expected Running for pod with completed init container, got: ${computePodStatus(podRunningWithCompletedInit)}`);
+  }
   console.log('✔ Test 2 passed: computePodStatus accurately reflects kubectl pod states.');
 
   // Test 3: getPodsWide schema verification (handles both active cluster and offline fallback)
