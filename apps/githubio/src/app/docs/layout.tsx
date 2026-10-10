@@ -13,6 +13,7 @@ const navigation = [
   { name: "Agents", href: "/docs/agents" },
   { name: "MCP Catalog", href: "/docs/mcp" },
   { name: "First Response", href: "/docs/first-response" },
+  { name: "Scenarios", href: "/docs/scenarios" },
   { name: "Development & Testing", href: "/docs/development" },
   { name: "Troubleshooting", href: "/docs/troubleshooting" },
 ];

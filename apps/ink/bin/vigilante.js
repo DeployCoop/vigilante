@@ -4,6 +4,7 @@ import { render } from 'ink';
 import meow from 'meow';
 import { App } from '../src/ui/App.js';
 import { loadConfig } from '../src/engine/config.js';
+import { ScenarioEngine } from 'vigilante_lib/engine/scenarios.js';
 
 const config = loadConfig();
 
@@ -1087,6 +1088,39 @@ Usage:
       process.exit(0);
     }
   });
+} else if (command === 'scenario') {
+  const engine = new ScenarioEngine();
+  const subAction = cli.input[1];
+  
+  (async () => {
+    if (subAction === 'list') {
+      const list = await engine.listScenarios();
+      console.log('\nAvailable Scenarios:');
+      if (list.length === 0) {
+        console.log('  (No scenarios found in ~/.config/vigilante/scenarios)');
+      } else {
+        list.forEach(s => console.log(`  - ${s.id}: ${s.name} (${s.description})`));
+      }
+      console.log('');
+      process.exit(0);
+    } else if (subAction === 'run') {
+      const scenarioId = cli.input[2];
+      if (!scenarioId) {
+        console.error('Usage: vigilante scenario run <scenario-id>');
+        process.exit(1);
+      }
+      try {
+        await engine.runScenario(scenarioId);
+        process.exit(0);
+      } catch (err) {
+        console.error(`[-] Error running scenario: ${err.message}`);
+        process.exit(1);
+      }
+    } else {
+      console.log('Usage: vigilante scenario <list|run> [scenario-id]');
+      process.exit(0);
+    }
+  })();
 } else if (command === 'ctf' || command === 'kctf') {
   Promise.all([
     import('../src/engine/tournament.js'),

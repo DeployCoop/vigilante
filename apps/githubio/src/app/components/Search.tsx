@@ -23,6 +23,7 @@ export function Search() {
       if (typeof window !== "undefined") {
         try {
           // Dynamic import for the Pagefind bundle generated post-build
+          // @ts-ignore
           const pf = await import(
             /* webpackIgnore: true */ "/vigilante/pagefind/pagefind.js"
           );
