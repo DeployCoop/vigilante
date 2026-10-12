@@ -41,6 +41,7 @@ import {
 } from '../engine/nist.js';
 import {
   checkOpenVasStatus,
+  getOpenVasCredentials,
   runHostVulnerabilityScan,
   listSavedOpenVasReports,
   SCAN_PROFILES as OPENVAS_SCAN_PROFILES
@@ -1192,13 +1193,30 @@ export function createVigilanteMcpServer() {
         },
         {
           name: 'openvas_status',
-          description: 'Check health of the OpenVAS / Greenbone Community Edition vulnerability management suite running on the cluster.',
+          description: 'Check health of the OpenVAS / Greenbone Community Edition vulnerability management suite running on the cluster. Automatically discovers namespace if omitted.',
           inputSchema: {
             type: 'object',
             properties: {
               namespace: {
                 type: 'string',
-                description: 'Kubernetes namespace where OpenVAS is deployed (default: openvas)'
+                description: 'Optional Kubernetes namespace where OpenVAS is deployed (defaults to auto-discovering openvas or default)'
+              },
+              clusterName: {
+                type: 'string',
+                description: 'Cluster name (default: vigilante-dev)'
+              }
+            }
+          }
+        },
+        {
+          name: 'get_openvas_credentials',
+          description: 'Retrieve administrative login credentials and Web console endpoint for OpenVAS / Greenbone Community Edition.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              namespace: {
+                type: 'string',
+                description: 'Optional Kubernetes namespace where OpenVAS secret is deployed (defaults to auto-discovery)'
               },
               clusterName: {
                 type: 'string',
@@ -1228,7 +1246,7 @@ export function createVigilanteMcpServer() {
               },
               namespace: {
                 type: 'string',
-                description: 'Kubernetes namespace of OpenVAS cluster deployment (default: openvas)'
+                description: 'Optional Kubernetes namespace of OpenVAS cluster deployment (defaults to auto-discovery)'
               }
             },
             required: ['host']
@@ -3260,7 +3278,7 @@ export function createVigilanteMcpServer() {
 
     // Tool: openvas_status
     if (name === 'openvas_status') {
-      const { namespace = 'openvas', clusterName = 'vigilante-dev' } = args;
+      const { namespace = null, clusterName = 'vigilante-dev' } = args;
       const status = await checkOpenVasStatus({ namespace, clusterName });
       return {
         content: [
@@ -3272,9 +3290,23 @@ export function createVigilanteMcpServer() {
       };
     }
 
+    // Tool: get_openvas_credentials
+    if (name === 'get_openvas_credentials') {
+      const { namespace = null, clusterName = 'vigilante-dev' } = args;
+      const creds = await getOpenVasCredentials({ namespace, clusterName });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(creds || { error: 'OpenVAS admin credentials secret not found' }, null, 2)
+          }
+        ]
+      };
+    }
+
     // Tool: run_openvas_scan
     if (name === 'run_openvas_scan') {
-      const { host, profile = 'full-and-fast', networkTarget = 'local_network', namespace = 'openvas' } = args;
+      const { host, profile = 'full-and-fast', networkTarget = 'local_network', namespace = null, clusterName = 'vigilante-dev' } = args;
       if (!host) {
         throw new Error("Argument 'host' is required.");
       }
@@ -3282,7 +3314,8 @@ export function createVigilanteMcpServer() {
         host,
         profile,
         networkTarget,
-        namespace
+        namespace,
+        clusterName
       });
       return {
         content: [

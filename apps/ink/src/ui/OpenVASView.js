@@ -10,6 +10,7 @@ import { listSavedXmlScans } from '../engine/nmap-xml.js';
 import {
   SCAN_PROFILES,
   checkOpenVasStatus,
+  getOpenVasCredentials,
   runHostVulnerabilityScan,
   getCvssSeverity,
   listSavedOpenVasReports
@@ -19,7 +20,7 @@ import { logger } from '../utils/logger.js';
 export const OpenVASView = memo(function OpenVASView({
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
-  namespace = 'openvas',
+  namespace = null,
   initialTargetHost = null,
   onNavigate = null
 }) {
@@ -32,6 +33,7 @@ export const OpenVASView = memo(function OpenVASView({
   const [selectedHostIdx, setSelectedHostIdx] = useState(0);
   const [profileIdx, setProfileIdx] = useState(0);
   const [clusterStatus, setClusterStatus] = useState({ installed: false, ready: false, pods: [] });
+  const [credentials, setCredentials] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(null);
   const [scanResult, setScanResult] = useState(null);
@@ -48,6 +50,8 @@ export const OpenVASView = memo(function OpenVASView({
   const refreshStatus = useCallback(async () => {
     const status = await checkOpenVasStatus({ namespace, clusterName });
     setClusterStatus(status);
+    const creds = await getOpenVasCredentials({ namespace: status.namespace || namespace, clusterName });
+    if (creds) setCredentials(creds);
   }, [namespace, clusterName]);
 
   // Load discovered hosts from saved Nmap scans
@@ -96,7 +100,7 @@ export const OpenVASView = memo(function OpenVASView({
         host: activeHostObj,
         profile: currentProfile.id,
         networkTarget: 'local_network',
-        namespace,
+        namespace: clusterStatus.namespace || namespace,
         clusterName,
         onProgress: (p) => setScanProgress(p),
         onLog: (msg) => logger.info('OPENVAS:UI', msg)
@@ -315,7 +319,7 @@ export const OpenVASView = memo(function OpenVASView({
       )
     ),
 
-    // Ingress Endpoint & Web Assistant Link
+    // Ingress Endpoint & Web Assistant Link + Admin Credentials
     React.createElement(
       Box,
       { marginX: 1, marginBottom: 1, justifyContent: 'space-between' },
@@ -324,7 +328,17 @@ export const OpenVASView = memo(function OpenVASView({
         null,
         React.createElement(Text, { color: theme.muted }, 'Web Console: '),
         React.createElement(Text, { color: theme.accent, underline: true }, gsaWebUrl),
-        React.createElement(Text, { color: theme.muted }, ' (GSAD Ingress)')
+        credentials
+          ? React.createElement(
+              Box,
+              { marginLeft: 2 },
+              React.createElement(Text, { color: theme.muted }, 'Auth: '),
+              React.createElement(Text, { color: theme.success, bold: true }, credentials.username),
+              React.createElement(Text, { color: theme.muted }, ' / '),
+              React.createElement(Text, { color: theme.warning, bold: true }, credentials.password),
+              React.createElement(Text, { color: theme.muted }, ` (ns: ${credentials.namespace})`)
+            )
+          : null
       ),
       React.createElement(
         Box,

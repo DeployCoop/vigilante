@@ -2,16 +2,74 @@ hostname: openvas.{{DOMAIN}}
 domain: {{DOMAIN}}
 tlsSecretName: {{TLS_SECRET}}
 
+admin:
+  username: admin
+  password: admin
+
+initFeeds: true
+
 psgvm:
   POSTGRES_VERSION: "17"
   image:
     repository: registry.community.greenbone.net/community/pg-gvm
-    tag: 22.6.13
+    tag: stable
   persistence:
     enabled: true
     storageClass: ""
     accessMode: ReadWriteOnce
     size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+gsa:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+openvas:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+openvasd:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+gvmTools:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
 
 ospd:
   image:
@@ -34,7 +92,10 @@ gvmd:
   resources:
     requests:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
 
 persistence:
   enabled: true

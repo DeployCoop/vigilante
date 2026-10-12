@@ -1,0 +1,20 @@
+# Example user override for BloodHound CE module
+ingress:
+  enabled: true
+  hosts:
+    - host: bloodhound.vigilante.local
+  tls:
+    - secretName: bloodhound-tls
+      hosts:
+        - bloodhound.vigilante.local
+
+neo4j:
+  password: "CustomNeo4jSecurePassword!"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi

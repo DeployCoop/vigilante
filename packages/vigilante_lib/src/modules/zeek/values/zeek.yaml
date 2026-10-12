@@ -1,0 +1,19 @@
+# Example user override for Zeek module
+interface: eth0
+
+ingress:
+  enabled: true
+  hosts:
+    - host: zeek.vigilante.local
+  tls:
+    - secretName: zeek-tls
+      hosts:
+        - zeek.vigilante.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

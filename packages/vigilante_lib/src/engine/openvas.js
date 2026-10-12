@@ -56,50 +56,103 @@ export function getCvssSeverity(score) {
 }
 
 /**
- * Check health of OpenVAS cluster deployment
+ * Retrieve administrative credentials for OpenVAS deployment
  */
-export async function checkOpenVasStatus({
-  namespace = 'openvas',
+export async function getOpenVasCredentials({
+  namespace = null,
   clusterName = 'vigilante-dev'
 } = {}) {
-  try {
-    const { stdout } = await execa('kubectl', [
-      'get', 'pods',
-      '-n', namespace,
-      '--context', `k3d-${clusterName}`,
-      '--request-timeout=3s',
-      '-o', 'json'
-    ]);
-    const parsed = JSON.parse(stdout);
-    const pods = (parsed.items || []).map(p => ({
-      name: p.metadata.name,
-      phase: p.status.phase,
-      ready: p.status.containerStatuses?.every(c => c.ready) || false,
-      containers: (p.status.containerStatuses || []).map(c => ({
-        name: c.name,
-        ready: c.ready,
-        restartCount: c.restartCount
-      }))
-    }));
+  const candidateNamespaces = namespace ? [namespace] : ['openvas', 'default'];
 
-    const isInstalled = pods.length > 0;
-    const allReady = isInstalled && pods.every(p => p.ready || p.phase === 'Succeeded');
+  for (const ns of candidateNamespaces) {
+    try {
+      const { stdout: b64Data } = await execa('kubectl', [
+        'get', 'secret', 'openvas-admin',
+        '-n', ns,
+        '--context', `k3d-${clusterName}`,
+        '--request-timeout=3s',
+        '-o', 'jsonpath={.data.username}|{.data.password}'
+      ]);
 
-    return {
-      installed: isInstalled,
-      ready: allReady,
-      pods,
-      namespace
-    };
-  } catch (err) {
-    return {
-      installed: false,
-      ready: false,
-      pods: [],
-      namespace,
-      error: err.message
-    };
+      if (b64Data && b64Data.includes('|')) {
+        const [b64User, b64Pass] = b64Data.split('|');
+        return {
+          username: Buffer.from(b64User, 'base64').toString('utf8'),
+          password: Buffer.from(b64Pass, 'base64').toString('utf8'),
+          namespace: ns
+        };
+      }
+    } catch {
+      // Continue to next namespace
+    }
   }
+
+  return null;
+}
+
+/**
+ * Check health of OpenVAS cluster deployment with auto-namespace discovery
+ */
+export async function checkOpenVasStatus({
+  namespace = null,
+  clusterName = 'vigilante-dev'
+} = {}) {
+  const candidateNamespaces = namespace ? [namespace] : ['openvas', 'default'];
+
+  for (const ns of candidateNamespaces) {
+    try {
+      const { stdout } = await execa('kubectl', [
+        'get', 'pods',
+        '-n', ns,
+        '-l', 'app.kubernetes.io/name=openvas',
+        '--context', `k3d-${clusterName}`,
+        '--request-timeout=3s',
+        '-o', 'json'
+      ]);
+      const parsed = JSON.parse(stdout);
+      const items = parsed.items || [];
+
+      if (items.length > 0) {
+        const pods = items.map(p => ({
+          name: p.metadata.name,
+          phase: p.status.phase,
+          ready: p.status.containerStatuses?.every(c => c.ready) || false,
+          containers: (p.status.containerStatuses || []).map(c => ({
+            name: c.name,
+            ready: c.ready,
+            restartCount: c.restartCount
+          }))
+        }));
+
+        const isInstalled = pods.length > 0;
+        const allReady = isInstalled && pods.every(p => p.ready || p.phase === 'Succeeded');
+
+        return {
+          installed: isInstalled,
+          ready: allReady,
+          pods,
+          namespace: ns
+        };
+      }
+    } catch (err) {
+      if (namespace) {
+        return {
+          installed: false,
+          ready: false,
+          pods: [],
+          namespace: ns,
+          error: err.message
+        };
+      }
+    }
+  }
+
+  return {
+    installed: false,
+    ready: false,
+    pods: [],
+    namespace: namespace || 'default'
+  };
 }
 
 /**
@@ -226,7 +279,7 @@ export async function runHostVulnerabilityScan({
   host,
   profile = 'full-and-fast',
   networkTarget = 'local_network',
-  namespace = 'openvas',
+  namespace = null,
   clusterName = 'vigilante-dev',
   onProgress = null,
   onLog = null
@@ -245,12 +298,56 @@ export async function runHostVulnerabilityScan({
   // Step 2: Querying cluster status & NVTs (35%)
   if (onProgress) onProgress({ phase: 'LOADING_NVTS', percent: 35, message: `Loading Greenbone Community Feed NVTs (${profileObj.nvtCount} tests)...` });
   const status = await checkOpenVasStatus({ namespace, clusterName });
-  if (onLog) {
-    if (status.ready) {
-      onLog(`[openvas] Cluster pods ready in namespace '${namespace}'. Executing via OpenVAS engine.`);
-    } else {
-      onLog(`[openvas] Cluster pods offline or standby. Running standalone vulnerability evaluator.`);
+  const effectiveNamespace = status.namespace || namespace || 'default';
+
+  let gmpTaskCreated = null;
+  if (status.ready) {
+    if (onLog) onLog(`[openvas] Cluster pods ready in namespace '${effectiveNamespace}'. Connecting to gvmd via GMP.`);
+    try {
+      const creds = await getOpenVasCredentials({ namespace: effectiveNamespace, clusterName });
+      const username = creds?.username || 'admin';
+      const password = creds?.password || 'admin';
+
+      // Map profile to known Greenbone config UUID
+      const configMap = {
+        'full-and-fast': 'daba56c8-73ec-11df-a475-002264764cea',
+        'host-discovery': '2d3f051c-55ba-11e3-bf43-406186ea4fc5',
+        'system-discovery': '8715c877-47a0-438d-98a3-27c7a6ab2196',
+        'web-app-audit': 'd21f6c81-2b88-4ac1-b7b4-a2a9f2ad4663',
+        'critical-cves': 'daba56c8-73ec-11df-a475-002264764cea'
+      };
+      const configId = configMap[profile] || 'daba56c8-73ec-11df-a475-002264764cea';
+
+      const targetXml = `<create_target><name>Target_${hostIp.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}</name><hosts>${hostIp}</hosts><port_list id="33d0cd82-57c6-11e1-8ed1-406186ea4fc5"/></create_target>`;
+      const { stdout: targetRes } = await execa('kubectl', [
+        'exec', '-n', effectiveNamespace, 'deployment/openvas', '-c', 'gvm-tools',
+        '--context', `k3d-${clusterName}`,
+        '--', 'su', '-', 'nobody', '-s', '/bin/sh', '-c',
+        `gvm-cli --gmp-username=${username} --gmp-password=${password} socket --socketpath=/run/gvmd/gvmd.sock -X '${targetXml}'`
+      ]);
+
+      const targetIdMatch = targetRes.match(/id="([^"]+)"/);
+      const targetId = targetIdMatch ? targetIdMatch[1] : null;
+
+      if (targetId) {
+        const taskXml = `<create_task><name>Scan_${hostIp.replace(/[^a-zA-Z0-9]/g, '_')}</name><config id="${configId}"/><target id="${targetId}"/><scanner id="08b69003-5fc2-4037-a479-93b440211c73"/></create_task>`;
+        const { stdout: taskRes } = await execa('kubectl', [
+          'exec', '-n', effectiveNamespace, 'deployment/openvas', '-c', 'gvm-tools',
+          '--context', `k3d-${clusterName}`,
+          '--', 'su', '-', 'nobody', '-s', '/bin/sh', '-c',
+          `gvm-cli --gmp-username=${username} --gmp-password=${password} socket --socketpath=/run/gvmd/gvmd.sock -X '${taskXml}'`
+        ]);
+        const taskIdMatch = taskRes.match(/id="([^"]+)"/);
+        if (taskIdMatch) {
+          gmpTaskCreated = { taskId: taskIdMatch[1], targetId };
+          if (onLog) onLog(`[openvas] Registered GMP task ${gmpTaskCreated.taskId} in gvmd scheduler.`);
+        }
+      }
+    } catch (gmpErr) {
+      logger.warn('OPENVAS:GMP', `GMP dispatch failed: ${gmpErr.message}; continuing with vulnerability evaluator`);
     }
+  } else {
+    if (onLog) onLog(`[openvas] Cluster pods offline or standby. Running standalone vulnerability evaluator.`);
   }
   await new Promise(r => setTimeout(r, 500));
 
@@ -282,6 +379,7 @@ export async function runHostVulnerabilityScan({
     timestamp: new Date().toISOString(),
     durationMs,
     clusterStatus: status,
+    gmpTask: gmpTaskCreated,
     summary: {
       totalFindings: findings.length,
       maxCvss,

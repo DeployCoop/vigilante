@@ -1,0 +1,20 @@
+# Example user override for Suricata module
+interface: eth0
+runMode: workers
+
+ingress:
+  enabled: true
+  hosts:
+    - host: suricata.vigilante.local
+  tls:
+    - secretName: suricata-tls
+      hosts:
+        - suricata.vigilante.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

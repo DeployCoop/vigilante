@@ -1,0 +1,17 @@
+# Example user override for ZAP module
+ingress:
+  enabled: true
+  hosts:
+    - host: zap.vigilante.local
+  tls:
+    - secretName: zap-tls
+      hosts:
+        - zap.vigilante.local
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
