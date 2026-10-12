@@ -75,7 +75,7 @@ export class WazuhModule extends BaseModule {
     });
 
     const helmArgs = [
-      'upgrade', '--install', '--wait', releaseName, chartPath,
+      'upgrade', '--install', releaseName, chartPath,
       '--namespace', targetNamespace,
       ...valuesArgs,
       '--set', `ingress.hosts[0].host=${ingressHost}`,

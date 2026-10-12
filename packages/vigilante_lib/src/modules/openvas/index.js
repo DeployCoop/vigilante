@@ -79,7 +79,7 @@ export class OpenVASModule extends BaseModule {
     });
 
     const helmArgs = [
-      'upgrade', '--install', '--wait', releaseName, openvasChartPath,
+      'upgrade', '--install', releaseName, openvasChartPath,
       '--namespace', targetNamespace,
       '--timeout', options?.timeout || '10m',
       ...openvasValuesArgs
@@ -89,6 +89,14 @@ export class OpenVASModule extends BaseModule {
 
     if (onLog) {
       onLog(`[openvas] Successfully deployed OpenVAS / Greenbone in namespace '${targetNamespace}'! Ingress: https://${ingressHost}`);
+      try {
+        const creds = await this.getCredentials({ clusterName, namespace: targetNamespace });
+        if (creds) {
+          onLog(`[openvas] Greenbone Security Assistant login: ${creds.username} / ${creds.password}`);
+        }
+      } catch {
+        // Ignore if credentials secret is not yet readable
+      }
     }
   }
 
@@ -127,6 +135,7 @@ export class OpenVASModule extends BaseModule {
       const { stdout: podsJson } = await execa('kubectl', [
         'get', 'pods',
         '-n', targetNamespace,
+        '-l', 'app.kubernetes.io/name=openvas',
         '--context', `k3d-${clusterName}`,
         '--request-timeout=3s',
         '-o', 'json'
@@ -150,6 +159,7 @@ export class OpenVASModule extends BaseModule {
         installed: isInstalled,
         status: allReady ? 'Ready' : isInstalled ? 'Deploying / Degraded' : 'Not Installed',
         pods,
+        credentials: await this.getCredentials({ clusterName, namespace: targetNamespace }),
         endpoints: await this.getEndpoints({ domain, namespace: targetNamespace })
       };
     } catch {
@@ -160,8 +170,36 @@ export class OpenVASModule extends BaseModule {
         installed: false,
         status: 'Not Installed',
         pods: [],
+        credentials: null,
         endpoints: []
       };
+    }
+  }
+
+  /**
+   * Retrieve administrative credentials from the OpenVAS secret
+   */
+  async getCredentials({ clusterName = 'vigilante-dev', namespace = null } = {}) {
+    const targetNamespace = namespace || this.namespace;
+    const secretName = 'openvas-admin';
+
+    try {
+      const { stdout: b64Data } = await execa('kubectl', [
+        'get', 'secret', secretName,
+        '-n', targetNamespace,
+        '--context', `k3d-${clusterName}`,
+        '--request-timeout=5s',
+        '-o', 'jsonpath={.data.username}|{.data.password}'
+      ]);
+
+      if (!b64Data || !b64Data.includes('|')) return null;
+      const [b64User, b64Pass] = b64Data.split('|');
+      return {
+        username: Buffer.from(b64User, 'base64').toString('utf8'),
+        password: Buffer.from(b64Pass, 'base64').toString('utf8')
+      };
+    } catch {
+      return null;
     }
   }
 

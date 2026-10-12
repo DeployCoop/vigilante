@@ -28,12 +28,18 @@ spec:
           env:
             - name: POSTGRES_VERSION
               value: "{{ .Values.psgvm.POSTGRES_VERSION }}"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openvas.fullname" . }}-admin
+                  key: postgresPassword
           volumeMounts:
             - name: psql-storage
               mountPath: /mnt/postgresql
             - name: init-scripts
               mountPath: /init-scripts
 
+        {{- if .Values.initFeeds }}
         - name: notus-data
           image: registry.community.greenbone.net/community/notus-data
           imagePullPolicy: IfNotPresent
@@ -106,6 +112,7 @@ spec:
             - name: shared-storage
               mountPath: /mnt
               subPath: vt-data
+        {{- end }}
 
         - name: configure-openvas
           image: registry.community.greenbone.net/community/openvas-scanner:stable
@@ -137,6 +144,21 @@ spec:
             - name: shared-storage
               mountPath: /run/redis
               subPath: redis-socket
+          readinessProbe:
+            exec:
+              command:
+                - /usr/local/bin/redis-cli
+                - -s
+                - /run/redis/redis.sock
+                - ping
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          {{- with .Values.redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
         - name: pg-gvm
           image: {{ .Values.psgvm.image.repository }}:{{ .Values.psgvm.image.tag }}
@@ -147,14 +169,41 @@ spec:
             - name: shared-storage
               mountPath: /var/run/postgresql
               subPath: psql-socket
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -h
+                - /var/run/postgresql
+                - -U
+                - postgres
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
           lifecycle:
             postStart:
               exec:
                 command: ["/bin/sh", "-c", "chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true"]
+          {{- with .Values.psgvm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
         - name: gvmd
           image: registry.community.greenbone.net/community/gvmd:stable
           imagePullPolicy: IfNotPresent
+          env:
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openvas.fullname" . }}-admin
+                  key: username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openvas.fullname" . }}-admin
+                  key: password
           volumeMounts:
             - name: gvmd-storage
               mountPath: /var/lib/gvm
@@ -171,10 +220,29 @@ spec:
             - name: shared-storage
               mountPath: /var/run/postgresql
               subPath: psql-socket
+            - name: init-scripts
+              mountPath: /init-scripts
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -S
+                - /run/gvmd/gvmd.sock
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
           lifecycle:
             postStart:
               exec:
-                command: ["/bin/sh", "-c", "chown -R gvmd:gvmd /run/gvmd 2>/dev/null || true; mkdir -p /var/lib/gvm/gvmd; chown -R gvmd:gvmd /var/lib/gvm 2>/dev/null || true"]
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    chown -R gvmd:gvmd /run/gvmd 2>/dev/null || true
+                    mkdir -p /var/lib/gvm/gvmd
+                    chown -R gvmd:gvmd /var/lib/gvm 2>/dev/null || true
+                    /init-scripts/bootstrap-admin.sh &
           {{- with .Values.gvmd.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -187,9 +255,29 @@ spec:
             - name: gsa
               containerPort: 9392
               protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9392
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9392
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: gvmd-socket
               mountPath: /run/gvmd
+          {{- with .Values.gsa.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
         - name: openvas
           image: registry.community.greenbone.net/community/openvas-scanner:stable
@@ -201,6 +289,10 @@ spec:
               mountPath: /var/log/openvas
               subPath: openvas-log-data
           command: ["/bin/sh", "-c", "cat /etc/openvas/openvas.conf 2>/dev/null && tail -f /var/log/openvas/openvas.log"]
+          {{- with .Values.openvas.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
         - name: openvasd
           image: registry.community.greenbone.net/community/openvas-scanner:stable
@@ -216,6 +308,13 @@ spec:
               value: "/etc/openvas/gnupg"
             - name: LISTENING
               value: "0.0.0.0:81"
+          readinessProbe:
+            tcpSocket:
+              port: 81
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: openvas-storage
               mountPath: /etc/openvas
@@ -225,6 +324,10 @@ spec:
             - name: shared-storage
               mountPath: /var/lib/notus
               subPath: notus-data
+          {{- with .Values.openvasd.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
         - name: ospd-openvas
           image: {{ .Values.ospd.image.repository }}:{{ .Values.ospd.image.tag }}
@@ -233,6 +336,16 @@ spec:
             capabilities:
               add: ["NET_ADMIN", "NET_RAW"]
           command: ["ospd-openvas", "-f", "--config", "/etc/gvm/ospd-openvas.conf", "--notus-feed-dir", "/var/lib/notus/advisories", "-m", "666"]
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -S
+                - /run/ospd/ospd-openvas.sock
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: shared-storage
               mountPath: /var/lib/openvas/plugins
@@ -266,6 +379,10 @@ spec:
               mountPath: /run/ospd
               subPath: ospd-openvas-socket
           command: ["sh", "-c", "while true; do sleep 3600; done"]
+          {{- with .Values.gvmTools.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
       volumes:
         - name: shared-storage

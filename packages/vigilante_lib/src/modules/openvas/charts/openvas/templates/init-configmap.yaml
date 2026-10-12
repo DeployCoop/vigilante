@@ -69,6 +69,9 @@ data:
       if [ -z "$USER_EXISTS" ]; then
         createuser --host="$POSTGRES_SOCKET_DIR" -U postgres -DRS "$POSTGRES_USER" 2>/dev/null || true
       fi
+      if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+        psql --host="$POSTGRES_SOCKET_DIR" -U postgres -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '$POSTGRES_PASSWORD';" 2>/dev/null || true
+      fi
 
       DB_EXISTS="$(echo "SELECT 1 FROM pg_database WHERE datname = '$POSTGRES_DB';" | psql --host="$POSTGRES_SOCKET_DIR" -U postgres -d postgres --tuples-only 2>/dev/null || true)"
       if [ -z "$DB_EXISTS" ]; then
@@ -88,3 +91,45 @@ data:
     cp -ra /var/lib/postgresql/* /mnt/postgresql/ 2>/dev/null || true
     mkdir -p "$POSTGRES_SETUP_DIR" 2>/dev/null || true
     log "PostgreSQL initialization completed successfully."
+
+  bootstrap-admin.sh: |
+    #!/bin/sh
+    set -u
+    log() { echo "[INFO] $*"; }
+
+    log "Waiting for gvmd socket..."
+    i=0
+    while [ $i -lt 120 ]; do
+      if [ -S /run/gvmd/gvmd.sock ]; then
+        break
+      fi
+      i=$((i+1))
+      sleep 2
+    done
+
+    if [ ! -S /run/gvmd/gvmd.sock ]; then
+      echo "[ERROR] gvmd socket not available after 240s, aborting bootstrap." >&2
+      exit 1
+    fi
+
+    log "Waiting for gvmd database connection..."
+    j=0
+    while [ $j -lt 60 ]; do
+      if su - gvmd -s /bin/sh -c "/usr/local/sbin/gvmd --get-users" >/dev/null 2>&1; then
+        break
+      fi
+      j=$((j+1))
+      sleep 2
+    done
+
+    ADMIN_USER="${ADMIN_USERNAME:-admin}"
+    ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
+
+    log "Ensuring admin user '$ADMIN_USER' exists in gvmd..."
+    if su - gvmd -s /bin/sh -c "/usr/local/sbin/gvmd --get-users" 2>/dev/null | grep -q "^$ADMIN_USER "; then
+      su - gvmd -s /bin/sh -c "/usr/local/sbin/gvmd --user='$ADMIN_USER' --new-password='$ADMIN_PASS'" 2>/dev/null || true
+      log "Admin user '$ADMIN_USER' password updated."
+    else
+      su - gvmd -s /bin/sh -c "/usr/local/sbin/gvmd --create-user='$ADMIN_USER' --password='$ADMIN_PASS' --role=Admin --disable-password-policy" 2>/dev/null || true
+      log "Admin user '$ADMIN_USER' created successfully."
+    fi
