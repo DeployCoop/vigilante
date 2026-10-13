@@ -75,7 +75,7 @@ export class FlamingoModule extends BaseModule {
     });
 
     const helmArgs = [
-      'upgrade', '--install', '--wait', releaseName, chartPath,
+      'upgrade', '--install', releaseName, chartPath,
       '--namespace', targetNamespace,
       ...valuesArgs,
       '--set', `ingress.hosts[0].host=${ingressHost}`,
@@ -137,6 +137,7 @@ export class FlamingoModule extends BaseModule {
       const { stdout: podsJson } = await execa('kubectl', [
         'get', 'pods',
         '-n', targetNamespace,
+        '-l', 'app.kubernetes.io/name=flamingo',
         '--context', `k3d-${clusterName}`,
         '--request-timeout=3s',
         '-o', 'json'
