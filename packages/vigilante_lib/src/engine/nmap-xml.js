@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { getVigilanteNmapsDir, ensureVigilanteConfig } from './config.js';
+import { getVigilanteNmapsDir, ensureVigilanteConfig, resolvePathInside } from './config.js';
 import { logger } from '../utils/logger.js';
 import { parseNmapXml as nastymapParse } from './nastymap/parser.js';
 import { generateTopology } from './nastymap/topology.js';
@@ -153,6 +153,10 @@ export async function listSavedXmlScans() {
  * @returns {Promise<Object>}
  */
 export async function readXmlScan(filePath) {
-  const content = await fs.readFile(filePath, 'utf8');
-  return parseNmapXml(content, path.basename(filePath));
+  // Saved XML scans live in the XDG nmaps directory. MCP diff/topology
+  // handlers forward caller-supplied names here when a listing lookup
+  // misses, so an uncontained path would be an arbitrary file read.
+  const targetPath = resolvePathInside(getVigilanteNmapsDir(), filePath);
+  const content = await fs.readFile(targetPath, 'utf8');
+  return parseNmapXml(content, path.basename(targetPath));
 }

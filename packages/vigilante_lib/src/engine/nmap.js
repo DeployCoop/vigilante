@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getVigilanteNmapsDir, ensureVigilanteConfig } from './config.js';
+import { getVigilanteNmapsDir, ensureVigilanteConfig, resolvePathInside } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { logger } from '../utils/logger.js';
 
@@ -435,6 +435,9 @@ export async function runNmapScan({
  * @param {string} filePath - Path to .nmap file
  */
 export async function deleteSavedScan(filePath) {
+  // Saved scans live in the XDG nmaps directory; in-repo callers pass
+  // listing paths from there. Refuse anything outside it.
+  filePath = resolvePathInside(getVigilanteNmapsDir(), filePath);
   try {
     await fs.unlink(filePath);
     const xmlPath = filePath.replace(/\.(nmap|txt)$/, '.xml');
@@ -463,5 +466,6 @@ export async function deleteSavedScan(filePath) {
  * @returns {Promise<string>}
  */
 export async function readSavedScan(filePath) {
-  return await fs.readFile(filePath, 'utf8');
+  const targetPath = resolvePathInside(getVigilanteNmapsDir(), filePath);
+  return await fs.readFile(targetPath, 'utf8');
 }

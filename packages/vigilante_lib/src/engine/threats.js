@@ -1,11 +1,12 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { load as yamlLoad, dump as yamlDump } from 'js-yaml';
 import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
 import { execStream, exec } from '../utils/exec.js';
-import { getVigilantePlaybooksDir, loadConfig } from './config.js';
+import { getVigilantePlaybooksDir, loadConfig, sanitizePathComponent } from './config.js';
 import { NIST_ATTACK_VECTORS } from './nist.js';
 
 /**
@@ -606,7 +607,12 @@ export async function executeThreatPlaybook({
 
   // Generate dynamic Kubernetes Job manifest
   const jobManifest = generateThreatJobManifest(targetPlaybook, { namespace: targetNamespace });
-  const tempManifestPath = path.join('/tmp', `vigilante-threat-job-${Date.now()}-${targetPlaybook.id}.yaml`);
+  // Write into a private mkdtemp directory with a sanitized filename: the
+  // playbook id is data, and embedding it raw in a shared-/tmp path allowed
+  // '../' escapes to an attacker-chosen *.yaml path and symlink races on a
+  // predictable name.
+  const tempManifestDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-threat-job-'));
+  const tempManifestPath = path.join(tempManifestDir, `vigilante-threat-job-${sanitizePathComponent(targetPlaybook.id)}.yaml`);
   await fs.writeFile(tempManifestPath, jobManifest, 'utf8');
 
   try {
@@ -637,6 +643,7 @@ export async function executeThreatPlaybook({
     };
   } finally {
     await fs.unlink(tempManifestPath).catch(() => {});
+    await fs.rm(tempManifestDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

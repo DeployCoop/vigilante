@@ -263,7 +263,45 @@ export function getInstanceLogsDir(instanceName = 'vigilante-dev') {
  */
 export function sanitizePathComponent(str) {
   if (!str) return 'unknown';
-  return String(str).trim().replace(/\//g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const cleaned = String(str).trim().replace(/\//g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
+  // '.' and '..' are not valid single path components: they resolve to the
+  // parent directory itself or its parent, escaping the intended base dir.
+  if (!cleaned || cleaned === '.' || cleaned === '..') return 'unknown';
+  return cleaned;
+}
+
+/**
+ * Resolve path segments against a base directory, guaranteeing the result
+ * stays inside that directory. Absolute segments are accepted only when
+ * they already point inside the base. Throws on any escape attempt.
+ * @param {string} baseDir
+ * @param {...string} segments
+ * @returns {string} Absolute path inside baseDir
+ */
+export function resolvePathInside(baseDir, ...segments) {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(base, ...segments);
+  if (target !== base && !target.startsWith(base + path.sep)) {
+    throw new Error(`Path '${segments.join('/')}' escapes its base directory '${base}'`);
+  }
+  return target;
+}
+
+/**
+ * Assert that a resolved target path lies strictly inside a base directory
+ * (used before recursive deletes, where targeting the base itself is never
+ * legitimate). Throws when the target is the base or outside it.
+ * @param {string} baseDir
+ * @param {string} targetPath
+ * @returns {string} The resolved target path
+ */
+export function assertPathStrictlyInside(baseDir, targetPath) {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(targetPath);
+  if (!target.startsWith(base + path.sep)) {
+    throw new Error(`Refusing to operate on '${target}': not strictly inside '${base}'`);
+  }
+  return target;
 }
 
 /**

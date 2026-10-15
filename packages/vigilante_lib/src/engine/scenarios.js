@@ -10,6 +10,7 @@ import os from 'os';
  */
 
 import { fileURLToPath } from 'url';
+import { resolvePathInside } from './config.js';
 
 export class ScenarioEngine {
   constructor(options = {}) {
@@ -50,12 +51,19 @@ export class ScenarioEngine {
   }
 
   async runScenario(scenarioId) {
-    const filePaths = [
-      path.join(this.userScenarioDir, `${scenarioId}.yaml`),
-      path.join(this.userScenarioDir, `${scenarioId}.yml`),
-      path.join(this.bundledScenarioDir, `${scenarioId}.yaml`),
-      path.join(this.bundledScenarioDir, `${scenarioId}.yml`),
-    ];
+    // The scenario id must resolve inside the scenario directories — a
+    // '../' id would otherwise load (and execute the steps of) any YAML
+    // file on disk.
+    const filePaths = [];
+    for (const dir of [this.userScenarioDir, this.bundledScenarioDir]) {
+      for (const ext of ['yaml', 'yml']) {
+        try {
+          filePaths.push(resolvePathInside(dir, `${scenarioId}.${ext}`));
+        } catch {
+          // Id escapes this directory: not a candidate.
+        }
+      }
+    }
 
     let content = null;
     for (const fp of filePaths) {

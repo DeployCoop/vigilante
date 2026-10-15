@@ -24,11 +24,29 @@ function resolveCertDir(options) {
 }
 
 /**
+ * A domain becomes both a filename (`<domain>.pem`) and a positional mkcert
+ * argument, so it must be a plain dotted hostname: no path separators, no
+ * '..', no leading '-' (which mkcert would parse as a flag).
+ */
+const DOMAIN_PATTERN = /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+
+export function isValidDomain(domain) {
+  return typeof domain === 'string' && DOMAIN_PATTERN.test(domain);
+}
+
+function assertValidDomain(domain) {
+  if (!isValidDomain(domain)) {
+    throw new Error(`Invalid domain '${domain}': expected a dotted hostname (letters, digits, hyphens, dots)`);
+  }
+}
+
+/**
  * Setup local certificates with mkcert in the instance certificates directory
  * @param {string} [domain='vigilante.local'] - Base domain
  * @param {string|Object} [options] - Custom directory or { certDir, instanceName, clusterName }
  */
 export async function setupCertificates(domain = 'vigilante.local', options = null) {
+  assertValidDomain(domain);
   await ensureVigilanteConfig();
   const certDir = resolveCertDir(options);
   await fs.mkdir(certDir, { recursive: true });
@@ -76,6 +94,10 @@ export async function setupCertificates(domain = 'vigilante.local', options = nu
  */
 export async function checkCertificates(domain = 'vigilante.local', options = null) {
   const certDir = resolveCertDir(options);
+  if (!isValidDomain(domain)) {
+    // Never build a filesystem path from an invalid domain.
+    return { exists: false, certPath: null, keyPath: null, certDir, error: `Invalid domain '${domain}'` };
+  }
   const certPath = path.join(certDir, `${domain}.pem`);
   const keyPath = path.join(certDir, `${domain}-key.pem`);
 

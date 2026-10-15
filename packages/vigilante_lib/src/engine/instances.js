@@ -8,7 +8,8 @@ import {
   getInstanceCertsDir,
   getInstanceValuesDir,
   getInstanceLogsDir,
-  sanitizePathComponent
+  sanitizePathComponent,
+  assertPathStrictlyInside
 } from './config.js';
 import { listK3dClusters, deleteK3dCluster } from './cluster.js';
 import { logger } from '../utils/logger.js';
@@ -255,6 +256,9 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
 } = {}) {
   const safeName = sanitizePathComponent(instanceName || 'vigilante-dev');
   const instancePath = getInstanceDir(safeName);
+  // Defense in depth: never recursively delete the instances root itself or
+  // anything outside it, regardless of how instancePath was derived.
+  assertPathStrictlyInside(getVigilanteInstancesDir(), instancePath);
 
   let deletedCluster = false;
   if (deleteCluster) {
