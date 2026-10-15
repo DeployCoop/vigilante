@@ -1207,18 +1207,25 @@ Usage:
         console.error('Usage: vigilante ctf submit <challenge-id> <flag>');
         process.exit(1);
       }
-      console.log(`\n🚩 Submitting flag for [${challengeId}]: ${flag}`);
-      const engine = new tournamentMod.TournamentEngine();
-      const team = engine.registerTeam({ name: 'LocalParticipant' });
-      engine.addChallenge({ id: challengeId, name: challengeId, defaultFlag: flag });
-      engine.start();
-      const res = engine.submitFlag({ teamId: team.id, challengeId, flag });
-      if (res.success) {
-        console.log(`🎉 Flag Accepted! Earned: +${res.points} pts (Badge: ${res.bloodBadge || '✔'})\n`);
-      } else {
-        console.log(`✖ Submission Failed: ${res.reason}\n`);
+      const teamId = cli.flags.team || 'demo-team';
+      console.log(`\n🚩 Submitting flag for [${challengeId}] (Team: ${teamId}): ${flag}`);
+      // Verify against the flag derived from the operator-configured CTF
+      // secret. The previous flow registered the submitted flag as the
+      // challenge's expected flag in a throwaway engine, so every
+      // submission was accepted.
+      let expectedFlag;
+      try {
+        expectedFlag = kctfMod.deriveTeamHmacFlag({ teamId, challengeId });
+      } catch (err) {
+        console.log(`✖ Submission Failed: ${err.message}\n`);
+        process.exit(1);
       }
-      process.exit(0);
+      if (flag.trim() === expectedFlag) {
+        console.log(`🎉 Flag Accepted! '${flag}' is the correct flag for Team '${teamId}' on '${challengeId}'.\n`);
+        process.exit(0);
+      }
+      console.log(`✖ Submission Failed: Incorrect flag for Team '${teamId}' on '${challengeId}'.\n`);
+      process.exit(1);
     } else if (subCommand === 'spawn') {
       const challengeId = cli.input[2];
       if (!challengeId) {

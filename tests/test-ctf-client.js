@@ -45,7 +45,7 @@ console.log('✔ Test 1 passed: Workspace scaffolding generated directory tree a
 // Test 2: Local flag submission against TournamentEngine
 const engine = new TournamentEngine();
 const team = engine.registerTeam({ name: 'HackersAnonymous' });
-engine.addChallenge({ id: 'web-sqli', name: 'SQLi', defaultFlag: 'VIGILANTE{sqli_win}' });
+engine.addChallenge({ id: 'web-sqli', name: 'SQLi', defaultFlag: 'VIGILANTE{sqli_win}', isDynamicFlag: false });
 engine.start();
 
 const submitResult = await submitLocalFlag({

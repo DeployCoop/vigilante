@@ -8,6 +8,7 @@ import {
   ListToolsRequestSchema,
   ListResourceTemplatesRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
+import crypto from 'node:crypto';
 
 import {
   listSavedXmlScans,
@@ -53,14 +54,10 @@ import {
   deleteChallenge,
   testChallengeConnection,
   spawnEphemeralSandbox,
-  listActiveSandboxes
+  listActiveSandboxes,
+  deriveTeamHmacFlag,
+  redactSandboxRecord
 } from '../engine/kctf.js';
-import {
-  TournamentEngine,
-  calculateDynamicPoints,
-  generateTeamDynamicFlag,
-  TOURNAMENT_MODES
-} from '../engine/tournament.js';
 import {
   checksec,
   generateDeBruijnPattern,
@@ -1374,7 +1371,7 @@ export function createVigilanteMcpServer() {
         },
         {
           name: 'submit_ctf_flag',
-          description: 'Submit a flag for a CTF challenge on behalf of a team with dynamic decay scoring and anti-cheat collusion validation.',
+          description: 'Verify a submitted flag for a team and challenge against the flag derived from the operator-configured CTF secret (VIGILANTE_CTF_SECRET). Returns verified=true only when the flag matches; no verdict is ever manufactured from caller-supplied data.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -1386,9 +1383,9 @@ export function createVigilanteMcpServer() {
                 type: 'string',
                 description: 'Flag string (e.g. VIGILANTE{...})'
               },
-              teamName: {
+              teamId: {
                 type: 'string',
-                description: 'Name of the submitting team (default: DemoTeam)'
+                description: 'Team ID the flag belongs to (default: mcp-team, matching spawn_ctf_sandbox)'
               }
             },
             required: ['challengeId', 'flag']
@@ -3458,15 +3455,35 @@ export function createVigilanteMcpServer() {
 
     // Tool: submit_ctf_flag
     if (name === 'submit_ctf_flag') {
-      const { challengeId, flag, teamName = 'DemoTeam' } = args;
+      const { challengeId, flag, teamId = 'mcp-team' } = args;
       if (!challengeId || !flag) throw new Error("Arguments 'challengeId' and 'flag' are required.");
 
-      const engine = new TournamentEngine();
-      const team = engine.registerTeam({ name: teamName });
-      engine.addChallenge({ id: challengeId, name: challengeId, defaultFlag: flag });
-      engine.start();
-
-      const result = engine.submitFlag({ teamId: team.id, challengeId, flag });
+      // Verify against the flag derived from the server-side CTF secret.
+      // The previous implementation registered the submitted flag as the
+      // challenge's expected flag in a throwaway engine, so every
+      // submission was judged correct. Scoring/points belong to a live
+      // TournamentEngine session; this tool only attests verification.
+      let expectedFlag;
+      try {
+        expectedFlag = deriveTeamHmacFlag({ teamId, challengeId });
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ success: false, verified: false, error: err.message }, null, 2) }],
+          isError: true
+        };
+      }
+      const submittedBuf = Buffer.from(String(flag).trim());
+      const expectedBuf = Buffer.from(expectedFlag);
+      const verified = submittedBuf.length === expectedBuf.length && crypto.timingSafeEqual(submittedBuf, expectedBuf);
+      const result = {
+        success: verified,
+        verified,
+        challengeId,
+        teamId,
+        reason: verified
+          ? 'Flag matches the expected per-team flag for this challenge'
+          : 'Incorrect flag submitted'
+      };
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
       };
@@ -3534,7 +3551,7 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
         mock
       });
       return {
-        content: [{ type: 'text', text: JSON.stringify(sbx, null, 2) }]
+        content: [{ type: 'text', text: JSON.stringify(redactSandboxRecord(sbx), null, 2) }]
       };
     }
 

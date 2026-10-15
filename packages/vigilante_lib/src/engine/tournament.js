@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../utils/logger.js';
-import { getVigilanteConfigDir } from './config.js';
+import { getVigilanteConfigDir, resolveCtfFlagSecret, requireCtfFlagSecret } from './config.js';
 
 export const TOURNAMENT_MODES = {
   JEOPARDY: 'jeopardy',
@@ -53,9 +53,9 @@ export function calculateDynamicPoints({
 export function generateTeamDynamicFlag({
   teamId,
   challengeId,
-  secretKey = 'vigilante-ctf-secret'
+  secretKey
 }) {
-  const hmac = crypto.createHmac('sha256', secretKey);
+  const hmac = crypto.createHmac('sha256', requireCtfFlagSecret(secretKey));
   hmac.update(`${teamId}:${challengeId}`);
   const digest = hmac.digest('hex').slice(0, 16);
   return `VIGILANTE{${challengeId}_${teamId}_${digest}}`;
@@ -73,7 +73,7 @@ export class TournamentEngine {
     initialPoints = 500,
     minimumPoints = 100,
     decaySolves = 30,
-    secretKey = crypto.randomBytes(32).toString('hex')
+    secretKey
   } = {}) {
     this.id = id;
     this.title = title;
@@ -83,7 +83,10 @@ export class TournamentEngine {
     this.initialPoints = initialPoints;
     this.minimumPoints = minimumPoints;
     this.decaySolves = decaySolves;
-    this.secretKey = secretKey;
+    // Prefer the operator-configured CTF secret so flags agree with the
+    // sandbox spawner and the CLI/MCP verification paths; fall back to an
+    // ephemeral per-engine key for standalone in-process games.
+    this.secretKey = resolveCtfFlagSecret(secretKey) || crypto.randomBytes(32).toString('hex');
 
     // Timestamps
     this.createdAt = new Date().toISOString();
@@ -371,7 +374,10 @@ export class TournamentEngine {
       ? generateTeamDynamicFlag({ teamId, challengeId, secretKey: this.secretKey })
       : challenge.defaultFlag;
 
-    const isCorrect = cleanFlag === expectedFlag || cleanFlag === challenge.defaultFlag;
+    // Only the expected flag counts. For dynamic-flag challenges the static
+    // defaultFlag must NOT also be accepted: it is a shared, guessable value
+    // (default `VIGILANTE{<id>_solve}`) that would bypass per-team flags.
+    const isCorrect = cleanFlag === expectedFlag;
 
     const submissionRecord = {
       teamId,

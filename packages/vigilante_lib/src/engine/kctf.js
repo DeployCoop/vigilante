@@ -1,8 +1,11 @@
 import { execa } from 'execa';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import net from 'node:net';
 import http from 'node:http';
+import path from 'node:path';
 import { logger } from '../utils/logger.js';
+import { getCtfSandboxesFile, requireCtfFlagSecret } from './config.js';
 
 export const CHALLENGE_CATEGORIES = [
   { id: 'web', name: 'Web Exploitation', icon: '🌐', color: 'blue', description: 'HTTP/HTTPS vulnerabilities, auth bypass, injection & token flaws' },
@@ -783,10 +786,60 @@ export const DEFAULT_SANDBOX_TTL_MINUTES = 45;
 export const MAX_SANDBOX_TTL_MINUTES = 120;
 
 /**
- * In-memory sandbox registry for tracking ephemeral team instances
+ * In-memory sandbox registry for tracking ephemeral team instances.
+ * The registry is persisted to ctf-sandboxes.json in the Vigilante config
+ * directory so sandboxes spawned by one process (e.g. the CLI) stay visible
+ * to the next (the MCP server, a later CLI invocation). The Map remains the
+ * live store within a process; it is loaded lazily on first use and written
+ * back on every mutation.
  * @type {Map<string, Object>}
  */
 export const activeSandboxesRegistry = new Map();
+
+let sandboxRegistryLoaded = false;
+
+async function ensureSandboxRegistryLoaded() {
+  if (sandboxRegistryLoaded) return;
+  sandboxRegistryLoaded = true;
+  try {
+    const raw = await fs.readFile(getCtfSandboxesFile(), 'utf8');
+    const records = JSON.parse(raw);
+    if (Array.isArray(records)) {
+      for (const rec of records) {
+        if (rec && rec.id && !activeSandboxesRegistry.has(rec.id)) {
+          activeSandboxesRegistry.set(rec.id, rec);
+        }
+      }
+    }
+  } catch {
+    // No registry file yet (or unreadable) — start from the in-memory state.
+  }
+}
+
+async function persistSandboxRegistry() {
+  try {
+    const file = getCtfSandboxesFile();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmpFile = `${file}.tmp`;
+    await fs.writeFile(tmpFile, JSON.stringify(Array.from(activeSandboxesRegistry.values()), null, 2));
+    await fs.rename(tmpFile, file);
+  } catch (err) {
+    logger.warn('KCTF:REGISTRY', `Failed to persist sandbox registry: ${err.message}`);
+  }
+}
+
+/**
+ * Return a copy of a sandbox record with the flag and the flag-bearing
+ * manifest removed. API and MCP surfaces must serve this redacted view:
+ * the flag belongs only in the applied cluster manifest, never in a
+ * list/spawn response that other teams (or unauthenticated callers of
+ * the web API) can read.
+ */
+export function redactSandboxRecord(record) {
+  if (!record) return record;
+  const { flag, manifest, ...rest } = record;
+  return rest;
+}
 
 /**
  * Generate a deterministic dynamic HMAC flag for a team on a specific challenge
@@ -796,8 +849,8 @@ export const activeSandboxesRegistry = new Map();
  * @param {string} [options.secretKey]
  * @returns {string}
  */
-export function deriveTeamHmacFlag({ teamId, challengeId, secretKey = 'vigilante-ctf-secret' }) {
-  const hmac = crypto.createHmac('sha256', secretKey);
+export function deriveTeamHmacFlag({ teamId, challengeId, secretKey }) {
+  const hmac = crypto.createHmac('sha256', requireCtfFlagSecret(secretKey));
   hmac.update(`${teamId}:${challengeId}`);
   const digest = hmac.digest('hex').slice(0, 16);
   return `VIGILANTE{${challengeId}_${teamId}_${digest}}`;
@@ -964,13 +1017,15 @@ export async function spawnEphemeralSandbox({
   namespace = 'ctf-sandboxes',
   ttlMinutes = DEFAULT_SANDBOX_TTL_MINUTES,
   domain = 'vigilante.local',
-  secretKey = 'vigilante-ctf-secret',
+  secretKey,
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
   if (!teamId || !challengeId) {
     throw new Error('Both teamId and challengeId are required to spawn a sandbox');
   }
+
+  await ensureSandboxRegistryLoaded();
 
   // 1. Check team concurrency quota
   const existingTeamSandboxes = Array.from(activeSandboxesRegistry.values()).filter(
@@ -1029,7 +1084,9 @@ export async function spawnEphemeralSandbox({
         '--context', `k3d-${clusterName}`
       ], { input: manifest });
     } catch (err) {
-      logger.warn('KCTF:SPAWNER', `Kubernetes apply fallback: ${err.message}`);
+      // A failed apply means nothing was provisioned — fail the spawn
+      // instead of registering an ACTIVE sandbox that does not exist.
+      throw new Error(`Kubernetes apply failed for sandbox '${sandboxId}': ${err.message}`);
     }
   }
 
@@ -1055,6 +1112,7 @@ export async function spawnEphemeralSandbox({
   };
 
   activeSandboxesRegistry.set(sandboxId, sandboxRecord);
+  await persistSandboxRegistry();
   logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${ttlMinutes}m)`);
 
   return sandboxRecord;
@@ -1066,8 +1124,10 @@ export async function spawnEphemeralSandbox({
 export async function listActiveSandboxes({
   namespace = 'ctf-sandboxes',
   teamId = null,
-  clusterName = 'vigilante-dev'
+  clusterName = 'vigilante-dev',
+  includeSecrets = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   const now = Date.now();
   const results = [];
 
@@ -1078,11 +1138,18 @@ export async function listActiveSandboxes({
     const remainingMinutes = Math.max(0, Math.round(remainingMs / 60000));
     const isExpired = remainingMs <= 0;
 
-    results.push({
+    const entry = {
       ...sbx,
       remainingMinutes,
       status: isExpired ? 'EXPIRED' : sbx.status
-    });
+    };
+    // Flags and flag-bearing manifests are secrets: only callers that
+    // explicitly opt in (trusted in-process operator tooling) receive them.
+    if (!includeSecrets) {
+      delete entry.flag;
+      delete entry.manifest;
+    }
+    results.push(entry);
   }
 
   return results;
@@ -1098,6 +1165,7 @@ export async function extendSandboxTtl({
   additionalMinutes = 15,
   maxTtlMinutes = MAX_SANDBOX_TTL_MINUTES
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   let record = null;
 
   if (sandboxId && activeSandboxesRegistry.has(sandboxId)) {
@@ -1124,6 +1192,7 @@ export async function extendSandboxTtl({
 
   record.expiresAt = new Date(newExpiryTime).toISOString();
   record.ttlMinutes = newTtlMinutes;
+  await persistSandboxRegistry();
 
   logger.info('KCTF:SPAWNER', `Extended TTL for sandbox '${record.id}' to ${record.expiresAt} (Total: ${newTtlMinutes}m)`);
 
@@ -1144,6 +1213,7 @@ export async function reapExpiredSandboxes({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   const now = Date.now();
   const reaped = [];
 
@@ -1184,6 +1254,10 @@ export async function reapExpiredSandboxes({
     }
   }
 
+  if (reaped.length > 0) {
+    await persistSandboxRegistry();
+  }
+
   return reaped;
 }
 
@@ -1198,6 +1272,7 @@ export async function terminateSandbox({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   let targetId = sandboxId;
   let targetRecord = null;
 
@@ -1219,6 +1294,7 @@ export async function terminateSandbox({
 
   targetRecord.status = 'TERMINATED';
   activeSandboxesRegistry.delete(targetId);
+  await persistSandboxRegistry();
 
   if (!mock) {
     const safeTeam = targetRecord.teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
