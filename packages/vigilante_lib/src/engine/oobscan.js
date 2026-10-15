@@ -6,7 +6,8 @@ import path from 'node:path';
 import {
   getVigilanteOobscansDir,
   ensureVigilanteConfig,
-  getHostEvidenceDir
+  getHostEvidenceDir,
+  resolvePathInside
 } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { saveEvidenceFile } from './evidence.js';
@@ -666,11 +667,9 @@ export async function listSavedOobScans() {
  * @returns {Promise<string>}
  */
 export async function readSavedOobScan(filePathOrFilename) {
-  let targetPath = filePathOrFilename;
-  if (!path.isAbsolute(targetPath)) {
-    const oobscansDir = getVigilanteOobscansDir();
-    targetPath = path.join(oobscansDir, filePathOrFilename);
-  }
+  // Saved scans live in the oobscans directory; absolute paths are accepted
+  // only when they already point inside it. Anything else is traversal.
+  const targetPath = resolvePathInside(getVigilanteOobscansDir(), filePathOrFilename);
   const content = await fs.readFile(targetPath, 'utf8');
   const parsed = parseOobReportContent(content, path.basename(targetPath));
   return {
@@ -686,11 +685,7 @@ export async function readSavedOobScan(filePathOrFilename) {
  * @param {string} filePathOrFilename
  */
 export async function deleteSavedOobScan(filePathOrFilename) {
-  let filePath = filePathOrFilename;
-  if (!path.isAbsolute(filePath)) {
-    const oobscansDir = getVigilanteOobscansDir();
-    filePath = path.join(oobscansDir, filePathOrFilename);
-  }
+  const filePath = resolvePathInside(getVigilanteOobscansDir(), filePathOrFilename);
   try {
     await fs.unlink(filePath);
     const hashcatPath = filePath.replace(/\.(jsonl|ndjson)$/, '.hashcat');
@@ -717,14 +712,19 @@ export async function exportRakpHashes(filePathOrOutPath = null, maybeOutPath = 
   let targetScan = null;
   let destination = null;
 
+  // Both the source scan and the export destination must stay inside the
+  // oobscans directory (this function is reachable from the MCP server, so
+  // an arbitrary destination would be an unauthenticated file write).
   if (filePathOrOutPath && maybeOutPath) {
-    targetScan = path.isAbsolute(filePathOrOutPath) ? filePathOrOutPath : path.join(oobscansDir, filePathOrOutPath);
-    destination = maybeOutPath;
+    targetScan = resolvePathInside(oobscansDir, filePathOrOutPath);
+    destination = resolvePathInside(oobscansDir, maybeOutPath);
   } else if (filePathOrOutPath && (filePathOrOutPath.endsWith('.jsonl') || filePathOrOutPath.endsWith('.ndjson'))) {
-    targetScan = path.isAbsolute(filePathOrOutPath) ? filePathOrOutPath : path.join(oobscansDir, filePathOrOutPath);
+    targetScan = resolvePathInside(oobscansDir, filePathOrOutPath);
     destination = targetScan.replace(/\.(jsonl|ndjson)$/, '.hashcat');
+  } else if (filePathOrOutPath) {
+    destination = resolvePathInside(oobscansDir, filePathOrOutPath);
   } else {
-    destination = filePathOrOutPath || path.join(oobscansDir, 'hashes_all.txt');
+    destination = path.join(oobscansDir, 'hashes_all.txt');
   }
 
   const hashes = [];

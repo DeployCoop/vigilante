@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { getVigilanteValuesDir, getInstanceValuesDir } from './config.js';
+import { getVigilanteValuesDir, getInstanceValuesDir, sanitizePathComponent } from './config.js';
 
 /**
  * Replace template placeholders in values content
@@ -55,6 +55,20 @@ export async function resolveChartValuesArgs({
   const args = [];
   const cwd = process.cwd();
 
+  // Rendered values go to a private per-call temp directory with sanitized
+  // filenames: moduleId/chartName are data, and embedding them raw in a
+  // fixed shared-/tmp filename allowed '../' escapes, collisions between
+  // concurrent runs, and pre-planted symlink following.
+  let tempDir = null;
+  const getTempDir = async () => {
+    if (!tempDir) {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-helm-values-'));
+    }
+    return tempDir;
+  };
+  const renderedName = (suffix) =>
+    `${sanitizePathComponent(moduleId)}-${sanitizePathComponent(chartName)}-${suffix}`;
+
   // 1. Render default values template if available
   if (defaultValuesPath) {
     try {
@@ -67,9 +81,7 @@ export async function resolveChartValuesArgs({
         clusterName
       });
 
-      const tempDir = path.join(os.tmpdir(), 'vigilante-helm-values');
-      await fs.mkdir(tempDir, { recursive: true });
-      const renderedFilePath = path.join(tempDir, `${moduleId}-${chartName}-rendered.yaml`);
+      const renderedFilePath = path.join(await getTempDir(), renderedName('rendered.yaml'));
       await fs.writeFile(renderedFilePath, renderedContent, 'utf8');
 
       args.push('-f', renderedFilePath);
@@ -168,9 +180,7 @@ export async function resolveChartValuesArgs({
         clusterName
       });
 
-      const tempDir = path.join(os.tmpdir(), 'vigilante-helm-values');
-      await fs.mkdir(tempDir, { recursive: true });
-      const userRenderedFilePath = path.join(tempDir, `${moduleId}-${chartName}-user-rendered.yaml`);
+      const userRenderedFilePath = path.join(await getTempDir(), renderedName('user-rendered.yaml'));
       await fs.writeFile(userRenderedFilePath, renderedUserContent, 'utf8');
 
       args.push('-f', userRenderedFilePath);
@@ -215,14 +225,16 @@ export async function exportStarterValues({
   const targetModules = moduleId ? [moduleId] : availableModules;
 
   for (const mod of targetModules) {
-    const modValuesDir = path.join(modulesDir, mod, 'values');
+    // moduleId may come from the caller; never let it escape either tree.
+    const safeMod = sanitizePathComponent(mod);
+    const modValuesDir = path.join(modulesDir, safeMod, 'values');
     try {
       const files = await fs.readdir(modValuesDir);
       const yamlFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
 
       for (const file of yamlFiles) {
         const srcPath = path.join(modValuesDir, file);
-        const modDestDir = path.join(destBase, mod);
+        const modDestDir = path.join(destBase, safeMod);
         await fs.mkdir(modDestDir, { recursive: true });
         const destPath = path.join(modDestDir, file);
 

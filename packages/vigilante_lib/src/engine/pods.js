@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { runInteractiveTerminal } from '../utils/terminal-runner.js';
+import { sanitizePathComponent } from './config.js';
 
 /**
  * Format age from ISO timestamp into concise human string (e.g. 12s, 4m, 2h, 5d)
@@ -243,7 +244,7 @@ export function watchPodsWide({
 export function openInSystemPager(content, filenameHint = 'output.txt') {
   if (!content) return;
   const pager = process.env.PAGER || 'less -R';
-  const tmpFile = path.join(os.tmpdir(), `vigilante-${Date.now()}-${filenameHint}`);
+  const tmpFile = path.join(os.tmpdir(), `vigilante-${Date.now()}-${sanitizePathComponent(filenameHint)}`);
 
   try {
     fsSync.writeFileSync(tmpFile, content, 'utf8');

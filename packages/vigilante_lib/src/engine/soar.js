@@ -6,7 +6,8 @@ import { dump as yamlDump } from 'js-yaml';
 import {
   getVigilanteContainmentsDir,
   ensureVigilanteConfig,
-  getHostEvidenceDir
+  getHostEvidenceDir,
+  resolvePathInside
 } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { saveEvidenceFile } from './evidence.js';
@@ -298,7 +299,10 @@ export async function listActiveContainments() {
 export async function releaseContainment(containmentId) {
   await ensureVigilanteConfig();
   const containmentsDir = getVigilanteContainmentsDir();
-  const recordFile = path.join(containmentsDir, `${containmentId}.json`);
+  // The record file must stay inside the containments directory: an id with
+  // '../' would otherwise read, weaponize (kubectl delete from file values),
+  // and overwrite an arbitrary JSON file. Legitimate ids are 'cont-…' slugs.
+  const recordFile = resolvePathInside(containmentsDir, `${containmentId}.json`);
 
   if (!fsSync.existsSync(recordFile)) {
     throw new Error(`Containment record '${containmentId}' not found.`);

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { getVigilanteEvidenceDir, getHostEvidenceDir, sanitizePathComponent, ensureVigilanteConfig } from './config.js';
+import { getVigilanteEvidenceDir, getHostEvidenceDir, sanitizePathComponent, ensureVigilanteConfig, resolvePathInside, assertPathStrictlyInside } from './config.js';
 import { autoSignIfConfigured, verifyFileSignature } from './gpg.js';
 import { ARTIFACT_VOLATILITY_MAP, classifyAttackVector, generateNistIncidentRecord } from './nist.js';
 import { logger } from '../utils/logger.js';
@@ -358,7 +358,9 @@ export async function readEvidenceContent(target) {
  * @returns {Promise<string>}
  */
 export async function readEvidenceFile(networkCidr, hostIp, fileName) {
-  const targetPath = path.join(getHostEvidenceDir(networkCidr, hostIp), fileName);
+  // Mirror saveEvidenceFile: only a bare filename inside the host evidence
+  // directory may be read — never a caller-supplied relative/absolute path.
+  const targetPath = resolvePathInside(getHostEvidenceDir(networkCidr, hostIp), path.basename(fileName));
   return await fs.readFile(targetPath, 'utf8');
 }
 
@@ -369,6 +371,8 @@ export async function readEvidenceFile(networkCidr, hostIp, fileName) {
  */
 export async function deleteHostEvidence(networkCidr, hostIp) {
   const hostDir = getHostEvidenceDir(networkCidr, hostIp);
+  // Never recursively delete the evidence root itself or anything outside it.
+  assertPathStrictlyInside(getVigilanteEvidenceDir(), hostDir);
   await fs.rm(hostDir, { recursive: true, force: true });
   logger.info('EVIDENCE:DELETE', `Deleted evidence for ${hostIp} in ${networkCidr}`);
 }
