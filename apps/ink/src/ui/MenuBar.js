@@ -67,13 +67,17 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
     selectedHost = null,
     activeDiagnostic = null,
     isInputMode = false,
-    hasChanges = false
+    hasChanges = false,
+    isTeardown = false,
+    workflowType = null
   } = contextData;
+
+  const isTeardownTask = isTeardown || workflowType === 'down' || workflowType === 'uninstall';
 
   // Running Active Task
   if (isRunning) {
     return {
-      title: '⏳ Deployment Task in Progress',
+      title: isTeardownTask ? '⏳ Teardown Task in Progress' : '⏳ Deployment Task in Progress',
       nextStepHint: null,
       items: [
         { key: 'Esc/q', label: 'Abort Task', color: theme.error || 'red' }
@@ -98,12 +102,16 @@ export function getContextualMenuConfig(viewState, contextData = {}, theme = {})
   // Completed Task / Success View
   if (viewState === 'SUCCESS' || (viewState === 'RUNNING' && isDone)) {
     return {
-      title: '🎉 Deployment Complete',
+      title: isTeardownTask ? '🧹 Teardown Complete' : '🎉 Deployment Complete',
       nextStepHint: { label: 'Status Dashboard', key: 'Enter/s' },
       items: [
         { key: 'Enter', label: '➔ Status Dashboard', color: theme.success || 'green' },
-        { key: 'p', label: 'Pods (Live)', color: theme.primary || 'cyan' },
-        { key: 'm', label: 'Modules', color: theme.text || 'white' },
+        ...(isTeardownTask
+          ? [{ key: 'u', label: 'Up (Deploy)', color: theme.primary || 'cyan' }]
+          : [
+              { key: 'p', label: 'Pods (Live)', color: theme.primary || 'cyan' },
+              { key: 'm', label: 'Modules', color: theme.text || 'white' }
+            ]),
         { key: 'q', label: 'Quit', color: theme.muted || 'gray' }
       ]
     };

@@ -52,6 +52,10 @@ spec:
               readOnly: true
             - mountPath: /dev
               name: dev-fs
+            - mountPath: /sys/kernel/debug
+              name: debug-fs
+            - mountPath: /sys/kernel/tracing
+              name: trace-fs
             - mountPath: /etc/falco/falco.yaml
               name: falco-config
               subPath: falco.yaml
@@ -77,6 +81,12 @@ spec:
         - name: dev-fs
           hostPath:
             path: /dev
+        - name: debug-fs
+          hostPath:
+            path: /sys/kernel/debug
+        - name: trace-fs
+          hostPath:
+            path: /sys/kernel/tracing
         - name: falco-config
           configMap:
             name: {{ include "falco.fullname" . }}-config

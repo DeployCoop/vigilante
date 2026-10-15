@@ -30,11 +30,19 @@ spec:
           env:
             - name: WEBHOOK_CUSTOM_HEADERS
               value: ""
+            - name: WEBUI_URL
+              value: "http://localhost:2802"
         {{- if .Values.falcosidekick.ui.enabled }}
         - name: falcosidekick-ui
           image: "{{ .Values.falcosidekick.ui.image.repository }}:{{ .Values.falcosidekick.ui.image.tag }}"
           ports:
             - containerPort: 2802
               name: sidekick-ui
+        - name: falcosidekick-redis
+          image: "{{ .Values.falcosidekick.redis.image.repository }}:{{ .Values.falcosidekick.redis.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+              name: redis
         {{- end }}
 {{- end }}

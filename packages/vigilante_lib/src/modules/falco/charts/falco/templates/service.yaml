@@ -12,6 +12,33 @@ spec:
       targetPort: 2802
       protocol: TCP
       name: ui
+    - port: 2801
+      targetPort: 2801
+      protocol: TCP
+      name: events
+  selector:
+    app.kubernetes.io/name: {{ include "falco.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: sidekick
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "falco.fullname" . }}-sidekick
+  namespace: {{ include "falco.namespace" . }}
+  labels:
+    {{- include "falco.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: 2801
+      targetPort: 2801
+      protocol: TCP
+      name: events
+    - port: 2802
+      targetPort: 2802
+      protocol: TCP
+      name: ui
   selector:
     app.kubernetes.io/name: {{ include "falco.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}

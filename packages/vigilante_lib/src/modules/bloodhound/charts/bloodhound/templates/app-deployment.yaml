@@ -36,7 +36,7 @@ spec:
             - name: bhe_database_password
               value: {{ .Values.postgres.password | quote }}
             - name: bhe_neo4j_connection
-              value: "neo4j://{{ include "bloodhound.fullname" . }}-neo4j:7687"
+              value: "neo4j://neo4j:{{ .Values.neo4j.password }}@{{ include "bloodhound.fullname" . }}-neo4j:7687"
             - name: bhe_neo4j_addr
               value: "{{ include "bloodhound.fullname" . }}-neo4j:7687"
             - name: bhe_neo4j_username

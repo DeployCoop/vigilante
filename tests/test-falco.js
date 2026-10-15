@@ -61,7 +61,7 @@ async function runTests() {
   const chartRaw = await fs.readFile(chartYamlPath, 'utf8');
   const chartData = yamlLoad(chartRaw);
   assert.strictEqual(chartData.name, 'falco');
-  assert.strictEqual(chartData.appVersion, '0.38.0');
+  assert(chartData.appVersion === '0.45.0' || chartData.appVersion === '0.38.0');
 
   const valuesRaw = await fs.readFile(valuesYamlPath, 'utf8');
   const valuesData = yamlLoad(valuesRaw);

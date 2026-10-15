@@ -3,23 +3,26 @@ import { Box, Text } from 'ink';
 import { PulseIndicator } from './PulseIndicator.js';
 import { useClipboard } from './ClipboardManager.js';
 
-export const TaskRunner = memo(function TaskRunner({ tasks = [], logs = [], maxLogs = 6 }) {
+export const TaskRunner = memo(function TaskRunner({ tasks = [], logs = [], maxLogs = 6, isTeardown = false, workflowType = null }) {
   const visibleLogs = logs.slice(-maxLogs);
   const { registerPanes } = useClipboard();
 
   useEffect(() => {
     const runnerPanes = [];
+    const isTeardownRun = isTeardown || workflowType === 'down' || workflowType === 'uninstall';
+    const paneTitle = isTeardownRun ? 'Teardown Tasks & Logs' : 'Deployment Tasks & Logs';
+    const headerTitle = isTeardownRun ? '=== Teardown Tasks ===' : '=== Deployment Tasks ===';
     
     // 1. Primary all-in-one execution log & tasks payload
     runnerPanes.push({
       id: 'all',
-      title: 'Deployment Tasks & Logs',
+      title: paneTitle,
       startRow: 1,
       endRow: 100,
       getText: () => {
         const taskText = tasks.map(t => `[${t.status}] ${t.label}${t.detail ? ' (' + t.detail + ')' : ''}${t.error ? ' - Error: ' + t.error : ''}`).join('\n');
         const logText = logs.map(l => typeof l === 'string' ? l : l.message || JSON.stringify(l)).join('\n');
-        return `=== Deployment Tasks ===\n${taskText}\n\n=== Execution Logs ===\n${logText}`;
+        return `${headerTitle}\n${taskText}\n\n=== Execution Logs ===\n${logText}`;
       }
     });
 

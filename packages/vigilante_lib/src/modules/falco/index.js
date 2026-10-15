@@ -182,6 +182,7 @@ export class FalcoModule extends BaseModule {
       const { stdout: podsJson } = await execa('kubectl', [
         'get', 'pods',
         '-n', targetNamespace,
+        '-l', 'app.kubernetes.io/name=falco',
         '--context', `k3d-${clusterName}`,
         '--request-timeout=3s',
         '-o', 'json'

@@ -1,6 +1,6 @@
 image:
   repository: specterops/bloodhound
-  tag: "v5.14.0"
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 postgres:

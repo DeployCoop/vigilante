@@ -98,6 +98,7 @@ const AppContent = ({
   const [openvasTargetHost, setOpenvasTargetHost] = useState(null);
   const [fatalError, setFatalError] = useState(null);
   const [isDone, setIsDone] = useState(false);
+  const [activeWorkflow, setActiveWorkflow] = useState(command || 'up');
 
   // Register fatal error & execution logs in clipboard manager when error occurs
   useEffect(() => {
@@ -432,6 +433,7 @@ const AppContent = ({
       setTargetNamespace(activeNs);
     }
     logger.info('WORKFLOW:UP', `Starting UP workflow in namespace '${activeNs}' with modules: ${JSON.stringify(modulesToInstall)}`);
+    setActiveWorkflow('up');
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -571,6 +573,7 @@ const AppContent = ({
   // -------------------------------------------------------------
   const runDownWorkflow = async () => {
     logger.info('WORKFLOW:DOWN', `Starting DOWN teardown workflow for cluster '${clusterName}'`);
+    setActiveWorkflow('down');
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -623,6 +626,7 @@ const AppContent = ({
   // -------------------------------------------------------------
   const runStatusWorkflow = async () => {
     logger.info('WORKFLOW:STATUS', `Starting STATUS workflow for domain '${domain}'`);
+    setActiveWorkflow('status');
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -797,6 +801,7 @@ const AppContent = ({
     const modName = mod ? mod.name : moduleId;
 
     logger.info('WORKFLOW:UNINSTALL_MODULE', `Uninstalling module '${moduleId}' from namespace '${activeNs}'`);
+    setActiveWorkflow('uninstall');
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -841,6 +846,7 @@ const AppContent = ({
     const modName = mod ? mod.name : moduleId;
 
     logger.info('WORKFLOW:RESET_MODULE', `Resetting module '${moduleId}' in namespace '${activeNs}'`);
+    setActiveWorkflow('reset');
     setViewState('RUNNING');
     setLogs([]);
     setFatalError(null);
@@ -1295,7 +1301,12 @@ const AppContent = ({
 
     // State 2: Running Tasks
     viewState === 'RUNNING'
-      ? React.createElement(TaskRunner, { tasks, logs })
+      ? React.createElement(TaskRunner, {
+          tasks,
+          logs,
+          isTeardown: activeWorkflow === 'down' || command === 'down' || activeWorkflow === 'uninstall' || command === 'uninstall',
+          workflowType: activeWorkflow || command
+        })
       : null,
 
     // State 3: Threat Simulation
@@ -1895,7 +1906,9 @@ const AppContent = ({
           activeView: viewState,
           contextData: {
             isRunning: viewState === 'RUNNING' && !isDone,
-            isDone
+            isDone,
+            isTeardown: activeWorkflow === 'down' || command === 'down' || activeWorkflow === 'uninstall' || command === 'uninstall',
+            workflowType: activeWorkflow || command
           }
         })
       : null

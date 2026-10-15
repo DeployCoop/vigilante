@@ -1,6 +1,6 @@
 image:
-  repository: zaproxy/zap-stable
-  tag: "2.14.0"
+  repository: ghcr.io/zaproxy/zaproxy
+  tag: "stable"
   pullPolicy: IfNotPresent
 
 service:

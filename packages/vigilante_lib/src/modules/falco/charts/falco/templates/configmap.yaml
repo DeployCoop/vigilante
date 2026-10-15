@@ -15,12 +15,22 @@ data:
     json_include_tags_property: true
     buffered_outputs: false
     priority: notice
-    syscall_buf_size_preset: 2
-    modern_bpf:
-      cpus_for_each_buffer: 2
+    log_stderr: true
+    log_level: info
+    stdout_output:
+      enabled: true
+    engine:
+      kind: modern_ebpf
+      modern_ebpf:
+        cpus_for_each_buffer: 2
+        buf_size_preset: 4
+    load_plugins: [container]
+    plugins:
+      - name: container
+        library_path: libcontainer.so
     http_output:
       enabled: true
-      url: "http://{{ include "falco.fullname" . }}-sidekick:2801/"
+      url: "http://{{ include "falco.fullname" . }}:2801/"
   falco_rules.local.yaml: |
     - rule: Terminal Shell in Container
       desc: A shell was spawned inside a running container with an attached interactive terminal (PTY)

@@ -86,6 +86,36 @@ async function runTests() {
   }
   console.log('✔ Test 7 passed: MODULES contextual menu maps [n] Namespace with next step [u] Deploy.');
 
+  // Test 8: Teardown Task in Progress
+  const runningDeployConfig = getContextualMenuConfig('RUNNING', { isRunning: true });
+  if (!runningDeployConfig.title.includes('Deployment Task in Progress')) {
+    throw new Error(`Expected standard deployment task title, got: ${runningDeployConfig.title}`);
+  }
+  const runningTeardownConfig = getContextualMenuConfig('RUNNING', { isRunning: true, isTeardown: true });
+  if (!runningTeardownConfig.title.includes('Teardown Task in Progress')) {
+    throw new Error(`Expected teardown task title, got: ${runningTeardownConfig.title}`);
+  }
+  const runningDownWorkflowConfig = getContextualMenuConfig('RUNNING', { isRunning: true, workflowType: 'down' });
+  if (!runningDownWorkflowConfig.title.includes('Teardown Task in Progress')) {
+    throw new Error(`Expected teardown task title with workflowType=down, got: ${runningDownWorkflowConfig.title}`);
+  }
+  console.log('✔ Test 8 passed: RUNNING contextual menu dynamically reflects Teardown Task in Progress vs Deployment Task in Progress.');
+
+  // Test 9: Teardown Complete vs Deployment Complete
+  const doneDeployConfig = getContextualMenuConfig('RUNNING', { isDone: true });
+  if (!doneDeployConfig.title.includes('Deployment Complete')) {
+    throw new Error(`Expected Deployment Complete title, got: ${doneDeployConfig.title}`);
+  }
+  const doneTeardownConfig = getContextualMenuConfig('RUNNING', { isDone: true, isTeardown: true });
+  if (!doneTeardownConfig.title.includes('Teardown Complete')) {
+    throw new Error(`Expected Teardown Complete title, got: ${doneTeardownConfig.title}`);
+  }
+  const doneDownWorkflowConfig = getContextualMenuConfig('RUNNING', { isDone: true, workflowType: 'down' });
+  if (!doneDownWorkflowConfig.title.includes('Teardown Complete')) {
+    throw new Error(`Expected Teardown Complete title with workflowType=down, got: ${doneDownWorkflowConfig.title}`);
+  }
+  console.log('✔ Test 9 passed: Completed contextual menu dynamically reflects Teardown Complete vs Deployment Complete.');
+
   console.log('🎉 All Context-Sensitive Menu & Workflow Engine tests passed successfully!');
 }
 

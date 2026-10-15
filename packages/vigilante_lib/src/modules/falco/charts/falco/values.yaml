@@ -1,6 +1,6 @@
 image:
   repository: falcosecurity/falco
-  tag: "0.38.0"
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 driver:
@@ -18,6 +18,10 @@ falcosidekick:
       tag: "2.1.0"
     service:
       port: 2802
+  redis:
+    image:
+      repository: redis/redis-stack-server
+      tag: "latest"
 
 service:
   type: ClusterIP
