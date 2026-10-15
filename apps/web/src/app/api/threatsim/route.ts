@@ -1,0 +1,68 @@
+import { NextResponse } from 'next/server';
+import {
+  listAvailablePlaybooks,
+  loadPlaybook,
+  executeThreatPlaybook
+} from 'vigilante_lib/engine/threats.js';
+import { loadConfig } from 'vigilante_lib/engine/config.js';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  try {
+    const playbooks = await listAvailablePlaybooks();
+    const config = loadConfig();
+    const domain = config.defaults?.domain || 'vigilante.local';
+
+    return NextResponse.json({
+      success: true,
+      domain,
+      playbooks
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err.message,
+        playbooks: []
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { playbookId, namespace = 'opensearch' } = body;
+
+    if (!playbookId) {
+      return NextResponse.json({ success: false, error: 'playbookId is required' }, { status: 400 });
+    }
+
+    const playbook = await loadPlaybook(playbookId);
+    if (!playbook) {
+      return NextResponse.json({ success: false, error: `Playbook ${playbookId} not found` }, { status: 404 });
+    }
+
+    const config = loadConfig();
+    const domain = config.defaults?.domain || 'vigilante.local';
+
+    const logs: string[] = [];
+    const execution = await executeThreatPlaybook(playbook, {
+      namespace,
+      domain,
+      onLog: (line: string) => {
+        logs.push(line);
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      execution,
+      logs
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
