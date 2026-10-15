@@ -57,6 +57,17 @@ export class FlamingoModule extends BaseModule {
       });
     }
 
+    // Ensure local image is imported into k3d cluster if present on host
+    try {
+      const { stdout: imgExists } = await execa('docker', ['images', '-q', 'ghcr.io/joshuacox/flamingo:latest']);
+      if (imgExists && imgExists.trim()) {
+        if (onLog) onLog(`[flamingo] Importing local image 'ghcr.io/joshuacox/flamingo:latest' into k3d cluster '${clusterName}'...`);
+        await execa('k3d', ['image', 'import', 'ghcr.io/joshuacox/flamingo:latest', '-c', clusterName]);
+      }
+    } catch {
+      // Ignore if docker or k3d is not available in environment
+    }
+
     if (onLog) onLog(`[flamingo] Deploying Flamingo Credential Harvester '${releaseName}' (Ingress: https://${ingressHost})...`);
     const chartPath = path.join(__dirname, 'charts', 'flamingo');
     const defaultValues = path.join(__dirname, 'values', 'flamingo.yaml');
