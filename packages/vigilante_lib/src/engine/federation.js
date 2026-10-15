@@ -67,6 +67,33 @@ export async function createFederationNode(nodeConfig = {}) {
 }
 
 /**
+ * Canonical JSON serialization: object keys sorted recursively, so two
+ * semantically identical payloads always serialize (and therefore sign and
+ * verify) identically regardless of key insertion order or JSON round-trips.
+ * @param {*} value
+ * @returns {string}
+ */
+export function canonicalJson(value) {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map(canonicalJson).join(',') + ']';
+  }
+  const keys = Object.keys(value).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+}
+
+/**
+ * The signed content of a threat envelope: payload AND signer identity AND
+ * timestamp. Signing only the payload would let any relay rewrite who sent
+ * a record and when.
+ */
+function signedEnvelopeContent({ payload, signerNodeId, timestamp }) {
+  return canonicalJson({ payload, signerNodeId, timestamp });
+}
+
+/**
  * Digitally signs a threat indicator record using Ed25519 private key.
  * @param {Object} threatData - Payload (e.g. { indicator: '198.51.100.22', type: 'IP', severity: 'CRITICAL', mitre: 'T1059' })
  * @param {string} privateKeyPem - Ed25519 PKCS8 PEM private key
@@ -81,23 +108,28 @@ export function signThreatRecord(threatData, privateKeyPem, signerInfo = {}) {
     throw new Error('privateKeyPem is required to sign threat record');
   }
 
-  const payloadString = JSON.stringify(threatData);
-  const signature = crypto.sign(null, Buffer.from(payloadString, 'utf8'), privateKeyPem).toString('base64');
+  const signerNodeId = signerInfo.nodeId || 'anonymous-node';
+  const timestamp = new Date().toISOString();
+  const content = signedEnvelopeContent({ payload: threatData, signerNodeId, timestamp });
+  const signature = crypto.sign(null, Buffer.from(content, 'utf8'), privateKeyPem).toString('base64');
 
   return {
     payload: threatData,
     signature,
     algorithm: 'Ed25519',
-    timestamp: new Date().toISOString(),
-    signerNodeId: signerInfo.nodeId || 'anonymous-node',
+    timestamp,
+    signerNodeId,
     signerPublicKey: signerInfo.publicKey || null
   };
 }
 
 /**
  * Cryptographically verifies a signed threat envelope using Ed25519 public key.
+ * The key MUST be supplied by the caller from a trusted source (a pinned peer
+ * key or keyring). The envelope's own signerPublicKey is never trusted: it is
+ * attacker-controlled data, and verifying against it proves nothing.
  * @param {Object} signedRecord - Envelope returned by signThreatRecord
- * @param {string} [publicKeyPem] - Optional explicit public key (falls back to signerPublicKey in envelope)
+ * @param {string} publicKeyPem - Trusted Ed25519 SPKI PEM public key for the claimed signer
  * @returns {Object} { valid: boolean, error?: string, payload?: Object }
  */
 export function verifyThreatRecord(signedRecord, publicKeyPem = null) {
@@ -105,24 +137,30 @@ export function verifyThreatRecord(signedRecord, publicKeyPem = null) {
     return { valid: false, error: 'Invalid envelope structure: missing signature or payload' };
   }
 
-  const pubKey = publicKeyPem || signedRecord.signerPublicKey;
-  if (!pubKey) {
-    return { valid: false, error: 'No public key provided or found in record envelope' };
+  if (!publicKeyPem) {
+    return {
+      valid: false,
+      error: 'No trusted public key provided: verification requires a caller-supplied peer key; the envelope-embedded key is not trusted'
+    };
   }
 
   try {
-    const payloadString = JSON.stringify(signedRecord.payload);
+    const content = signedEnvelopeContent({
+      payload: signedRecord.payload,
+      signerNodeId: signedRecord.signerNodeId,
+      timestamp: signedRecord.timestamp
+    });
     const isValid = crypto.verify(
       null,
-      Buffer.from(payloadString, 'utf8'),
-      pubKey,
+      Buffer.from(content, 'utf8'),
+      publicKeyPem,
       Buffer.from(signedRecord.signature, 'base64')
     );
 
     return {
       valid: isValid,
       payload: isValid ? signedRecord.payload : null,
-      error: isValid ? null : 'Signature verification failed: payload modified or key mismatch'
+      error: isValid ? null : 'Signature verification failed: payload, signer identity, or timestamp modified, or key mismatch'
     };
   } catch (err) {
     return {

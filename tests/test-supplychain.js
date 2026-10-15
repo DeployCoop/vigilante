@@ -41,15 +41,36 @@ async function runTests() {
   });
 
   const encodedPayload = Buffer.from(claimJson).toString('base64');
-  const mockSignature = Buffer.from('mock-sig-data').toString('base64');
+
+  // Real RSA signature over the payload, verified against the public key.
+  // (This test previously used a mock signature with no key at all and
+  // expected success — the fail-open behavior removed from the engine.)
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+  });
+  const signer = crypto.createSign('SHA256');
+  signer.update(encodedPayload);
+  signer.end();
+  const realSignature = signer.sign(privateKey, 'base64');
 
   const verifyResult = verifyCosignSignature(imageDigest, {
     payload: encodedPayload,
-    signature: mockSignature
-  });
+    signature: realSignature
+  }, publicKey);
 
   if (!verifyResult.verified || verifyResult.issuer !== 'registry.vigilante.local/auth-service') {
     throw new Error(`Cosign signature verification failed: ${verifyResult.error}`);
+  }
+
+  // The same claim without a public key must fail closed
+  const noKeyResult = verifyCosignSignature(imageDigest, {
+    payload: encodedPayload,
+    signature: realSignature
+  });
+  if (noKeyResult.verified) {
+    throw new Error('Cosign verification without a public key must not succeed');
   }
   console.log(`✔ Test 3 passed: Verified Cosign container image claim digest for: ${verifyResult.issuer}.`);
 

@@ -958,34 +958,44 @@ rule InFlight_Suspicious_Strings {
   import('../src/engine/snapshot.js').then(async (snap) => {
     console.log('\n📸 CONTAINER VOLATILE FORENSIC SNAPSHOT');
     console.log('='.repeat(70));
-    const res = await snap.createForensicsSnapshot({
-      podName: cli.flags.pod || 'cluster-core-service',
-      pid: process.pid
-    });
-    console.log(`Snapshot ID:  ${res.snapshotId}`);
-    console.log(`Output Path:  ${res.snapshotDir}`);
-    console.log(`SHA-256 Seal: ${res.sha256Seal}`);
-    console.log();
-    process.exit(0);
+    try {
+      const res = await snap.createForensicsSnapshot({
+        podName: cli.flags.pod || 'cluster-core-service',
+        pid: process.pid
+      });
+      console.log(`Snapshot ID:  ${res.snapshotId}`);
+      console.log(`Output Path:  ${res.snapshotDir}`);
+      console.log(`SHA-256 Seal: ${res.sha256Seal}`);
+      console.log();
+      process.exit(0);
+    } catch (err) {
+      console.error(`✖ Snapshot failed: ${err.message}`);
+      process.exit(1);
+    }
   });
 } else if (command === 'evidencepack') {
   import('../src/engine/evidencepack.js').then(async (ep) => {
     console.log('\n⚖️  RFC 3161 COURT-ADMISSIBLE EVIDENCE BUNDLE');
     console.log('='.repeat(70));
-    const bundle = await ep.createEvidenceBundle(
-      { caseNumber: 'CASE-2026-INC-01', title: 'Kubernetes Incident Triage' },
-      [
-        { filename: 'cluster_volatiles.json', content: '{"status": "captured"}' },
-        { filename: 'network_audit.pcap', content: 'PCAP_RAW_STREAM_DATA' }
-      ]
-    );
-    console.log(`Bundle ID:     ${bundle.bundleId}`);
-    console.log(`Directory:     ${bundle.bundleDir}`);
-    console.log(`RFC 3161 Time: ${bundle.rfc3161Token.tstInfo.genTime}`);
-    console.log(`TSA Authority: ${bundle.rfc3161Token.tstInfo.tsa}`);
-    console.log(`Standalone Verifier: ${bundle.verifyBashPath}`);
-    console.log();
-    process.exit(0);
+    try {
+      const bundle = await ep.createEvidenceBundle(
+        { caseNumber: 'CASE-2026-INC-01', title: 'Kubernetes Incident Triage' },
+        [
+          { filename: 'cluster_volatiles.json', content: '{"status": "captured"}' },
+          { filename: 'network_audit.pcap', content: 'PCAP_RAW_STREAM_DATA' }
+        ]
+      );
+      console.log(`Bundle ID:     ${bundle.bundleId}`);
+      console.log(`Directory:     ${bundle.bundleDir}`);
+      console.log(`RFC 3161 Time: ${bundle.rfc3161Token.tstInfo.genTime}`);
+      console.log(`TSA Authority: ${bundle.rfc3161Token.tstInfo.tsa}`);
+      console.log(`Standalone Verifier: ${bundle.verifyBashPath}`);
+      console.log();
+      process.exit(0);
+    } catch (err) {
+      console.error(`✖ Evidence bundle failed: ${err.message}`);
+      process.exit(1);
+    }
   });
 } else if (command === 'falco' || command === 'ebpf') {
   Promise.all([

@@ -13,6 +13,10 @@ import {
   OID_VIGILANTE_TSA_POLICY
 } from '../src/engine/evidencepack.js';
 
+// TSA signing fails closed without a provisioned key; configure one for
+// this test process (the standalone verify_bundle.js child inherits it).
+process.env.VIGILANTE_TSA_KEY = 'test-tsa-key';
+
 async function runTests() {
   console.log('🧪 Testing RFC 3161 Court-Admissible Evidence Bundle Exporter...');
 

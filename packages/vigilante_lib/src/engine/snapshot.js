@@ -9,7 +9,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import { getVigilanteEvidenceDir } from './config.js';
+import { getVigilanteEvidenceDir, requireSnapshotSealingKey, resolveSnapshotSealingKey } from './config.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -156,7 +156,19 @@ export async function captureContainerDiff(rootfsDir, options = {}) {
  * @param {Object} [options={}]
  * @returns {Promise<Object>} Snapshot metadata & path
  */
+/**
+ * The seal signature input: the snapshot's identity (id, pod, container,
+ * pid, timestamp) bound to its content hash. Editing any identity field or
+ * any content invalidates the signature.
+ */
+function snapshotSealInput({ snapshotId, podName, containerId, pid, timestamp, sha256Seal }) {
+  return [snapshotId, podName, containerId, String(pid), timestamp, sha256Seal].join('|');
+}
+
 export async function createForensicsSnapshot(containerInfo = {}, options = {}) {
+  // Fail closed before doing any work: an unkeyed seal authenticates
+  // nothing, so refuse to create one without a provisioned key.
+  const sealingKey = requireSnapshotSealingKey(options.sealingKey);
   const podName = containerInfo.podName || 'unknown-pod';
   const containerId = containerInfo.containerId || 'cid-' + crypto.randomBytes(4).toString('hex');
   const pid = containerInfo.pid || 1;
@@ -186,14 +198,23 @@ export async function createForensicsSnapshot(containerInfo = {}, options = {}) 
   ]);
   const sha256Seal = crypto.createHash('sha256').update(bundlePayload).digest('hex');
 
-  // 4. Create immutable snapshot manifest
+  // 4. Key the seal: HMAC over the snapshot identity + content hash, so
+  // neither the identity fields nor the contents can be re-sealed by
+  // anyone who does not hold the sealing key.
+  const manifestTimestamp = new Date(timestamp).toISOString();
+  const sealSignature = crypto.createHmac('sha256', sealingKey)
+    .update(snapshotSealInput({ snapshotId, podName, containerId, pid, timestamp: manifestTimestamp, sha256Seal }))
+    .digest('hex');
+
+  // 5. Create immutable snapshot manifest
   const manifest = {
     snapshotId,
     podName,
     containerId,
     pid,
-    timestamp: new Date(timestamp).toISOString(),
+    timestamp: manifestTimestamp,
     sha256Seal,
+    sealSignature,
     volatilesCount: volatiles.openFds.length,
     modifiedFilesCount: diffManifest.files.length,
     suspiciousFilesCount: diffManifest.summary.suspiciousFiles,
@@ -219,7 +240,7 @@ export async function createForensicsSnapshot(containerInfo = {}, options = {}) 
  * @param {string} snapshotDir
  * @returns {Promise<Object>} Verification status
  */
-export async function verifySnapshotIntegrity(snapshotDir) {
+export async function verifySnapshotIntegrity(snapshotDir, options = {}) {
   const manifestPath = path.join(snapshotDir, 'manifest.json');
   const volatilesFile = path.join(snapshotDir, 'volatiles.json');
   const diffFile = path.join(snapshotDir, 'disk_diff.json');
@@ -238,10 +259,53 @@ export async function verifySnapshotIntegrity(snapshotDir) {
   ]);
   const calculatedSeal = crypto.createHash('sha256').update(payload).digest('hex');
 
-  const isValid = calculatedSeal === manifest.sha256Seal;
+  const contentMatches = calculatedSeal === manifest.sha256Seal;
+
+  // The content hash alone is self-consistent (anyone can recompute it
+  // after tampering); the keyed seal signature over identity + content
+  // hash is what authenticates the bundle.
+  const sealingKey = resolveSnapshotSealingKey(options.sealingKey);
+  if (!sealingKey) {
+    return {
+      valid: false,
+      issue: 'Snapshot sealing key is not configured: seal signature cannot be verified (set VIGILANTE_SNAPSHOT_KEY or snapshot.sealingKey in config.yaml)',
+      snapshotId: manifest.snapshotId,
+      expectedSeal: manifest.sha256Seal,
+      calculatedSeal,
+      podName: manifest.podName,
+      timestamp: manifest.timestamp
+    };
+  }
+  if (!manifest.sealSignature) {
+    return {
+      valid: false,
+      issue: 'Snapshot manifest has no seal signature (legacy or forged bundle)',
+      snapshotId: manifest.snapshotId,
+      expectedSeal: manifest.sha256Seal,
+      calculatedSeal,
+      podName: manifest.podName,
+      timestamp: manifest.timestamp
+    };
+  }
+  const expectedSignature = crypto.createHmac('sha256', sealingKey)
+    .update(snapshotSealInput({
+      snapshotId: manifest.snapshotId,
+      podName: manifest.podName,
+      containerId: manifest.containerId,
+      pid: manifest.pid,
+      timestamp: manifest.timestamp,
+      sha256Seal: calculatedSeal
+    }))
+    .digest('hex');
+  const expectedBuf = Buffer.from(expectedSignature);
+  const actualBuf = Buffer.from(manifest.sealSignature);
+  const signatureMatches = expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
 
   return {
-    valid: isValid,
+    valid: contentMatches && signatureMatches,
+    issue: contentMatches
+      ? (signatureMatches ? undefined : 'Seal signature verification failed: identity or contents were re-sealed without the key')
+      : 'Content hash mismatch: snapshot contents do not match the seal',
     snapshotId: manifest.snapshotId,
     expectedSeal: manifest.sha256Seal,
     calculatedSeal,

@@ -43,17 +43,22 @@ assert.ok(envelope.signature, 'Signature must be generated');
 assert.strictEqual(envelope.algorithm, 'Ed25519');
 assert.strictEqual(envelope.signerNodeId, node.nodeId);
 
-// Valid signature verification
-const verifyResult = verifyThreatRecord(envelope);
+// Valid signature verification (against the trusted, pinned node key —
+// the envelope-embedded key is never trusted on its own)
+const verifyResult = verifyThreatRecord(envelope, node.publicKey);
 assert.strictEqual(verifyResult.valid, true);
 assert.strictEqual(verifyResult.payload.indicator, '198.51.100.99');
+
+// Verification without a caller-supplied trusted key must fail closed
+const unpinnedResult = verifyThreatRecord(envelope);
+assert.strictEqual(unpinnedResult.valid, false, 'Verification without a trusted key must fail');
 
 // Tampered payload verification
 const tamperedEnvelope = {
   ...envelope,
   payload: { ...threatPayload, indicator: '203.0.113.1' }
 };
-const tamperedResult = verifyThreatRecord(tamperedEnvelope);
+const tamperedResult = verifyThreatRecord(tamperedEnvelope, node.publicKey);
 assert.strictEqual(tamperedResult.valid, false, 'Tampered payload should fail verification');
 console.log('✔ Test 2 passed: signThreatRecord and verifyThreatRecord cryptographically validate authentic envelopes and reject tampered payloads.');
 
@@ -68,7 +73,8 @@ console.log('✔ Test 3 passed: broadcastThreatIndicator dispatched indicator to
 // Test 4: ingestFederatedThreatRecord
 const ingestResult = await ingestFederatedThreatRecord(envelope, {
   verifySignature: true,
-  runHunt: true
+  runHunt: true,
+  publicKeyPem: node.publicKey
 });
 
 assert.strictEqual(ingestResult.ingested, true);

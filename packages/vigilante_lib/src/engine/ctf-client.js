@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import { signFile } from './gpg.js';
-import { loadConfig } from './config.js';
+import { loadConfig, getVigilanteConfigDir } from './config.js';
 
 /**
  * Initializes and scaffolds a structured local CTF participant workspace
@@ -174,9 +174,12 @@ export async function submitLocalFlag({
     return result;
   }
 
+  // No engine attached means nothing was validated. Report that honestly
+  // instead of a fabricated success verdict.
   return {
-    success: true,
-    message: `Flag for '${challengeId}' formatted and ready for submission: ${cleanFlag}`,
+    success: false,
+    validated: false,
+    message: `No tournament engine attached: flag for '${challengeId}' was NOT validated`,
     flag: cleanFlag
   };
 }
@@ -317,7 +320,8 @@ export async function sealSolveEvidence({
   solveScriptContent = '',
   writeupContent = '',
   sessionCastContent = '',
-  outputDir = './ctf-workspace/vault'
+  outputDir = './ctf-workspace/vault',
+  ledgerDir = null
 } = {}) {
   if (!teamId || !challengeId || !flag) {
     throw new Error('teamId, challengeId, and flag are required to seal solve evidence');
@@ -348,17 +352,29 @@ export async function sealSolveEvidence({
     sealedAt: timestamp
   };
 
-  // 3. Ingest into Cryptographic Merkle Ledger
+  // 3. Ingest into Cryptographic Merkle Ledger. appendLedgerEntry takes
+  // positional arguments (entryType, payload, signerInfo, options); the
+  // previous object-style call threw on every seal and the error was
+  // swallowed, so no seal ever reached the ledger while the receipt
+  // claimed a Merkle anchor. Failures are now recorded honestly on the
+  // seal record (ledgerAnchored: false) instead of being papered over
+  // with a bare fallback hash.
+  const sealLedgerDir = ledgerDir || path.join(getVigilanteConfigDir(), 'ledger');
   let ledgerEntry = null;
+  let ledgerError = null;
+  let merkleRoot = null;
   try {
-    const { appendLedgerEntry } = await import('./ledger.js');
-    ledgerEntry = await appendLedgerEntry({
-      type: 'CTF_SOLVE_EVIDENCE',
-      source: 'ctf-client',
-      payload: evidencePayload,
-      description: `Cryptographic proof of solve for challenge '${challengeId}' by team '${teamId}'`
-    });
+    const { appendLedgerEntry, getLedgerEntries, buildMerkleRoot } = await import('./ledger.js');
+    ledgerEntry = await appendLedgerEntry(
+      'CTF_SOLVE_EVIDENCE',
+      evidencePayload,
+      { id: 'ctf-client', role: 'Participant' },
+      { ledgerDir: sealLedgerDir }
+    );
+    const allEntries = await getLedgerEntries(sealLedgerDir);
+    merkleRoot = buildMerkleRoot(allEntries).root;
   } catch (err) {
+    ledgerError = err.message;
     logger.warn('CTF_CLIENT:LEDGER', `Ledger append warning: ${err.message}`);
   }
 
@@ -366,9 +382,11 @@ export async function sealSolveEvidence({
   const manifestFile = path.join(absDir, `${receiptId}-seal.json`);
   const fullSealRecord = {
     ...evidencePayload,
-    merkleIndex: ledgerEntry?.index ?? 0,
-    merkleEntryHash: ledgerEntry?.entryHash ?? crypto.createHash('sha256').update(JSON.stringify(evidencePayload)).digest('hex'),
-    merkleRoot: ledgerEntry?.merkleRoot ?? null
+    ledgerAnchored: Boolean(ledgerEntry),
+    ledgerError,
+    merkleIndex: ledgerEntry?.index ?? null,
+    merkleEntryHash: ledgerEntry?.entryHash ?? null,
+    merkleRoot
   };
 
   await fs.writeFile(manifestFile, JSON.stringify(fullSealRecord, null, 2), 'utf8');
