@@ -3,3 +3,12 @@ node_modules/
 .DS_Store
 *.log
 /values/
+
+# Next.js build output and generated files (all apps)
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# GitNexus local index (see AGENTS.md)
+.gitnexus/
