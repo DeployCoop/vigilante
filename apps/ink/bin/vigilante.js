@@ -5,6 +5,23 @@ import meow from 'meow';
 import { App } from '../src/ui/App.js';
 import { loadConfig } from '../src/engine/config.js';
 import { ScenarioEngine } from 'vigilante_lib/engine/scenarios.js';
+import { PassThrough } from 'node:stream';
+
+// Ink throws "Raw mode is not supported" as soon as any useInput hook mounts
+// against a stdin that is not a TTY — which is exactly the documented
+// --non-interactive / CI case (piped or /dev/null stdin). When there is no
+// real terminal to read keys from, render against an inert stdin that
+// satisfies Ink's raw-mode contract (isTTY + setRawMode) but never delivers
+// input, instead of crashing every App-rendered command.
+const createInertStdin = () => {
+  const stdin = new PassThrough();
+  stdin.isTTY = true;
+  stdin.setRawMode = () => stdin;
+  // Ink also calls ref()/unref() on its stdin, which generic streams lack.
+  stdin.ref = () => stdin;
+  stdin.unref = () => stdin;
+  return stdin;
+};
 
 const config = loadConfig();
 
@@ -20,7 +37,7 @@ const cli = meow(`
     modules     List available and installed modules
     pods        Live monitor of Kubernetes pods with -A -o wide details
     nmap/scan   Network reconnaissance & data collection saved to XDG nmaps dir
-    xml/netmap  Interactive XML network topology & port matrix visualizer
+    xml/netmap/map/nasty Interactive XML network topology & port matrix visualizer
     openvas/gvm OpenVAS & Greenbone vulnerability management & CVE scanning pane
     kctf/ctf    Google kCTF cyber range platform & challenge spin-up pane
     oobscan/oob Out-of-Band (BMC/IPMI/Redfish/AMT) hardware security audit (runZeroInc/oobscan)
@@ -37,7 +54,7 @@ const cli = meow(`
     mcp         Launch Model Context Protocol (MCP) server over stdio for LLMs
     audit       Shift-left security audit of Kubernetes manifests and Dockerfiles
     kspm        Continuous Kubernetes Security Posture Management & CIS benchmarks
-    battlestation/bs Launch live dual-pane Battle Station (Falco eBPF + Zeek/Suricata)
+    battlestation/bs/battle Launch live dual-pane Battle Station (Falco eBPF + Zeek/Suricata)
     hunt        Execute SIGMA-to-SQL automated threat hunts across Security Data Lake
     memdump     Inspect process memory maps (/proc/$PID/maps) for fileless/RWX anomalies
     sbom        Generate CycloneDX v1.5 or SPDX v2.3 container SBOM and verify signatures
@@ -210,9 +227,26 @@ const cli = meow(`
     },
     incident: {
       type: 'string'
+    },
+    // Declared explicitly so --mock=false / --no-mock parse as booleans:
+    // undeclared, meow delivered the string 'false' and Boolean('false')
+    // kept ctf spawn/reap in mock mode. Default preserves prior behaviour.
+    mock: {
+      type: 'boolean',
+      default: true
     }
   }
 });
+
+// meow only auto-handles the long forms --help/--version. The documented
+// short flags -h/-v parse as unknown boolean flags and would otherwise fall
+// through to the default 'up' provisioning UI, so intercept them here.
+if (cli.flags.h) {
+  cli.showHelp(0);
+}
+if (cli.flags.v) {
+  cli.showVersion();
+}
 
 const command = cli.input[0] || 'up';
 const subCommand = cli.input[1];
@@ -395,10 +429,14 @@ if (command === 'mcp') {
 
       if (cli.flags.sarif) {
         const sarif = generateSarifReport(result.findings);
-        if (cli.flags.output) {
+        // The CLI Reference documents `vigilante audit <path> --sarif report.sarif`:
+        // that filename lands in cli.input[2], so honour it as the output path
+        // (an explicit -o/--output still wins). Bare --sarif dumps to stdout.
+        const sarifPath = cli.flags.output || cli.input[2];
+        if (sarifPath) {
           const fs = await import('node:fs/promises');
-          await fs.writeFile(cli.flags.output, JSON.stringify(sarif, null, 2), 'utf8');
-          console.log(`✔ SARIF report written to ${cli.flags.output}`);
+          await fs.writeFile(sarifPath, JSON.stringify(sarif, null, 2), 'utf8');
+          console.log(`✔ SARIF report written to ${sarifPath}`);
         } else {
           console.log(JSON.stringify(sarif, null, 2));
         }
@@ -1190,7 +1228,7 @@ Usage:
       const teamId = cli.flags.team || 'demo-team';
       const ttlMinutes = parseInt(cli.flags.ttl || '30', 10);
       const namespace = cli.flags.namespace || 'ctf-sandboxes';
-      const isMock = cli.flags.mock !== undefined ? Boolean(cli.flags.mock) : true;
+      const isMock = cli.flags.mock;
       console.log(`\n🚀 Provisioning ephemeral sandbox for [${challengeId}] (Team: ${teamId}, TTL: ${ttlMinutes}m)...`);
       try {
         const sbx = await kctfMod.spawnEphemeralSandbox({
@@ -1232,7 +1270,7 @@ Usage:
       process.exit(0);
     } else if (subCommand === 'reap') {
       const namespace = cli.flags.namespace || 'ctf-sandboxes';
-      const isMock = cli.flags.mock !== undefined ? Boolean(cli.flags.mock) : true;
+      const isMock = cli.flags.mock;
       console.log('\n🧹 Reaping expired CTF sandboxes...');
       const reaped = await kctfMod.reapExpiredSandboxes({
         namespace,
@@ -1452,7 +1490,15 @@ Participant Solver Workbench:
       ip: cli.flags.ip,
       deleteNamespace: cli.flags.deleteNamespace,
       nonInteractive: cli.flags.nonInteractive,
-      skipPrereqs: cli.flags.skipPrereqs
-    })
+      skipPrereqs: cli.flags.skipPrereqs,
+      initialScenario: cli.flags.scenario,
+      initialPlaybook: cli.flags.playbook,
+      runAllScenarios: cli.flags.all
+    }),
+    {
+      stdin: cli.flags.nonInteractive || !process.stdin.isTTY
+        ? createInertStdin()
+        : process.stdin
+    }
   );
 }

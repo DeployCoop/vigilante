@@ -25,6 +25,13 @@ vigilante [command] [subcommand/target] [options]
 | `--help` | `-h` | boolean | `false` | Display command help and usage instructions. |
 | `--version` | `-v` | boolean | `false` | Display installed Vigilante version. |
 
+### Exit Codes
+
+| Code | Meaning |
+| :--- | :--- |
+| `0` | The command completed successfully. |
+| `1` | The command failed: a fatal error, an unknown command, failed prerequisite/doctor checks, or an `audit` whose findings meet the `--fail-on` threshold. |
+
 ---
 
 ## 2. Command Index

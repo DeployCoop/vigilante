@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { PulseIndicator } from './PulseIndicator.js';
 import path from 'node:path';
@@ -16,12 +16,22 @@ import { useClipboard } from './ClipboardManager.js';
 import { useTheme } from './theme.js';
 import { logger } from '../utils/logger.js';
 
-export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.local', onDone = null, onNavigate = null }) {
+export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.local', onDone = null, onNavigate = null, onError = null, initialScenario = null, initialPlaybook = null, runAllScenarios = false }) {
   const theme = useTheme();
   const { copyToClipboard, registerPanes } = useClipboard();
 
+  // One-shot mode: the CLI named exactly what to run
+  // (`threat-sim --scenario <id>` / `--playbook <file>` / `--all`), so the
+  // picker is bypassed, the run starts as soon as playbooks load, and
+  // failures are reported to the host (which turns them into a non-zero
+  // process exit in non-interactive mode). Previously these flags were
+  // parsed by the bin and then silently dropped, leaving the interactive
+  // picker open — hanging forever in non-interactive use.
+  const isOneShot = Boolean(initialScenario || initialPlaybook || runAllScenarios);
+
   const [mode, setMode] = useState('picker'); // 'picker' | 'running' | 'completed' | 'error'
   const [playbooks, setPlaybooks] = useState([]);
+  const [playbooksLoaded, setPlaybooksLoaded] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [filterText, setFilterText] = useState('');
   const [isFiltering, setIsFiltering] = useState(false);
@@ -41,6 +51,8 @@ export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.l
       setPlaybooks(list);
     } catch (err) {
       logger.error('THREAT:UI:LOAD_ERR', `Failed to load playbooks: ${err.message}`);
+    } finally {
+      setPlaybooksLoaded(true);
     }
   }, []);
 
@@ -105,6 +117,7 @@ export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.l
       setError(err.message);
       setLogs(l => [...l, `✖ Simulation failed: ${err.message}`]);
       setMode('error');
+      if (isOneShot && onError) onError(err);
     }
   };
 
@@ -139,8 +152,47 @@ export const ThreatSimView = memo(function ThreatSimView({ domain = 'vigilante.l
       setError(err.message);
       setLogs(l => [...l, `✖ Multi-stage campaign failed: ${err.message}`]);
       setMode('error');
+      if (isOneShot && onError) onError(err);
     }
   };
+
+  // One-shot auto-run: start the CLI-requested run as soon as the playbook
+  // list has loaded, exactly once.
+  const autoRunRef = useRef(false);
+  useEffect(() => {
+    if (!isOneShot || !playbooksLoaded || autoRunRef.current) return;
+    autoRunRef.current = true;
+    (async () => {
+      const fail = (err) => {
+        setError(err.message);
+        setMode('error');
+        if (onError) onError(err);
+      };
+      if (runAllScenarios) {
+        if (playbooks.length === 0) {
+          fail(new Error('No threat simulation playbooks available to run.'));
+          return;
+        }
+        await handleRunAll();
+        return;
+      }
+      if (initialPlaybook) {
+        try {
+          const pb = await loadPlaybook(initialPlaybook);
+          await handleRunPlaybook(pb);
+        } catch (err) {
+          fail(err);
+        }
+        return;
+      }
+      const pb = playbooks.find(p => p.id === initialScenario);
+      if (!pb) {
+        fail(new Error(`Scenario not found: ${initialScenario}`));
+        return;
+      }
+      await handleRunPlaybook(pb);
+    })();
+  }, [isOneShot, playbooksLoaded, playbooks]);
 
   // Create new custom playbook template
   const handleCreatePlaybook = async () => {
