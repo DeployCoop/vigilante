@@ -3,6 +3,10 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createVigilanteMcpServer } from '../src/mcp/server.js';
 import { saveEvidenceFile } from '../src/engine/evidence.js';
 
+// CTF flag derivation fails closed without an operator-configured secret;
+// provide one for this test process (the MCP server runs in-process here).
+process.env.VIGILANTE_CTF_SECRET = process.env.VIGILANTE_CTF_SECRET || 'test-mcp-secret';
+
 async function runTests() {
   console.log('🧪 Testing Vigilante Model Context Protocol (MCP) Server for LLMs...');
 
@@ -201,8 +205,11 @@ async function runTests() {
     arguments: { challengeId: 'web-flag-leak', teamId: 'mcp-test-team', mock: true }
   });
   const parsedSpawn = JSON.parse(spawnRes.content[0].text);
-  if (!parsedSpawn.id || !parsedSpawn.connectionUrl || !parsedSpawn.flag) {
+  if (!parsedSpawn.id || !parsedSpawn.connectionUrl) {
     throw new Error('spawn_ctf_sandbox failed to return valid sandbox record');
+  }
+  if ('flag' in parsedSpawn || 'manifest' in parsedSpawn) {
+    throw new Error('spawn_ctf_sandbox must not expose the flag or flag-bearing manifest');
   }
   console.log(`✔ Test 14 passed: spawn_ctf_sandbox provisioned isolated sandbox (${parsedSpawn.id}) via MCP.`);
 

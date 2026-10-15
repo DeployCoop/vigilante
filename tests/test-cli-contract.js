@@ -141,16 +141,23 @@ async function runTests() {
     const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vigilante-stub-bin-'));
     const callsLog = path.join(stubDir, 'kubectl-calls.log');
     fs.writeFileSync(path.join(stubDir, 'kubectl'), `#!/bin/sh\necho called >> ${callsLog}\nexit 1\n`, { mode: 0o755 });
-    const stubEnv = { PATH: `${stubDir}:${process.env.PATH}` };
+    // A CTF flag secret is required for spawning (derivation fails closed
+    // without one); this test exercises flag parsing, so configure one.
+    const stubEnv = { PATH: `${stubDir}:${process.env.PATH}`, VIGILANTE_CTF_SECRET: 'cli-contract-test-secret' };
 
+    // Distinct challenges per run: the sandbox registry persists across
+    // processes, so re-spawning the same team+challenge would dedupe
+    // instead of provisioning. The stub kubectl exits 1, so real-mode
+    // spawns now fail the apply — what matters here is that kubectl was
+    // invoked at all (parsing), not that provisioning succeeded.
     runCli(['ctf', 'spawn', 'web-flag-leak', '--mock'], { extraEnv: stubEnv });
     assert(!fs.existsSync(callsLog), 'mock mode must not invoke kubectl');
 
-    runCli(['ctf', 'spawn', 'web-flag-leak', '--mock=false'], { extraEnv: stubEnv });
+    runCli(['ctf', 'spawn', 'pwn-nsjail-echo', '--mock=false'], { extraEnv: stubEnv });
     assert(fs.existsSync(callsLog), '--mock=false must invoke kubectl (real provisioning path)');
 
     fs.rmSync(callsLog, { force: true });
-    runCli(['ctf', 'spawn', 'web-flag-leak', '--no-mock'], { extraEnv: stubEnv });
+    runCli(['ctf', 'spawn', 'crypto-oracle-rsa', '--no-mock'], { extraEnv: stubEnv });
     assert(fs.existsSync(callsLog), '--no-mock must invoke kubectl (real provisioning path)');
     console.log('✔ Test 11 passed: --mock=false and --no-mock leave mock mode.');
   }

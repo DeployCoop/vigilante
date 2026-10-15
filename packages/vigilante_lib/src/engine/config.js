@@ -320,6 +320,52 @@ export function getHostEvidenceDir(networkCidr, hostIp) {
 /**
  * Default Vigilante Configuration Object
  */
+/**
+ * Get the file used to persist the CTF sandbox registry across processes
+ * (the CLI, the Ink UI and the MCP server are separate processes)
+ * @returns {string}
+ */
+export function getCtfSandboxesFile() {
+  return path.join(getVigilanteConfigDir(), 'ctf-sandboxes.json');
+}
+
+/**
+ * Resolve the HMAC secret used to derive and verify per-team CTF flags.
+ * Order: explicit argument, the VIGILANTE_CTF_SECRET environment variable,
+ * then `ctf.flagSecret` in config.yaml. Returns null when no secret is
+ * configured — there is deliberately no built-in default, because a shipped
+ * default secret makes every flag publicly derivable.
+ * @param {string} [explicitSecret]
+ * @returns {string|null}
+ */
+export function resolveCtfFlagSecret(explicitSecret) {
+  if (explicitSecret) return explicitSecret;
+  if (process.env.VIGILANTE_CTF_SECRET) return process.env.VIGILANTE_CTF_SECRET;
+  try {
+    const cfg = loadConfig();
+    if (cfg && cfg.ctf && cfg.ctf.flagSecret) return cfg.ctf.flagSecret;
+  } catch {
+    // Config unreadable — treat the secret as unconfigured.
+  }
+  return null;
+}
+
+/**
+ * Like resolveCtfFlagSecret, but fail closed: deriving or verifying a flag
+ * without an operator-configured secret is refused outright.
+ * @param {string} [explicitSecret]
+ * @returns {string}
+ */
+export function requireCtfFlagSecret(explicitSecret) {
+  const secret = resolveCtfFlagSecret(explicitSecret);
+  if (!secret) {
+    throw new Error(
+      'CTF flag secret is not configured: set the VIGILANTE_CTF_SECRET environment variable or ctf.flagSecret in config.yaml. Flags are never derived from a built-in default.'
+    );
+  }
+  return secret;
+}
+
 export const DEFAULT_CONFIG = {
   theme: {
     name: 'default',
