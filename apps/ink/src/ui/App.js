@@ -57,7 +57,10 @@ const AppContent = ({
   ip = '127.0.0.1',
   deleteNamespace = false,
   nonInteractive = false,
-  skipPrereqs = false
+  skipPrereqs = false,
+  initialScenario = null,
+  initialPlaybook = null,
+  runAllScenarios = false
 }) => {
   const { exit } = useApp();
   const { copiedToast, copyPane, registerPanes } = useClipboard();
@@ -70,7 +73,7 @@ const AppContent = ({
     if (command === 'openvas' || command === 'gvm') return 'OPENVAS';
     if (command === 'kctf' || command === 'ctf') return 'KCTF';
     if (command === 'oobscan' || command === 'oob') return 'OOBSCAN';
-    if (command === 'battlestation' || command === 'bs' || command === 'live') return 'BATTLESTATION';
+    if (command === 'battlestation' || command === 'bs' || command === 'live' || command === 'battle') return 'BATTLESTATION';
     if (command === 'kspm' || command === 'cis' || command === 'posture') return 'KSPM';
     if (command === 'audit') return 'AUDIT';
     if (command === 'canary' || command === 'deception') return 'CANARY';
@@ -363,13 +366,6 @@ const AppContent = ({
     }
   });
 
-  // Auto-exit if non-interactive and finished
-  useEffect(() => {
-    if (nonInteractive && isDone) {
-      exit();
-    }
-  }, [nonInteractive, isDone]);
-
   // Batched log updates (40ms / 25fps flush) to prevent terminal render storms during rapid command outputs
   const pendingLogsRef = useRef([]);
   const logFlushTimeoutRef = useRef(null);
@@ -400,6 +396,25 @@ const AppContent = ({
       }
     };
   }, []);
+
+  // Auto-exit if non-interactive and finished. Pending batched logs are
+  // flushed first — previously the exit won the race against the 40ms log
+  // flush, so output that exists only as logs (e.g. `config path`) never
+  // rendered. A fatal error sets exit code 1 before exiting: previously
+  // every Ink-rendered command exited 0, so failures and unknown commands
+  // were invisible to scripts and CI.
+  useEffect(() => {
+    if (nonInteractive && isDone) {
+      flushLogs();
+      const timer = setTimeout(() => {
+        if (fatalError) {
+          process.exitCode = 1;
+        }
+        exit();
+      }, 75);
+      return () => clearTimeout(timer);
+    }
+  }, [nonInteractive, isDone, fatalError, flushLogs, exit]);
 
   const updateTask = (id, updates) => {
     logger.debug('TASK:UPDATE', `Task '${id}' -> ${JSON.stringify(updates)}`);
@@ -1083,7 +1098,7 @@ const AppContent = ({
       setViewState('PODS');
     } else if (command === 'nmap' || command === 'scan' || command === 'collect') {
       setViewState('NMAP');
-    } else if (command === 'xml' || command === 'visualizer' || command === 'netmap') {
+    } else if (command === 'xml' || command === 'visualizer' || command === 'netmap' || command === 'map' || command === 'nasty') {
       setViewState('XML_VISUALIZER');
     } else if (command === 'threat-sim') {
       setViewState('THREAT_SIM');
@@ -1107,6 +1122,32 @@ const AppContent = ({
     } else if (command === 'reset' || (command === 'modules' && subCommand === 'reset')) {
       const targetMod = (cliSelectedModules && cliSelectedModules[0]) || 'vigil-soc';
       runResetModuleWorkflow({ moduleId: targetMod, namespace: targetNamespace });
+    } else if (
+      // Documented commands that map straight to a view (see the viewState
+      // initializer above): the view is already selected and there is no
+      // workflow to run. These previously fell through to the unknown-command
+      // else and rendered a false "Unknown command" fatal error — and in
+      // non-interactive mode cut the session short. In non-interactive mode
+      // there is no user to interact with the view, so mark the command done
+      // after its frame renders instead.
+      [
+        'ai', 'ask', 'analyst', 'llm',
+        'vuln', 'threat', 'dossier',
+        'openvas', 'gvm',
+        'battlestation', 'bs', 'live', 'battle',
+        'kspm', 'cis', 'posture', 'audit',
+        'canary', 'deception',
+        'purple', 'purpleteam', 'wargame',
+        'forensics', 'carve',
+        'lineage', 'tree',
+        'cloudsec', 'cspm', 'ciem',
+        'timeline', 'dag',
+        'sniffer', 'pcap', 'sniff'
+      ].includes(command)
+    ) {
+      if (nonInteractive) {
+        setIsDone(true);
+      }
     } else {
       setFatalError(`Unknown command: ${command}`);
       setIsDone(true);
@@ -1261,6 +1302,13 @@ const AppContent = ({
     viewState === 'THREAT_SIM'
       ? React.createElement(ThreatSimView, {
           domain,
+          initialScenario,
+          initialPlaybook,
+          runAllScenarios,
+          onError: (err) => {
+            setFatalError(err.message);
+            setIsDone(true);
+          },
           onDone: () => setIsDone(true),
           onNavigate: (target) => {
             if (target === 'menu') {

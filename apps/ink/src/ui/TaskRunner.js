@@ -74,7 +74,7 @@ export const TaskRunner = memo(function TaskRunner({ tasks = [], logs = [], maxL
               task.label
             )
           ),
-          task.detail && task.status === 'running'
+          task.detail
             ? React.createElement(
                 Box,
                 { marginLeft: 3 },
