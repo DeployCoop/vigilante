@@ -1,6 +1,7 @@
 import { execa } from 'execa';
 import { execStream } from '../utils/exec.js';
 import { waitForApiServerReady } from './k8s.js';
+import { assertCliTarget } from './config.js';
 
 /**
  * List all k3d clusters
@@ -18,6 +19,9 @@ export async function listK3dClusters() {
  * Create or reuse a k3d Kubernetes cluster
  */
 export async function createK3dCluster(clusterName = 'vigilante-dev', options = {}) {
+  // The name is a positional k3d argument (and becomes a kubectl context
+  // suffix): reject option-shaped or whitespace-bearing values.
+  assertCliTarget(clusterName, 'cluster name');
   const {
     httpPort = 80,
     httpsPort = 443,
@@ -96,6 +100,7 @@ export async function createK3dCluster(clusterName = 'vigilante-dev', options = 
  * Delete a k3d cluster
  */
 export async function deleteK3dCluster(clusterName = 'vigilante-dev', options = {}) {
+  assertCliTarget(clusterName, 'cluster name');
   const { onLog = null } = options;
   const clusters = await listK3dClusters();
   const exists = clusters.some(c => c.name === clusterName);

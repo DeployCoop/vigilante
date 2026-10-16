@@ -5,7 +5,8 @@ import path from 'node:path';
 import {
   getVigilanteTrivyDir,
   ensureVigilanteConfig,
-  getHostEvidenceDir
+  getHostEvidenceDir,
+  assertCliTarget
 } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { saveEvidenceFile } from './evidence.js';
@@ -171,6 +172,9 @@ export function parseTrivyOutput(rawJson) {
  * @returns {Promise<{ id: string, target: string, profile: string, timestamp: string, data: object, filePath: string }>}
  */
 export async function runTrivyAudit(target, profileId = 'image', opts = {}) {
+  // The target is interpolated into trivy argv by every profile: reject
+  // option-shaped values before they can be parsed as flags.
+  assertCliTarget(target, 'trivy target');
   await ensureVigilanteConfig();
   const trivyDir = getVigilanteTrivyDir();
   const profile = TRIVY_PROFILES.find((p) => p.id === profileId) || TRIVY_PROFILES[0];

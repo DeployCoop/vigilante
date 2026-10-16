@@ -6,7 +6,7 @@ import { load as yamlLoad, dump as yamlDump } from 'js-yaml';
 import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
 import { execStream, exec } from '../utils/exec.js';
-import { getVigilantePlaybooksDir, loadConfig, sanitizePathComponent } from './config.js';
+import { getVigilantePlaybooksDir, loadConfig, sanitizePathComponent, shQuote, assertDnsLabel } from './config.js';
 import { NIST_ATTACK_VECTORS } from './nist.js';
 
 /**
@@ -525,11 +525,23 @@ export async function loadPlaybook(idOrPath, options = {}) {
  * @returns {string} Kubernetes YAML manifest
  */
 export function generateThreatJobManifest(playbook, options = {}) {
-  const namespace = options.namespace || 'opensearch';
+  // The namespace lands in YAML fields and in the default OpenSearch URL:
+  // it must be a plain DNS label, never free text.
+  const namespace = assertDnsLabel(options.namespace || 'opensearch', 'namespace');
   const jobName = `threat-sim-${playbook.id.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`.slice(0, 50);
   const osUrl = options.osUrl || `http://opensearch-cluster-master.${namespace}.svc.cluster.local:9200`;
 
-  // Build curl POST commands for all events
+  // Label values have a strict charset; use the id verbatim only when it
+  // already qualifies, otherwise the sanitized form used for the job name.
+  const playbookLabel = /^[a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?$/.test(playbook.id)
+    ? playbook.id
+    : jobName.replace(/^threat-sim-/, '');
+
+  // Build curl POST commands for all events. Every playbook-controlled
+  // string that reaches the pod's shell script is either flattened to a
+  // single comment line or emitted as a single-quoted literal via shQuote,
+  // so $(...), backticks, quotes, and newlines in playbook data stay inert
+  // data instead of becoming shell lines inside the Job pod.
   const curlCommands = (playbook.events || []).map((ev, idx) => {
     const enrichedEvent = {
       '@timestamp': '$(date -u +"%Y-%m-%dT%H:%M:%SZ")',
@@ -541,13 +553,17 @@ export function generateThreatJobManifest(playbook, options = {}) {
       ...ev
     };
 
+    const comment = String(ev.action || ev.message || 'Threat Event').replace(/[\r\n]+/g, ' ');
     const jsonPayload = JSON.stringify(enrichedEvent, null, 2);
-    return `# Event ${idx + 1}: ${ev.action || ev.message || 'Threat Event'}
-curl -s -X POST "${osUrl}/vigilante-network-events/_doc" \\
+    return `# Event ${idx + 1}: ${comment}
+curl -s -X POST ${shQuote(`${osUrl}/vigilante-network-events/_doc`)} \\
   -H 'Content-Type: application/json' \\
-  -d '${jsonPayload.replace(/'/g, "'\\''")}'
+  -d ${shQuote(jsonPayload)}
 `;
   }).join('\n');
+
+  const introMessage = `⚡ Injecting Threat Scenario '${playbook.name}' (${playbook.id}) into OpenSearch at ${osUrl}...`;
+  const doneMessage = `✔ Threat simulation '${playbook.id}' completed successfully (${playbook.events?.length || 0} events ingested)!`;
 
   return `apiVersion: batch/v1
 kind: Job
@@ -557,7 +573,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: vigilante
     vigilante.io/module: opensearch
-    vigilante.io/playbook: ${playbook.id}
+    vigilante.io/playbook: ${playbookLabel}
 spec:
   ttlSecondsAfterFinished: 300
   template:
@@ -572,11 +588,11 @@ spec:
         args:
         - |
           set -e
-          echo "⚡ Injecting Threat Scenario '${playbook.name}' (${playbook.id}) into OpenSearch at ${osUrl}..."
+          echo ${shQuote(introMessage)}
           
 ${curlCommands}
           
-          echo "✔ Threat simulation '${playbook.id}' completed successfully (${playbook.events?.length || 0} events ingested)!"
+          echo ${shQuote(doneMessage)}
 `;
 }
 

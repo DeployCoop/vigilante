@@ -278,6 +278,65 @@ export function sanitizePathComponent(str) {
  * @param {...string} segments
  * @returns {string} Absolute path inside baseDir
  */
+/**
+ * Quote a value as a single POSIX shell word. Single quotes preserve every
+ * character literally except the single quote itself, which is escaped as
+ * '\'' — so $(...), backticks, semicolons, and spaces in the value can
+ * never be interpreted by a shell. Use this whenever a value must appear
+ * inside a shell string; prefer argv-array execution (execa/execFile)
+ * wherever one is available instead.
+ */
+export function shQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Escape a value for embedding inside a double-quoted shell string:
+ * backslash, the quote itself, `$`, and backtick are backslash-escaped, so
+ * command substitution and parameter expansion cannot fire. Prefer shQuote
+ * (single quotes) for new code; this exists for generated scripts whose
+ * format depends on double quoting.
+ */
+export function shDoubleQuoteEscape(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
+}
+
+const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Kubernetes-style DNS label (lowercase alphanumerics and interior dashes). */
+export function isValidDnsLabel(value) {
+  return typeof value === 'string' && DNS_LABEL_PATTERN.test(value);
+}
+
+export function assertDnsLabel(value, label = 'value') {
+  if (!isValidDnsLabel(value)) {
+    throw new Error(`Invalid ${label} '${value}': expected a DNS label (lowercase letters, digits, and interior dashes, 1-63 chars)`);
+  }
+  return value;
+}
+
+const HOSTNAME_PATTERN = /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+
+/** Dotted hostname (letters, digits, hyphens, dots; no empty labels). */
+export function isValidHostname(value) {
+  return typeof value === 'string' && HOSTNAME_PATTERN.test(value);
+}
+
+/**
+ * Guard for values passed as positional arguments to CLI tools. Argv-array
+ * execution already neutralizes shell metacharacters, but a value starting
+ * with '-' is parsed as a flag by the receiving binary (flag injection:
+ * dig -f, mkcert options, nmap -iL, ...), and whitespace/control characters
+ * have no legitimate place in a target, name, or image reference.
+ */
+export function assertCliTarget(value, label = 'target') {
+  const v = String(value ?? '');
+  if (!v || v.startsWith('-') || /[\s\u0000-\u001f\u007f]/.test(v)) {
+    throw new Error(`Invalid ${label} '${value}': must be non-empty, must not start with '-', and must not contain whitespace or control characters`);
+  }
+  return v;
+}
+
 export function resolvePathInside(baseDir, ...segments) {
   const base = path.resolve(baseDir);
   const target = path.resolve(base, ...segments);

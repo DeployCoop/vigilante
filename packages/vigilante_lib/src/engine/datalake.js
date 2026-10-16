@@ -260,12 +260,15 @@ export function runRetrospectiveThreatHunt(indicators = []) {
     const query = `
       SELECT id, event_type, source_pod, source_ip, dest_ip, dest_port, severity, mitre_technique, indicator, timestamp
       FROM security_events
-      WHERE source_ip = ? OR dest_ip = ? OR indicator LIKE ? OR raw_json LIKE ?
+      WHERE source_ip = ? OR dest_ip = ? OR indicator LIKE ? ESCAPE '\\' OR raw_json LIKE ? ESCAPE '\\'
       ORDER BY timestamp DESC
       LIMIT 100
     `;
 
-    const rows = db.prepare(query).all(val, val, `%${val}%`, `%${val}%`);
+    // The indicator is matched literally: escape LIKE wildcards so an IOC
+    // containing % or _ cannot over-match unrelated events.
+    const likeVal = `%${String(val).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    const rows = db.prepare(query).all(val, val, likeVal, likeVal);
     if (rows && rows.length > 0) {
       matches.push({
         indicator: val,

@@ -7,7 +7,8 @@ import {
   getVigilanteOobscansDir,
   ensureVigilanteConfig,
   getHostEvidenceDir,
-  resolvePathInside
+  resolvePathInside,
+  assertCliTarget
 } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { saveEvidenceFile } from './evidence.js';
@@ -460,7 +461,7 @@ export async function runOobScan({
     throw new Error(check.error);
   }
 
-  const cleanTarget = (target || '127.0.0.1').trim();
+  const cleanTarget = assertCliTarget((target || '127.0.0.1').trim(), 'oobscan target');
   const safeTargetName = cleanTarget.replace(/[/:]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
   const timestamp = Date.now();
   const baseName = `oobscan-${safeTargetName}-${timestamp}`;
