@@ -31,8 +31,8 @@ export const OOB_SCAN_PROFILES = [
   {
     id: 'quick',
     name: '⚡ Quick Discovery (Passive, No Logins)',
-    description: 'Fast passive enumeration of RMCP, Device ID, and TLS banners without active authentication attempts (--disable-logins)',
-    args: ['scan', '--disable-logins'],
+    description: 'Fast passive enumeration of RMCP, Device ID, and TLS banners without active authentication attempts (-no-logins)',
+    args: ['scan', '-no-logins'],
     buildArgs: (target, opts = {}) => {
       const a = ['scan', '-targets', target, '-no-logins'];
       if (opts.ipmiFull) a.push('-ipmi-full');
@@ -42,8 +42,8 @@ export const OOB_SCAN_PROFILES = [
   {
     id: 'ipmi-full',
     name: '🔬 Full IPMI & Sensor Walk',
-    description: 'In-depth IPMI walk querying sensors, channel auth capabilities, cipher suite matrices, and user slots (--ipmi-full)',
-    args: ['scan', '--ipmi-full'],
+    description: 'In-depth IPMI walk querying sensors, channel auth capabilities, cipher suite matrices, and user slots (-ipmi-full)',
+    args: ['scan', '-ipmi-full'],
     buildArgs: (target, opts = {}) => {
       const a = ['scan', '-targets', target, '-ipmi-full'];
       if (opts.disableLogins) a.push('-no-logins');
@@ -66,7 +66,7 @@ export const OOB_SCAN_PROFILES = [
     id: 'passive',
     name: '🛡️ Non-Intrusive Fingerprint (Safe for OT)',
     description: 'Zero authentication attempts and minimal traffic profile for sensitive industrial/OT environments',
-    args: ['scan', '--disable-logins'],
+    args: ['scan', '-no-logins'],
     buildArgs: (target) => {
       return ['scan', '-targets', target, '-no-logins'];
     }
@@ -469,23 +469,29 @@ export async function runOobScan({
   const hashcatFilePath = path.join(oobscansDir, `${baseName}.hashcat`);
 
   const profileDef = OOB_SCAN_PROFILES.find(p => p.id === profile) || OOB_SCAN_PROFILES[0];
-  const profileArgs = profile === 'custom' ? customArgs : [...profileDef.args];
 
-  const args = [
-    ...profileArgs,
-    '-o', jsonlFilePath,
-    '-v'
-  ];
-
-  if ((disableLogins || profile === 'quick' || profile === 'passive') && !args.includes('--disable-logins')) {
-    args.push('--disable-logins');
+  // Each profile's buildArgs is the single source of truth for its argv:
+  // it owns the subcommand, the -targets flag, and the profile's
+  // login/IPMI switches. The runner previously ignored buildArgs, used the
+  // separate .args lists, and appended the target as a bare positional —
+  // dropping -targets entirely and letting the two flag spellings drift.
+  let args;
+  if (profile === 'custom') {
+    args = [...customArgs, '-o', jsonlFilePath, '-v'];
+    if (disableLogins && !args.includes('-no-logins')) args.push('-no-logins');
+    if (ipmiFull && !args.includes('-ipmi-full')) args.push('-ipmi-full');
+    // Target goes last for custom argument vectors
+    args.push(cleanTarget);
+  } else {
+    args = [
+      ...profileDef.buildArgs(cleanTarget, {
+        disableLogins: disableLogins || profile === 'quick' || profile === 'passive',
+        ipmiFull: ipmiFull || profile === 'ipmi-full'
+      }),
+      '-o', jsonlFilePath,
+      '-v'
+    ];
   }
-  if ((ipmiFull || profile === 'ipmi-full') && !args.includes('--ipmi-full')) {
-    args.push('--ipmi-full');
-  }
-
-  // Target goes last
-  args.push(cleanTarget);
 
   logger.info('OOBSCAN:START', `Running scan: oobscan ${args.join(' ')}`);
   if (onLog) {

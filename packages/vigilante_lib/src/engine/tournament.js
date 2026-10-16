@@ -130,6 +130,15 @@ export class TournamentEngine {
       history: []
     };
 
+    // KotH proof tokens live OUTSIDE kothState so exportState() can never
+    // leak them. A token is the hill's current proof of control: the
+    // organizer reads it via getHillProofToken (it models the token served
+    // by the hill itself), a claimant must present it, and it rotates on
+    // every successful claim.
+    this.hillProofTokens = new Map(
+      this.kothState.hills.map(h => [h.id, crypto.randomBytes(16).toString('hex')])
+    );
+
     // Live Event Bus listeners
     this.eventListeners = [];
   }
@@ -505,7 +514,22 @@ export class TournamentEngine {
   }
 
   /**
-   * Claim Hill in King of the Hill (KotH) mode
+   * Read a hill's current proof token (organizer / hill-service channel).
+   * Deliberately not part of exportState(): anyone who can dump state must
+   * not thereby gain the ability to claim hills.
+   */
+  getHillProofToken(hillId = 'citadel-01') {
+    const hill = this.kothState.hills.find(h => h.id === hillId);
+    if (!hill) throw new Error(`Hill '${hillId}' not found`);
+    return this.hillProofTokens.get(hill.id);
+  }
+
+  /**
+   * Claim Hill in King of the Hill (KotH) mode. The claimant must present
+   * the hill's current proof token (see getHillProofToken); a missing or
+   * wrong token changes nothing — no crown transfer, no dethrone bonus.
+   * On a successful claim the token rotates and the new token is returned
+   * to the new king (their planted proof for the next defense cycle).
    */
   claimHill({ hillId = 'citadel-01', teamId, proofToken }) {
     const hill = this.kothState.hills.find(h => h.id === hillId);
@@ -519,6 +543,19 @@ export class TournamentEngine {
       return { success: true, message: 'You already hold the crown!' };
     }
 
+    const expectedToken = this.hillProofTokens.get(hill.id);
+    const provided = Buffer.from(String(proofToken || ''), 'utf8');
+    const expected = Buffer.from(String(expectedToken || ''), 'utf8');
+    const proofValid = provided.length === expected.length && expected.length > 0 &&
+      crypto.timingSafeEqual(provided, expected);
+    if (!proofValid) {
+      return {
+        success: false,
+        hillId,
+        message: `Invalid or missing proof token for hill '${hillId}': the crown was not transferred.`
+      };
+    }
+
     let bonus = 0;
     if (prevKing !== null) {
       bonus = hill.dethroneBonus;
@@ -528,6 +565,10 @@ export class TournamentEngine {
 
     hill.currentKing = teamId;
     hill.kingSinceTick = this.kothState.currentTick;
+
+    // Rotate the proof: the token that just claimed the hill is spent.
+    const newProofToken = crypto.randomBytes(16).toString('hex');
+    this.hillProofTokens.set(hill.id, newProofToken);
 
     const claimEvent = {
       hillId,
@@ -550,7 +591,8 @@ export class TournamentEngine {
       success: true,
       hillId,
       king: team.name,
-      dethroneBonus: bonus
+      dethroneBonus: bonus,
+      newProofToken
     };
   }
 
