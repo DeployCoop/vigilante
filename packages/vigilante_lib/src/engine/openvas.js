@@ -290,6 +290,12 @@ export function generateVulnerabilityFindings(host, profileId = 'full-and-fast')
     references: ['https://www.greenbone.net/en/technology/']
   });
 
+  // Every finding from this evaluator is generated heuristically from
+  // open ports and banner guesses — no vulnerability test observed it.
+  // Mark each one so saved reports cannot present them as confirmed
+  // scanner results.
+  for (const f of findings) f.synthetic = true;
+
   return findings;
 }
 
@@ -397,6 +403,11 @@ export async function runHostVulnerabilityScan({
     target: hostIp,
     networkTarget,
     profile: profileObj,
+    // The findings payload is always produced by the heuristic port
+    // evaluator (generateVulnerabilityFindings), even when a GMP task was
+    // registered — say so on the result that gets saved as a report.
+    synthetic: true,
+    findingsSource: 'heuristic-port-evaluation',
     timestamp: new Date().toISOString(),
     durationMs,
     clusterStatus: status,
