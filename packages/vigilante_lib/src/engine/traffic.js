@@ -393,6 +393,27 @@ export function replayPcap(pcapFilePath, options = {}) {
       throw new Error(`PCAP file not found at: ${pcapFilePath}`);
     }
 
+    // Only genuine capture files may be staged and shipped into cluster
+    // pods: check the extension AND the magic bytes, so an arbitrary
+    // readable file cannot ride this path into the suricata/zeek spool.
+    const ext = path.extname(pcapFilePath).toLowerCase();
+    if (!['.pcap', '.pcapng', '.cap'].includes(ext)) {
+      throw new Error(`Refusing to replay '${pcapFilePath}': expected a .pcap, .pcapng, or .cap capture file`);
+    }
+    const header = Buffer.alloc(4);
+    const fd = fsSync.openSync(pcapFilePath, 'r');
+    try {
+      fsSync.readSync(fd, header, 0, 4, 0);
+    } finally {
+      fsSync.closeSync(fd);
+    }
+    const magic = header.readUInt32BE(0);
+    // libpcap (LE/BE, micro/nanosecond) or pcapng section header block
+    const PCAP_MAGICS = [0xa1b2c3d4, 0xd4c3b2a1, 0xa1b23c4d, 0x4d3cb2a1, 0x0a0d0d0a];
+    if (!PCAP_MAGICS.includes(magic)) {
+      throw new Error(`Refusing to replay '${pcapFilePath}': file does not start with pcap/pcapng magic bytes`);
+    }
+
     const fileName = path.basename(pcapFilePath);
     const destPcap = path.join(pcapDir, fileName);
 
@@ -425,6 +446,11 @@ export function replayPcap(pcapFilePath, options = {}) {
 
         const pods = stdout.trim().split(/\s+/).filter(Boolean);
         if (pods.length > 0) {
+          // Report what actually happened per pod: previously any listed
+          // pod marked the replay 'dispatched_to_pods' even when every
+          // single copy had failed.
+          result.copyResults = [];
+          let successCount = 0;
           for (const pod of pods) {
             try {
               await execa('kubectl', [
@@ -432,12 +458,17 @@ export function replayPcap(pcapFilePath, options = {}) {
                 `${namespace}/${pod}:/var/log/vigilante/pcap-spool/${fileName}`
               ], { timeout: 6000 });
               logger.info('TRAFFIC', `Dispatched ${fileName} to ${pod}:/var/log/vigilante/pcap-spool/`);
+              result.copyResults.push({ pod, success: true });
+              successCount++;
             } catch (cpErr) {
               logger.warn('TRAFFIC', `Failed to copy PCAP to ${pod}: ${cpErr.message}`);
+              result.copyResults.push({ pod, success: false, error: cpErr.message });
             }
           }
-          result.copiedToPods = true;
-          result.status = 'dispatched_to_pods';
+          result.copiedToPods = successCount > 0;
+          result.status = successCount === pods.length
+            ? 'dispatched_to_pods'
+            : (successCount > 0 ? 'partially_dispatched' : 'dispatch_failed');
         }
       } catch {
         // Cluster unreachable or no pods, keep staged locally

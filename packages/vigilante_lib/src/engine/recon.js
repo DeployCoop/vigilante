@@ -281,6 +281,22 @@ export function parseHttpxOutput(rawOutput) {
  * @param {object} [opts={}]
  * @returns {Promise<{ id: string, target: string, profile: string, timestamp: string, openPorts: Array, webServices: Array, rawOutput: string, filePath: string }>}
  */
+/**
+ * Run a scanner CLI the way the sibling engines (nuclei/trivy/kubeaudit)
+ * do: scanners routinely exit non-zero after printing valid findings, so
+ * parse whatever stdout was produced instead of aborting the whole scan.
+ * Only a missing binary (ENOENT) is fatal.
+ */
+async function runScannerCli(bin, args) {
+  try {
+    const res = await execa(bin, args);
+    return res.stdout;
+  } catch (err) {
+    if (err.code === 'ENOENT') throw err;
+    return err.stdout || '';
+  }
+}
+
 export async function runReconScan(target, profileId = 'fast-ports', opts = {}) {
   await ensureVigilanteConfig();
   const reconDir = getVigilanteReconDir();
@@ -296,8 +312,7 @@ export async function runReconScan(target, profileId = 'fast-ports', opts = {}) 
   if (profile.tool === 'naabu') {
     if (tools.naabu.runner === 'host') {
       const args = profile.buildArgs(target, opts);
-      const res = await execa('naabu', args);
-      rawOutput = res.stdout;
+      rawOutput = await runScannerCli('naabu', args);
       openPorts = parseNaabuOutput(rawOutput);
     } else {
       // Native socket probe fallback
@@ -308,8 +323,7 @@ export async function runReconScan(target, profileId = 'fast-ports', opts = {}) 
   } else if (profile.tool === 'httpx') {
     if (tools.httpx.runner === 'host') {
       const args = profile.buildArgs(target, opts);
-      const res = await execa('httpx', args);
-      rawOutput = res.stdout;
+      rawOutput = await runScannerCli('httpx', args);
       webServices = parseHttpxOutput(rawOutput);
     } else {
       // Native fetch fallback
