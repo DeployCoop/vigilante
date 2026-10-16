@@ -60,7 +60,15 @@ async function runTests() {
   // Test 4: Replay PCAP
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-traffic-test-'));
   const dummyPcap = path.join(tmpDir, 'test-capture.pcap');
-  await fs.writeFile(dummyPcap, 'DUMMY_PCAP_DATA_MAGIC_HEADER_VIGILANTE');
+  // Minimal valid libpcap global header (magic + version + snaplen):
+  // replayPcap validates magic bytes, so a text dummy no longer stages.
+  const pcapHeader = Buffer.alloc(24);
+  pcapHeader.writeUInt32BE(0xa1b2c3d4, 0);
+  pcapHeader.writeUInt16BE(2, 4);
+  pcapHeader.writeUInt16BE(4, 6);
+  pcapHeader.writeUInt32BE(65535, 16);
+  pcapHeader.writeUInt32BE(1, 20);
+  await fs.writeFile(dummyPcap, pcapHeader);
 
   const replayResult = await replayPcap(dummyPcap, { copyToPod: false });
   assert.strictEqual(replayResult.fileName, 'test-capture.pcap');

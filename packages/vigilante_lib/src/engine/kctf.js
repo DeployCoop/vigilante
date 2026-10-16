@@ -1049,6 +1049,16 @@ export async function spawnEphemeralSandbox({
     throw new Error('Both teamId and challengeId are required to spawn a sandbox');
   }
 
+  // TTL policy applies at creation, not only on extension (which already
+  // clamps): reject non-numeric values and clamp into
+  // [1, MAX_SANDBOX_TTL_MINUTES], so a spawn cannot mint a never-expiring
+  // or instantly-expired sandbox.
+  const ttlValue = Number(ttlMinutes);
+  if (!Number.isFinite(ttlValue)) {
+    throw new Error(`Invalid ttlMinutes '${ttlMinutes}': expected a number of minutes`);
+  }
+  const effectiveTtlMinutes = Math.min(MAX_SANDBOX_TTL_MINUTES, Math.max(1, Math.floor(ttlValue)));
+
   await ensureSandboxRegistryLoaded();
 
   // 1. Check team concurrency quota
@@ -1082,7 +1092,7 @@ export async function spawnEphemeralSandbox({
   const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
   const sandboxId = `sbx-${safeTeam}-${safeChal}-${crypto.randomBytes(3).toString('hex')}`;
   const now = Date.now();
-  const expiresAt = new Date(now + ttlMinutes * 60 * 1000).toISOString();
+  const expiresAt = new Date(now + effectiveTtlMinutes * 60 * 1000).toISOString();
   const host = `${safeTeam}-${safeChal}.ctf.${domain}`;
   const connectionUrl = chal.serviceType === 'HTTP' ? `http://${host}` : `nc ${domain} ${chal.port}`;
 
@@ -1094,7 +1104,7 @@ export async function spawnEphemeralSandbox({
     namespace,
     domain,
     flag: dynamicFlag,
-    ttlMinutes,
+    ttlMinutes: effectiveTtlMinutes,
     targetPort: chal.port,
     containerConfig: chal.containerConfig
   });
@@ -1130,14 +1140,14 @@ export async function spawnEphemeralSandbox({
     namespace,
     createdAt: new Date(now).toISOString(),
     expiresAt,
-    ttlMinutes,
+    ttlMinutes: effectiveTtlMinutes,
     status: 'ACTIVE',
     manifest
   };
 
   activeSandboxesRegistry.set(sandboxId, sandboxRecord);
   await persistSandboxRegistry();
-  logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${ttlMinutes}m)`);
+  logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${effectiveTtlMinutes}m)`);
 
   return sandboxRecord;
 }
