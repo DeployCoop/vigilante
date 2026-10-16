@@ -100,7 +100,7 @@ detection:
   ];
 
   ingestSecurityEvents('network', mockEvents);
-  const huntMatches = runSigmaThreatHunt([parsed]);
+  const huntMatches = await runSigmaThreatHunt([parsed]);
   if (huntMatches.length !== 1 || huntMatches[0].matchCount !== 1) {
     throw new Error(`Expected 1 hunt match, got: ${huntMatches.length}`);
   }

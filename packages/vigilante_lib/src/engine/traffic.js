@@ -245,18 +245,27 @@ export function parseZeekConnLogs(contentOrPath) {
       }
     }
   } else {
-    // Standard Zeek TSV format
+    // Standard Zeek TSV format. Columns are separated by the log's
+    // declared separator (tab, announced in the #separator header) —
+    // splitting on generic whitespace corrupts any row whose field
+    // legitimately contains a space, shifting every later column.
     let fields = [];
+    let separator = '\t';
     for (const line of lines) {
+      if (line.startsWith('#separator')) {
+        const rawSep = line.substring(10).trim();
+        separator = rawSep === '\\x09' ? '\t' : (rawSep || '\t');
+        continue;
+      }
       if (line.startsWith('#fields')) {
-        fields = line.substring(7).trim().split(/\s+/);
+        fields = line.substring(7).trim().split(separator);
         continue;
       }
       if (line.startsWith('#')) {
         continue;
       }
 
-      const values = line.split(/\s+/);
+      const values = line.split(separator);
       if (fields.length > 0 && values.length >= fields.length) {
         const row = {};
         for (let i = 0; i < fields.length; i++) {

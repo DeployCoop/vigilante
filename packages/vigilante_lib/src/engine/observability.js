@@ -230,7 +230,11 @@ export function detectAnomalousSocketConnections(matrix, baseline = {}) {
     // 2. Check for unexpected egress to non-standard ports
     if (!allowedPorts.has(conn.dstPort) && !suspiciousPorts.has(conn.dstPort)) {
       // Check if external destination
-      const isInternal = isPrivateIp(conn.destination) || conn.destination.endsWith('.svc.cluster.local') || conn.destination === 'localhost' || conn.destination === '127.0.0.1';
+      // Destinations arrive from telemetry and are not guaranteed to be
+      // strings (numbers, objects, null all occur) — the string checks
+      // below must not throw on them.
+      const destStr = typeof conn.destination === 'string' ? conn.destination : '';
+      const isInternal = isPrivateIp(destStr) || destStr.endsWith('.svc.cluster.local') || destStr === 'localhost' || destStr === '127.0.0.1';
       if (!isInternal) {
         anomalies.push({
           severity: 'HIGH',
@@ -286,7 +290,7 @@ export function detectAnomalousSocketConnections(matrix, baseline = {}) {
  * @returns {boolean}
  */
 function isPrivateIp(ip) {
-  if (!ip) return false;
+  if (!ip || typeof ip !== 'string') return false;
   if (ip.startsWith('10.')) return true;
   if (ip.startsWith('192.168.')) return true;
   if (ip.startsWith('127.')) return true;

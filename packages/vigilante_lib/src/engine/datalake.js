@@ -118,14 +118,17 @@ export function initDataLake(customPathOrOptions = '', options = {}) {
       exec: (sql) => ddb.exec(sql),
       close: () => ddb.close(),
       prepare: (sql) => ({
-        all: (...params) => {
-          let rows = [];
+        // The legacy duckdb client is callback-based: there is no
+        // synchronous query. Return a real Promise — the previous
+        // implementation returned the (always empty) local array before
+        // the callback could populate it, so every DuckDB-backed query
+        // silently matched nothing.
+        all: (...params) => new Promise((resolve, reject) => {
           ddb.all(sql, ...params, (err, res) => {
-            if (err) throw err;
-            rows = res;
+            if (err) reject(err);
+            else resolve(res || []);
           });
-          return rows;
-        },
+        }),
         run: (...params) => {
           ddb.run(sql, ...params);
         }
@@ -238,10 +241,12 @@ export function ingestSecurityEvents(eventType, events = []) {
  * @param {Array<any>} [params=[]]
  * @returns {Array<Object>} Row results
  */
-export function queryDataLake(sql, params = []) {
+export async function queryDataLake(sql, params = []) {
   const db = initDataLake();
   const stmt = db.prepare(sql);
-  return stmt.all(...params);
+  // Awaited uniformly: the SQLite backend resolves synchronously, the
+  // DuckDB backend returns a Promise.
+  return await stmt.all(...params);
 }
 
 /**
@@ -249,7 +254,7 @@ export function queryDataLake(sql, params = []) {
  * @param {Array<string|Object>} indicators List of IPs, domains, or hash strings
  * @returns {Array<Object>} Historical matches
  */
-export function runRetrospectiveThreatHunt(indicators = []) {
+export async function runRetrospectiveThreatHunt(indicators = []) {
   const db = initDataLake();
   const matches = [];
 
@@ -268,7 +273,7 @@ export function runRetrospectiveThreatHunt(indicators = []) {
     // The indicator is matched literally: escape LIKE wildcards so an IOC
     // containing % or _ cannot over-match unrelated events.
     const likeVal = `%${String(val).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
-    const rows = db.prepare(query).all(val, val, likeVal, likeVal);
+    const rows = await db.prepare(query).all(val, val, likeVal, likeVal);
     if (rows && rows.length > 0) {
       matches.push({
         indicator: val,

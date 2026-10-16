@@ -292,14 +292,14 @@ export function transpileSigmaToSql(ruleInput, options = {}) {
  * @param {Array<Object|string>} sigmaRules
  * @returns {Array<Object>} Matched threat hunt findings
  */
-export function runSigmaThreatHunt(sigmaRules = []) {
+export async function runSigmaThreatHunt(sigmaRules = []) {
   const matches = [];
   const rules = Array.isArray(sigmaRules) ? sigmaRules : (sigmaRules ? [sigmaRules] : []);
 
   for (const item of rules) {
     try {
       const transpiled = transpileSigmaToSql(item);
-      const rows = queryDataLake(transpiled.sql);
+      const rows = await queryDataLake(transpiled.sql);
 
       if (rows && rows.length > 0) {
         matches.push({

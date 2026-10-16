@@ -38,28 +38,28 @@ const { shQuote } = await import('../src/engine/config.js');
     title: 'hostile', level: 'high',
     detection: { selection: { 'indicator|startswith': "x' OR severity='HIGH') -- " }, condition: 'selection' }
   };
-  const hostileMatches = runSigmaThreatHunt([hostile]);
+  const hostileMatches = await runSigmaThreatHunt([hostile]);
   assert.strictEqual(hostileMatches.length, 0, 'Injected startswith value must not select rows');
 
   const hostileContains = {
     title: 'hostile2', level: 'high',
     detection: { selection: { 'indicator|contains': "' OR '1'='1') -- " }, condition: 'selection' }
   };
-  assert.strictEqual(runSigmaThreatHunt([hostileContains]).length, 0, 'Injected contains value must not select rows');
+  assert.strictEqual((await runSigmaThreatHunt([hostileContains])).length, 0, 'Injected contains value must not select rows');
 
   // Unmapped-field (raw_json) branch: same guarantee
   const hostileRaw = {
     title: 'hostile3', level: 'high',
     detection: { selection: { 'unmapped.field|contains': "' OR '1'='1" }, condition: 'selection' }
   };
-  assert.strictEqual(runSigmaThreatHunt([hostileRaw]).length, 0, 'Injected raw_json value must not select rows');
+  assert.strictEqual((await runSigmaThreatHunt([hostileRaw])).length, 0, 'Injected raw_json value must not select rows');
 
   // Legitimate rules still match, and LIKE wildcards in values stay literal
   const legit = {
     title: 'legit', level: 'high',
     detection: { selection: { 'indicator|contains': 'evil' }, condition: 'selection' }
   };
-  const legitMatches = runSigmaThreatHunt([legit]);
+  const legitMatches = await runSigmaThreatHunt([legit]);
   assert.strictEqual(legitMatches.length, 1);
   assert.strictEqual(legitMatches[0].matchCount, 1);
 
@@ -67,14 +67,14 @@ const { shQuote } = await import('../src/engine/config.js');
     title: 'wild', level: 'high',
     detection: { selection: { 'indicator|contains': '%' }, condition: 'selection' }
   };
-  assert.strictEqual(runSigmaThreatHunt([wildcard]).length, 0, 'A literal % value must not act as a wildcard');
+  assert.strictEqual((await runSigmaThreatHunt([wildcard])).length, 0, 'A literal % value must not act as a wildcard');
 
   // Table name is an identifier allowlist, not an interpolation
   assert.throws(() => transpileSigmaToSql(legit, { table: 'x; DROP TABLE security_events' }), /Invalid table name/);
 
   // Retrospective hunt (datalake): % in an indicator is literal too
-  assert.strictEqual(runRetrospectiveThreatHunt(['%']).length, 0);
-  assert.strictEqual(runRetrospectiveThreatHunt(['evil.example']).length, 1);
+  assert.strictEqual((await runRetrospectiveThreatHunt(['%'])).length, 0);
+  assert.strictEqual((await runRetrospectiveThreatHunt(['evil.example'])).length, 1);
   closeDataLake();
 }
 console.log('✔ Test 1 passed: Sigma and datalake queries treat rule values as data, not SQL.');

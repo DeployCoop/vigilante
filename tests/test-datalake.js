@@ -61,7 +61,7 @@ async function runTests() {
   console.log(`✔ Test 2 passed: Ingested ${count} telemetry records into Data Lake.`);
 
   // Test 3: SQL Analytical Queries
-  const results = queryDataLake(`
+  const results = await queryDataLake(`
     SELECT event_type, count(*) as count, max(severity) as max_severity
     FROM security_events
     GROUP BY event_type
@@ -74,7 +74,7 @@ async function runTests() {
 
   // Test 4: Retrospective Threat Hunt against CTI Indicators
   const ctiIocs = ['185.220.101.5', 'c2.evil-tracker.org', '1.1.1.1'];
-  const huntResults = runRetrospectiveThreatHunt(ctiIocs);
+  const huntResults = await runRetrospectiveThreatHunt(ctiIocs);
   if (huntResults.length !== 2) throw new Error(`Expected 2 historical threat matches, got: ${huntResults.length}`);
   const match = huntResults.find(h => h.indicator === '185.220.101.5');
   if (!match || !match.affectedPods.includes('nginx-ingress-x7')) {

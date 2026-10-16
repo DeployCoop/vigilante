@@ -4124,7 +4124,7 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
     // Tool: query_security_datalake
     if (name === 'query_security_datalake') {
       const { sql } = args;
-      const rows = queryDataLake(sql);
+      const rows = await queryDataLake(sql);
       const backend = getDataLakeBackend();
       return {
         content: [
@@ -4165,7 +4165,7 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
     // Tool: run_sigma_threat_hunt
     if (name === 'run_sigma_threat_hunt') {
       const { rule, targetBackend = 'sqlite' } = args;
-      const hunt = runSigmaThreatHunt(rule, null, targetBackend);
+      const hunt = await runSigmaThreatHunt(rule, null, targetBackend);
       return {
         content: [{ type: 'text', text: JSON.stringify(hunt, null, 2) }]
       };

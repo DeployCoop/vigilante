@@ -218,8 +218,28 @@ export async function runPipelineAudit(targetPath = '.', options = {}) {
   const allFindings = [];
   let filesScanned = 0;
 
+  // Track real paths already visited: the previous walk followed
+  // symlinks with no visited-set, so a cyclic link tree aborted the
+  // whole audit (ELOOP from stat/realpath) and a diamond link scanned
+  // the same file twice, double-counting it and duplicating findings.
+  const visitedRealPaths = new Set();
+
   async function walk(current) {
-    const stat = await fs.stat(current);
+    let real;
+    try {
+      real = await fs.realpath(current);
+    } catch {
+      return; // dangling symlink or unreadable entry: skip it, don't abort the audit
+    }
+    if (visitedRealPaths.has(real)) return;
+    visitedRealPaths.add(real);
+
+    let stat;
+    try {
+      stat = await fs.stat(current);
+    } catch {
+      return;
+    }
     if (stat.isFile()) {
       const base = path.basename(current).toLowerCase();
       if (base.endsWith('.yaml') || base.endsWith('.yml') || base.includes('dockerfile')) {
