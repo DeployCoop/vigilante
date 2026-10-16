@@ -5,7 +5,7 @@ import net from 'node:net';
 import http from 'node:http';
 import path from 'node:path';
 import { logger } from '../utils/logger.js';
-import { getCtfSandboxesFile, requireCtfFlagSecret } from './config.js';
+import { getCtfSandboxesFile, requireCtfFlagSecret, assertDnsLabel, isValidHostname } from './config.js';
 
 export const CHALLENGE_CATEGORIES = [
   { id: 'web', name: 'Web Exploitation', icon: '🌐', color: 'blue', description: 'HTTP/HTTPS vulnerabilities, auth bypass, injection & token flaws' },
@@ -331,7 +331,15 @@ export function generateChallengeManifest({
 } = {}) {
   const tpl = CHALLENGE_TEMPLATES.find(t => t.id === templateId) || CHALLENGE_TEMPLATES[0];
   const name = (customName || tpl.id).toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  const category = customCategory || tpl.category;
+  // Namespace, category, and pow land in the manifest as raw YAML scalars
+  // and label values: validate/sanitize them like the name above instead
+  // of interpolating caller text into an applied manifest.
+  assertDnsLabel(namespace, 'namespace');
+  const category = String(customCategory || tpl.category).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const powDifficulty = Number(powDifficultySeconds);
+  if (!Number.isFinite(powDifficulty) || powDifficulty < 0) {
+    throw new Error(`Invalid powDifficultySeconds '${powDifficultySeconds}': expected a non-negative number`);
+  }
   const port = customPort ? parseInt(customPort, 10) : tpl.port;
   const flag = customFlag || tpl.defaultFlag;
   const targetPort = tpl.containerConfig?.ports?.[0] || port;
@@ -367,7 +375,7 @@ metadata:
 spec:
   deployed: true
   category: ${category}
-  powDifficultySeconds: ${powDifficultySeconds}
+  powDifficultySeconds: ${powDifficulty}
   network:
     public: true
     ports:
@@ -870,15 +878,31 @@ export function generateEphemeralSandboxManifest({
   targetPort = 8080,
   containerConfig = {}
 }) {
+  // Every identifier below lands in the manifest as a YAML scalar, label
+  // value, or double-quoted env value. Labels and names use the sanitized
+  // forms, env values are JSON-escaped, and namespace/domain are
+  // validated — caller text must not be able to rewrite the manifest.
+  assertDnsLabel(namespace, 'namespace');
+  if (!isValidHostname(domain)) {
+    throw new Error(`Invalid domain '${domain}': expected a dotted hostname`);
+  }
   const safeTeam = teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
   const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const safeSandbox = String(sandboxId).toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const appName = `${safeTeam}-${safeChal}`;
   const ingressHost = `${appName}.ctf.${domain}`;
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
   const createdAt = new Date().toISOString();
 
   const image = containerConfig.image || 'nginx:alpine';
-  const containerPort = (containerConfig.ports && containerConfig.ports[0]) || 80;
+  if (/\s/.test(image)) {
+    throw new Error(`Invalid container image '${image}': must not contain whitespace`);
+  }
+  const containerPort = Number((containerConfig.ports && containerConfig.ports[0]) || 80);
+  const servicePort = Number(targetPort);
+  if (!Number.isFinite(containerPort) || !Number.isFinite(servicePort)) {
+    throw new Error('Invalid port: container and target ports must be numbers');
+  }
 
   return `---
 apiVersion: v1
@@ -894,14 +918,14 @@ metadata:
   name: ${appName}
   namespace: ${namespace}
   labels:
-    vigilante.dev/sandbox-id: ${sandboxId}
-    vigilante.dev/team-id: ${teamId}
-    vigilante.dev/challenge-id: ${challengeId}
+    vigilante.dev/sandbox-id: ${safeSandbox}
+    vigilante.dev/team-id: ${safeTeam}
+    vigilante.dev/challenge-id: ${safeChal}
     app: ${appName}
   annotations:
     vigilante.dev/created-at: "${createdAt}"
     vigilante.dev/expires-at: "${expiresAt}"
-    vigilante.dev/ttl-minutes: "${ttlMinutes}"
+    vigilante.dev/ttl-minutes: ${JSON.stringify(String(ttlMinutes))}
 spec:
   replicas: 1
   selector:
@@ -911,9 +935,9 @@ spec:
     metadata:
       labels:
         app: ${appName}
-        vigilante.dev/sandbox-id: ${sandboxId}
-        vigilante.dev/team-id: ${teamId}
-        vigilante.dev/challenge-id: ${challengeId}
+        vigilante.dev/sandbox-id: ${safeSandbox}
+        vigilante.dev/team-id: ${safeTeam}
+        vigilante.dev/challenge-id: ${safeChal}
     spec:
       containers:
         - name: challenge
@@ -929,11 +953,11 @@ spec:
               memory: 128Mi
           env:
             - name: FLAG
-              value: "${flag}"
+              value: ${JSON.stringify(flag)}
             - name: TEAM_ID
-              value: "${teamId}"
+              value: ${JSON.stringify(teamId)}
             - name: CHALLENGE_ID
-              value: "${challengeId}"
+              value: ${JSON.stringify(challengeId)}
 ---
 apiVersion: v1
 kind: Service
@@ -942,14 +966,14 @@ metadata:
   namespace: ${namespace}
   labels:
     app: ${appName}
-    vigilante.dev/sandbox-id: ${sandboxId}
+    vigilante.dev/sandbox-id: ${safeSandbox}
 spec:
   type: ClusterIP
   selector:
     app: ${appName}
   ports:
     - name: challenge-port
-      port: ${targetPort}
+      port: ${servicePort}
       targetPort: ${containerPort}
       protocol: TCP
 ---
@@ -972,7 +996,7 @@ spec:
               service:
                 name: ${appName}
                 port:
-                  number: ${targetPort}
+                  number: ${servicePort}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

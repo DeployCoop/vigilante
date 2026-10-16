@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import net from 'node:net';
 import { execa } from 'execa';
+import { shQuote, isValidHostname } from './config.js';
 
 export const HOSTS_FILE_PATH = process.platform === 'win32'
   ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32\\drivers\\etc\\hosts')
@@ -104,6 +106,17 @@ export async function checkHosts({
  * Generate managed block text for the target hostnames
  */
 export function generateManagedBlock(hostnames = [], ip = '127.0.0.1') {
+  // Block lines are written verbatim into the hosts file (as root on the
+  // sudo path): an unvalidated hostname containing a newline would inject
+  // arbitrary additional hosts entries. Validate, never sanitize silently.
+  if (!net.isIP(ip)) {
+    throw new Error(`Invalid IP address '${ip}' for hosts block`);
+  }
+  for (const h of hostnames) {
+    if (!isValidHostname(h)) {
+      throw new Error(`Invalid hostname '${h}': expected a dotted hostname without whitespace`);
+    }
+  }
   const lines = [
     BLOCK_START,
     ...hostnames.map(h => `${ip} ${h}`),
@@ -137,10 +150,12 @@ async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog =
         if (hasPasswordlessSudo) {
           await execa('sudo', ['-n', 'cp', tmpFile, hostsPath], { timeout: 5000 });
         } else {
-          // Use sudo-prompt for GUI password prompt
+          // sudo-prompt runs its command through a shell (as root), so the
+          // paths are single-quote escaped: a quote or $(...) in a
+          // caller-supplied hostsPath must stay inert data.
           const sudo = await import('sudo-prompt');
           await new Promise((resolve, reject) => {
-            sudo.exec(`cp "${tmpFile}" "${hostsPath}"`, { name: 'Vigilante CLI' }, (error, stdout, stderr) => {
+            sudo.exec(`cp ${shQuote(tmpFile)} ${shQuote(hostsPath)}`, { name: 'Vigilante CLI' }, (error, stdout, stderr) => {
               if (error) reject(error);
               else resolve(stdout);
             });

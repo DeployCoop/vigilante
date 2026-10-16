@@ -6,7 +6,8 @@ import net from 'node:net';
 import {
   getVigilanteNetexecDir,
   ensureVigilanteConfig,
-  getHostEvidenceDir
+  getHostEvidenceDir,
+  assertCliTarget
 } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { saveEvidenceFile } from './evidence.js';
@@ -159,6 +160,7 @@ export function parseNetexecOutput(rawOutput) {
  * @returns {Promise<object>}
  */
 export async function runNetexecAudit(target, profileId = 'smb-signing', opts = {}) {
+  assertCliTarget(target, 'netexec target');
   await ensureVigilanteConfig();
   const netexecDir = getVigilanteNetexecDir();
   const profile = NETEXEC_PROFILES.find((p) => p.id === profileId) || NETEXEC_PROFILES[0];

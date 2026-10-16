@@ -181,7 +181,7 @@ export async function signFile(filePath, {
   if (effectiveKeyId && effectiveKeyId.trim()) {
     args.push('--default-key', effectiveKeyId.trim());
   }
-  args.push('--output', signaturePath, filePath);
+  args.push('--output', signaturePath, '--', filePath);
 
   logger.info('GPG:SIGN', `Signing ${filePath} -> ${signaturePath} with key ${effectiveKeyId || 'default'}`);
 
@@ -224,7 +224,7 @@ export async function verifyFileSignature(filePath, signaturePath, { gnupgHome =
   logger.info('GPG:VERIFY', `Verifying signature ${signaturePath} on ${filePath}`);
 
   try {
-    const { stdout, stderr } = await execa(gpgBin, ['--batch', '--verify', signaturePath, filePath], { env });
+    const { stdout, stderr } = await execa(gpgBin, ['--batch', '--verify', '--', signaturePath, filePath], { env });
     const fullOutput = `${stdout}\n${stderr}`;
 
     const isGood = fullOutput.includes('Good signature from') || fullOutput.includes('signature valid');

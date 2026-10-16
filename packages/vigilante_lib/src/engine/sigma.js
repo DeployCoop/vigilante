@@ -112,6 +112,35 @@ export function parseSigmaRule(input) {
  * @param {any} value
  * @returns {string}
  */
+/** Quote a value as an SQL string literal (single quotes doubled). */
+function quoteSqlString(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Escape a literal segment for use inside a LIKE pattern: the escape
+ * character itself, then the two LIKE wildcards, so a literal % or _ in a
+ * rule value matches only itself. Clauses using this must add ESCAPE '\'.
+ */
+function escapeLikeLiteral(segment) {
+  return String(segment).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
+ * Build a LIKE pattern from a Sigma value. In Sigma, `*` is the wildcard;
+ * every other character is literal. Splitting on `*`, escaping each literal
+ * segment, and joining with `%` preserves the intended matching while
+ * making quote breakout and wildcard smuggling impossible.
+ */
+function sigmaLikePattern(value, { contains = false, startswith = false, endswith = false } = {}) {
+  const segments = String(value).split('*').map(escapeLikeLiteral);
+  let pattern = segments.join('%');
+  if (contains) pattern = `%${pattern}%`;
+  if (startswith) pattern = `${pattern}%`;
+  if (endswith) pattern = `%${pattern}`;
+  return pattern;
+}
+
 function transpileFieldClause(field, value) {
   let [fieldName, ...modifiers] = field.split('|');
   const normalizedCol = SIGMA_FIELD_MAPPINGS[fieldName.toLowerCase()];
@@ -124,30 +153,33 @@ function transpileFieldClause(field, value) {
   const hasEndswith = modifiers.includes('endswith');
 
   if (targetCol === 'raw_json') {
-    // If not a direct column, search within raw_json or indicator
-    const pattern = stringVal.replace(/\*/g, '%');
-    return `(raw_json LIKE '%"${fieldName}":"%${pattern}%"%' OR indicator LIKE '%${pattern}%' OR raw_json LIKE '%${pattern}%')`;
+    // If not a direct column, search within raw_json or indicator. The
+    // field name and value are rule-supplied data: both are LIKE-escaped
+    // and the finished patterns are quoted as SQL literals, so neither
+    // can break out of the string and alter the WHERE clause.
+    const fieldPattern = escapeLikeLiteral(fieldName);
+    const valuePattern = sigmaLikePattern(stringVal, { contains: true });
+    return `(raw_json LIKE ${quoteSqlString(`%"${fieldPattern}":"${valuePattern}"%`)} ESCAPE '\\' OR indicator LIKE ${quoteSqlString(valuePattern)} ESCAPE '\\' OR raw_json LIKE ${quoteSqlString(valuePattern)} ESCAPE '\\')`;
   }
 
   if (hasContains || stringVal.includes('*')) {
-    const pattern = stringVal.replace(/\*/g, '%');
-    const sqlPattern = hasContains && !pattern.includes('%') ? `%${pattern}%` : pattern;
-    return `${targetCol} LIKE '${sqlPattern}'`;
+    const pattern = sigmaLikePattern(stringVal, { contains: hasContains });
+    return `${targetCol} LIKE ${quoteSqlString(pattern)} ESCAPE '\\'`;
   }
 
   if (hasStartswith) {
-    return `${targetCol} LIKE '${stringVal}%'`;
+    return `${targetCol} LIKE ${quoteSqlString(sigmaLikePattern(stringVal, { startswith: true }))} ESCAPE '\\'`;
   }
 
   if (hasEndswith) {
-    return `${targetCol} LIKE '%${stringVal}'`;
+    return `${targetCol} LIKE ${quoteSqlString(sigmaLikePattern(stringVal, { endswith: true }))} ESCAPE '\\'`;
   }
 
   if (typeof value === 'number' || (!isNaN(Number(value)) && normalizedCol === 'dest_port')) {
     return `${targetCol} = ${Number(value)}`;
   }
 
-  return `${targetCol} = '${stringVal.replace(/'/g, "''")}'`;
+  return `${targetCol} = ${quoteSqlString(stringVal)}`;
 }
 
 /**
@@ -180,7 +212,12 @@ function transpileSelection(selection) {
  */
 export function transpileSigmaToSql(ruleInput, options = {}) {
   const rule = parseSigmaRule(ruleInput);
+  // The table name is interpolated into the SQL raw, so it must be a plain
+  // identifier — anything else is rejected rather than sanitized silently.
   const tableName = options.table || 'security_events';
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+    throw new Error(`Invalid table name '${tableName}': expected a plain SQL identifier`);
+  }
 
   const detection = rule.detection || {};
   const condition = (detection.condition || 'selection').trim();
