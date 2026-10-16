@@ -108,24 +108,37 @@ export function verifyCosignSignature(imageDigest, signaturePayload = {}, public
     const identity = critical.identity || {};
     const imagePayload = critical.image || {};
 
+    // Fail closed: a claim that does not name the image digest proves
+    // nothing about this image, and a signature that is never checked
+    // against a caller-supplied key is not a verification.
     const claimDigest = imagePayload['docker-manifest-digest'] || '';
-    if (claimDigest && claimDigest !== imageDigest) {
+    if (!claimDigest) {
+      return {
+        verified: false,
+        error: 'Cosign claim is missing docker-manifest-digest: an unsigned-digest claim cannot verify any image'
+      };
+    }
+    if (claimDigest !== imageDigest) {
       return {
         verified: false,
         error: `Digest mismatch: expected ${imageDigest}, found ${claimDigest}`
       };
     }
 
-    // Cryptographic signature check if PEM provided
-    if (publicKeyPem) {
-      const verifier = crypto.createVerify('SHA256');
-      verifier.update(rawPayload);
-      verifier.end();
+    if (!publicKeyPem) {
+      return {
+        verified: false,
+        error: 'A public key is required to verify the cosign signature'
+      };
+    }
 
-      const isValid = verifier.verify(publicKeyPem, Buffer.from(rawSignature, 'base64'));
-      if (!isValid) {
-        return { verified: false, error: 'Cryptographic signature verification failed' };
-      }
+    const verifier = crypto.createVerify('SHA256');
+    verifier.update(rawPayload);
+    verifier.end();
+
+    const isValid = verifier.verify(publicKeyPem, Buffer.from(rawSignature, 'base64'));
+    if (!isValid) {
+      return { verified: false, error: 'Cryptographic signature verification failed' };
     }
 
     return {

@@ -366,6 +366,63 @@ export function requireCtfFlagSecret(explicitSecret) {
   return secret;
 }
 
+/**
+ * Shared resolver for operator-provisioned signing keys. Order: explicit
+ * argument, environment variable, then a config.yaml section key. Returns
+ * null when unconfigured — cryptographic material is never defaulted to a
+ * value shipped in the source tree, because anyone can read the source.
+ */
+function resolveProvisionedKey(explicitKey, envName, configSection, configKey) {
+  if (explicitKey) return explicitKey;
+  if (process.env[envName]) return process.env[envName];
+  try {
+    const cfg = loadConfig();
+    if (cfg && cfg[configSection] && cfg[configSection][configKey]) {
+      return cfg[configSection][configKey];
+    }
+  } catch {
+    // Config unreadable — treat the key as unconfigured.
+  }
+  return null;
+}
+
+function requireProvisionedKey(explicitKey, envName, configSection, configKey, label) {
+  const key = resolveProvisionedKey(explicitKey, envName, configSection, configKey);
+  if (!key) {
+    throw new Error(
+      `${label} is not configured: set the ${envName} environment variable or ${configSection}.${configKey} in config.yaml. Signing keys are never taken from a built-in default.`
+    );
+  }
+  return key;
+}
+
+/** HMAC key for the audit ledger (engine/ledger.js). */
+export function resolveLedgerSigningSecret(explicitSecret) {
+  return resolveProvisionedKey(explicitSecret, 'VIGILANTE_LEDGER_SECRET', 'ledger', 'signingSecret');
+}
+
+export function requireLedgerSigningSecret(explicitSecret) {
+  return requireProvisionedKey(explicitSecret, 'VIGILANTE_LEDGER_SECRET', 'ledger', 'signingSecret', 'Ledger signing secret');
+}
+
+/** HMAC key for the RFC 3161 time-stamp authority (engine/evidencepack.js). */
+export function resolveTsaKey(explicitKey) {
+  return resolveProvisionedKey(explicitKey, 'VIGILANTE_TSA_KEY', 'evidencepack', 'tsaKey');
+}
+
+export function requireTsaKey(explicitKey) {
+  return requireProvisionedKey(explicitKey, 'VIGILANTE_TSA_KEY', 'evidencepack', 'tsaKey', 'RFC 3161 TSA key');
+}
+
+/** HMAC key sealing forensic snapshots (engine/snapshot.js). */
+export function resolveSnapshotSealingKey(explicitKey) {
+  return resolveProvisionedKey(explicitKey, 'VIGILANTE_SNAPSHOT_KEY', 'snapshot', 'sealingKey');
+}
+
+export function requireSnapshotSealingKey(explicitKey) {
+  return requireProvisionedKey(explicitKey, 'VIGILANTE_SNAPSHOT_KEY', 'snapshot', 'sealingKey', 'Snapshot sealing key');
+}
+
 export const DEFAULT_CONFIG = {
   theme: {
     name: 'default',

@@ -10,6 +10,10 @@ import {
   listSavedSnapshots
 } from '../src/engine/snapshot.js';
 
+// Snapshot sealing fails closed without a provisioned key; configure one
+// for this test process.
+process.env.VIGILANTE_SNAPSHOT_KEY = 'test-snapshot-key';
+
 async function runTests() {
   console.log('🧪 Testing Live Container Memory & Ephemeral Disk Snapshot Engine...');
 

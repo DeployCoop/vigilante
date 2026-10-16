@@ -8,12 +8,11 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { getVigilanteEvidenceDir } from './config.js';
+import { getVigilanteEvidenceDir, requireTsaKey, resolveTsaKey } from './config.js';
 import { logger } from '../utils/logger.js';
 
 export const OID_SHA256 = '2.16.840.1.101.3.4.2.1';
 export const OID_VIGILANTE_TSA_POLICY = '1.3.6.1.4.1.58284.1.1';
-const DEFAULT_TSA_KEY = 'vigilante-rfc3161-tsa-authoritative-timestamp-key';
 
 /**
  * Generate an RFC 3161 compliant Time-Stamp Token (TST) structure
@@ -29,7 +28,9 @@ export function generateRfc3161Timestamp(dataHash, options = {}) {
   const genTime = options.timestamp ? new Date(options.timestamp).toISOString() : new Date().toISOString();
   const serialNumber = options.serialNumber || crypto.randomBytes(8).toString('hex');
   const nonce = options.nonce || crypto.randomBytes(4).readUInt32BE(0);
-  const secretKey = options.signingKey || DEFAULT_TSA_KEY;
+  // Fail closed: a token signed with a source-shipped default key can be
+  // re-minted by anyone, so refuse to issue one without a provisioned key.
+  const secretKey = requireTsaKey(options.signingKey);
 
   const tstInfo = {
     version: 1,
@@ -155,6 +156,24 @@ if (expectedManifestHash === computedPayloadHash) {
   allValid = false;
 }
 
+// Verify the token's HMAC signature with the TSA key provisioned out-of-band
+// (VIGILANTE_TSA_KEY). Without the key the token is unverifiable, and an
+// unverifiable token must not be reported as verified.
+const tsaKey = process.env.VIGILANTE_TSA_KEY;
+if (!tsaKey) {
+  console.error('[-] VIGILANTE_TSA_KEY is not set: RFC 3161 token signature cannot be verified.');
+  allValid = false;
+} else {
+  const expectedSignature = crypto.createHmac('sha256', tsaKey)
+    .update(JSON.stringify(manifest.rfc3161Token.tstInfo)).digest('hex');
+  if (expectedSignature === manifest.rfc3161Token.signature) {
+    console.log('[+] RFC 3161 Timestamp Token signature verified.');
+  } else {
+    console.error('[-] RFC 3161 Timestamp Token SIGNATURE MISMATCH!');
+    allValid = false;
+  }
+}
+
 if (allValid) {
   console.log('\\n[✔ SUCCESS] All evidence items verified with 100% cryptographic integrity.');
   process.exit(0);
@@ -186,9 +205,16 @@ export async function createEvidenceBundle(caseMetadata = {}, evidenceItems = []
 
   // 1. Write evidence items and record their SHA-256 hashes
   const packagedItems = [];
+  const seenFilenames = new Set();
 
   for (const item of evidenceItems) {
     const filename = path.basename(item.filename || 'evidence.dat');
+    // Items are stored flat in the bundle: two items with the same basename
+    // would silently overwrite each other and destroy evidence.
+    if (seenFilenames.has(filename)) {
+      throw new Error(`Duplicate evidence filename '${filename}': bundle items must have unique file names`);
+    }
+    seenFilenames.add(filename);
     const destPath = path.join(bundleDir, filename);
 
     let fileBuffer;
@@ -265,7 +291,7 @@ export async function createEvidenceBundle(caseMetadata = {}, evidenceItems = []
  * @param {string} bundleDir Path to the evidence bundle directory
  * @returns {Promise<Object>} Verification result
  */
-export async function verifyEvidenceBundle(bundleDir) {
+export async function verifyEvidenceBundle(bundleDir, options = {}) {
   const manifestPath = path.join(bundleDir, 'evidence_manifest.json');
   if (!fsSync.existsSync(manifestPath)) {
     return { valid: false, issue: 'Missing evidence_manifest.json' };
@@ -293,6 +319,28 @@ export async function verifyEvidenceBundle(bundleDir) {
   const imprintMatches = manifest.rfc3161Token.tstInfo.messageImprint.hashedMessage === calculatedAggregate;
   if (!imprintMatches) {
     failures.push('RFC 3161 Message Imprint does not match calculated aggregate evidence hash');
+  }
+
+  // Verify the time-stamp token's HMAC signature. The imprint check alone
+  // is self-consistent: anyone can rewrite the files, the manifest hashes,
+  // and the imprint together. Only the keyed signature binds the bundle to
+  // the TSA key holder, so an unverifiable token fails verification.
+  if (!manifest.rfc3161Token || !manifest.rfc3161Token.tstInfo || !manifest.rfc3161Token.signature) {
+    failures.push('RFC 3161 token is missing or incomplete');
+  } else {
+    const tsaKey = resolveTsaKey(options.signingKey);
+    if (!tsaKey) {
+      failures.push('TSA key not configured: RFC 3161 token signature cannot be verified (set VIGILANTE_TSA_KEY or evidencepack.tsaKey in config.yaml)');
+    } else {
+      const expectedSignature = crypto.createHmac('sha256', tsaKey)
+        .update(JSON.stringify(manifest.rfc3161Token.tstInfo))
+        .digest('hex');
+      const expectedBuf = Buffer.from(expectedSignature);
+      const actualBuf = Buffer.from(manifest.rfc3161Token.signature);
+      if (expectedBuf.length !== actualBuf.length || !crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+        failures.push('RFC 3161 token signature verification failed');
+      }
+    }
   }
 
   const isValid = failures.length === 0;
