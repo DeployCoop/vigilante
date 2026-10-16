@@ -253,57 +253,68 @@ export function buildCompositeAttackGraph(nmapHosts = [], k8sWorkloads = [], blo
 }
 
 /**
- * Shortest attack path discovery between two nodes using Breadth-First Search (BFS)
- * @param {string} fromNodeId 
- * @param {string} toNodeId 
- * @param {Object} graph 
- * @returns {Object} { pathFound, hops, nodePath, edgePath }
+ * Shortest attack path discovery between two nodes. "Shortest" means
+ * cheapest under the graph's own edge-cost model, so this is Dijkstra
+ * over edge.cost (defaulting to 1 when an edge carries no cost) — the
+ * previous unweighted BFS returned a cost-100 direct edge in preference
+ * to a cost-2 two-hop path.
+ * @param {string} fromNodeId
+ * @param {string} toNodeId
+ * @param {Object} graph
+ * @returns {Object} { pathFound, hops, nodePath, edgePath, totalCost }
  */
 export function findShortestAttackPath(fromNodeId, toNodeId, graph) {
   if (fromNodeId === toNodeId) {
-    return { pathFound: true, hops: 0, nodePath: [fromNodeId], edgePath: [] };
+    return { pathFound: true, hops: 0, nodePath: [fromNodeId], edgePath: [], totalCost: 0 };
   }
 
-  const queue = [[fromNodeId]];
-  const visited = new Set([fromNodeId]);
-  const edgeHistory = new Map(); // childNodeId -> edge
+  const dist = new Map([[fromNodeId, 0]]);
+  const prev = new Map(); // nodeId -> { from, edge }
+  const settled = new Set();
 
-  while (queue.length > 0) {
-    const currentPath = queue.shift();
-    const currentNodeId = currentPath[currentPath.length - 1];
+  while (true) {
+    let current = null;
+    let best = Infinity;
+    for (const [id, d] of dist) {
+      if (!settled.has(id) && d < best) {
+        best = d;
+        current = id;
+      }
+    }
+    if (current === null || current === toNodeId) break;
+    settled.add(current);
 
-    const outgoingEdges = graph.adjacency.get(currentNodeId) || [];
-    for (const edge of outgoingEdges) {
-      const nextId = edge.to;
-      if (!visited.has(nextId)) {
-        visited.add(nextId);
-        edgeHistory.set(nextId, edge);
-        const newPath = [...currentPath, nextId];
-
-        if (nextId === toNodeId) {
-          // Reconstruct edge sequence
-          const edgePath = [];
-          for (let i = 1; i < newPath.length; i++) {
-            edgePath.push(edgeHistory.get(newPath[i]));
-          }
-          return {
-            pathFound: true,
-            hops: newPath.length - 1,
-            nodePath: newPath,
-            edgePath
-          };
-        }
-
-        queue.push(newPath);
+    for (const edge of graph.adjacency.get(current) || []) {
+      const w = Number(edge.cost);
+      const weight = Number.isFinite(w) && w > 0 ? w : 1;
+      const nd = best + weight;
+      if (nd < (dist.get(edge.to) ?? Infinity)) {
+        dist.set(edge.to, nd);
+        prev.set(edge.to, { from: current, edge });
       }
     }
   }
 
+  if (!dist.has(toNodeId)) {
+    return { pathFound: false, hops: -1, nodePath: [], edgePath: [], totalCost: null };
+  }
+
+  const nodePath = [toNodeId];
+  const edgePath = [];
+  let cursor = toNodeId;
+  while (cursor !== fromNodeId) {
+    const step = prev.get(cursor);
+    edgePath.unshift(step.edge);
+    nodePath.unshift(step.from);
+    cursor = step.from;
+  }
+
   return {
-    pathFound: false,
-    hops: -1,
-    nodePath: [],
-    edgePath: []
+    pathFound: true,
+    hops: nodePath.length - 1,
+    nodePath,
+    edgePath,
+    totalCost: dist.get(toNodeId)
   };
 }
 

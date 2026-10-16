@@ -96,12 +96,32 @@ export function auditWorkloadIdentity(workloads = []) {
 export function auditCloudStorageExposure(storageConfigs = []) {
   const findings = [];
 
+  // A grant exposes the bucket publicly when it names allUsers /
+  // allAuthenticatedUsers — as a bare string (GCS ACL entries) OR inside
+  // a grant object (GCS {entity: 'allUsers'}, AWS {grantee URI:
+  // '.../groups/global/AllUsers'}). Scanning only bare strings missed
+  // every real object-shaped grant.
+  const grantIsPublic = (grant) => {
+    const strings = [];
+    const collect = (v) => {
+      if (typeof v === 'string') strings.push(v);
+      else if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+    };
+    collect(grant);
+    return strings.some(v => v === 'allUsers' || v === 'allAuthenticatedUsers' || v.includes('global/AllUsers') || v.includes('global/AuthenticatedUsers'));
+  };
+
   for (const b of storageConfigs) {
     const bucketName = b.bucketName || b.name || 'unnamed-bucket';
     const provider = b.provider || 'AWS';
 
-    // Check 1: Public Read Exposure
-    if (b.isPublic || b.publicRead || b.publicAccessBlock === false || (Array.isArray(b.grants) && b.grants.includes('allUsers'))) {
+    // Check 1: Public Read Exposure. (publicAccessBlock === false ALONE
+    // no longer flags a bucket: it merely means the safety net is off —
+    // without a public grant or an explicit public flag there is no
+    // exposure, and flagging it cried wolf on private buckets.)
+    const hasPublicGrant = Array.isArray(b.grants) && b.grants.some(grantIsPublic);
+    if (b.isPublic || b.publicRead || hasPublicGrant) {
       findings.push({
         provider,
         type: 'STORAGE_PUBLIC_READ',
@@ -112,8 +132,13 @@ export function auditCloudStorageExposure(storageConfigs = []) {
       });
     }
 
-    // Check 2: Missing Server-Side Encryption
-    const isEncrypted = b.encryptionEnabled === true || b.sse || b.encryption;
+    // Check 2: Missing Server-Side Encryption. An encryption object
+    // with enabled: false is DISABLED encryption, not encryption.
+    const enc = b.encryption;
+    const encOn = enc === true
+      || (typeof enc === 'string' && enc.length > 0)
+      || (enc !== null && typeof enc === 'object' && enc.enabled !== false);
+    const isEncrypted = b.encryptionEnabled === true || Boolean(b.sse) || encOn;
     if (!isEncrypted) {
       findings.push({
         provider,
@@ -149,9 +174,12 @@ export function auditCloudStorageExposure(storageConfigs = []) {
 export function calculateCloudRiskScore(allFindings = []) {
   let score = 0;
   for (const f of allFindings) {
-    if (f.severity === 'CRITICAL') score += 35;
-    else if (f.severity === 'HIGH') score += 20;
-    else if (f.severity === 'MEDIUM') score += 10;
+    // Normalize casing: a lowercase 'critical' from an external producer
+    // must score and count like 'CRITICAL', not fall through to +3.
+    const sev = String(f.severity || '').toUpperCase();
+    if (sev === 'CRITICAL') score += 35;
+    else if (sev === 'HIGH') score += 20;
+    else if (sev === 'MEDIUM') score += 10;
     else score += 3;
   }
 
@@ -166,8 +194,8 @@ export function calculateCloudRiskScore(allFindings = []) {
     score,
     tier,
     findingsCount: allFindings.length,
-    criticalCount: allFindings.filter(f => f.severity === 'CRITICAL').length,
-    highCount: allFindings.filter(f => f.severity === 'HIGH').length
+    criticalCount: allFindings.filter(f => String(f.severity || '').toUpperCase() === 'CRITICAL').length,
+    highCount: allFindings.filter(f => String(f.severity || '').toUpperCase() === 'HIGH').length
   };
 }
 

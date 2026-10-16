@@ -25,8 +25,15 @@ export function generateAdTickFlag({
   teamId,
   serviceId,
   tick,
-  secretKey = 'vigilante-ad-secret'
+  secretKey
 }) {
+  // No default secret: the previous default was the published literal
+  // 'vigilante-ad-secret', so anyone could forge a valid tick flag for
+  // +150 attack points whenever the tournament had no secret configured.
+  // Fail closed like the rest of the flag machinery (Tier-4/5).
+  if (!secretKey) {
+    throw new Error('generateAdTickFlag requires a secretKey: configure the tournament secret (VIGILANTE_CTF_SECRET or ctf.flagSecret).');
+  }
   const hmac = crypto.createHmac('sha256', secretKey);
   hmac.update(`${teamId}:${serviceId}:${tick}`);
   const token = hmac.digest('hex').slice(0, 16);
@@ -176,9 +183,26 @@ export class AttackDefenseRunner {
   }
 
   /**
-   * Execute a single tick sequentially through all phases
+   * Execute a single tick sequentially through all phases.
+   * Ticks never overlap: start()'s interval does not await stepTick, so
+   * a tick slower than the interval would otherwise run concurrently
+   * with the next one, double-injecting flags and double-applying
+   * scores. A call arriving mid-tick is skipped.
    */
   async stepTick() {
+    if (this.tickInFlight) {
+      logger.warn('AD_RUNNER', 'Skipping tick: previous tick still in flight.');
+      return null;
+    }
+    this.tickInFlight = true;
+    try {
+      return await this.executeTick();
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  async executeTick() {
     const currentTick = (this.tournament.adState.currentTick || 0) + 1;
     this.tournament.adState.currentTick = currentTick;
 

@@ -1262,12 +1262,15 @@ export async function reapExpiredSandboxes({
         const safeChal = sbx.challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
         const appName = `${safeTeam}-${safeChal}`;
         try {
+          // Type-qualified names: a comma type list with several names
+          // deletes every type x every name, including same-named
+          // unrelated objects of other types in the namespace.
           await execa('kubectl', [
             'delete',
-            'deployment,service,ingress,networkpolicy',
-            appName,
-            `${appName}-ingress`,
-            `${appName}-netpol`,
+            `deployment/${appName}`,
+            `service/${appName}`,
+            `ingress/${appName}-ingress`,
+            `networkpolicy/${appName}-netpol`,
             '-n', namespace,
             '--context', `k3d-${clusterName}`,
             '--ignore-not-found=true'
@@ -1337,10 +1340,10 @@ export async function terminateSandbox({
     try {
       await execa('kubectl', [
         'delete',
-        'deployment,service,ingress,networkpolicy',
-        appName,
-        `${appName}-ingress`,
-        `${appName}-netpol`,
+        `deployment/${appName}`,
+        `service/${appName}`,
+        `ingress/${appName}-ingress`,
+        `networkpolicy/${appName}-netpol`,
         '-n', namespace,
         '--context', `k3d-${clusterName}`,
         '--ignore-not-found=true'

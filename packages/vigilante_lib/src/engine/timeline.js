@@ -62,7 +62,15 @@ export function buildCausalTimeline(rawEvents = [], options = {}) {
     };
   }).sort((a, b) => a.timestamp - b.timestamp);
 
-  const nodes = sorted;
+  // Duplicate caller-supplied ids would collapse the adjacency and
+  // in-degree maps (both keyed by id) while stats counted every event.
+  // Keep the first occurrence of each id so nodes, maps, and stats agree.
+  const seenEventIds = new Set();
+  const nodes = sorted.filter(n => {
+    if (seenEventIds.has(n.id)) return false;
+    seenEventIds.add(n.id);
+    return true;
+  });
   const edges = [];
   const edgeSet = new Set();
   const adjacency = new Map();
@@ -232,8 +240,10 @@ export function identifyRootCause(dag) {
     }
   }
 
-  const confidence = dag.nodes.length > 0 
-    ? Math.min(1.0, Number((maxReach / dag.nodes.length).toFixed(2)) + 0.2) 
+  // Confidence is the fraction of the DAG reachable from the candidate
+  // root. (A flat +0.2 bonus previously inflated every estimate.)
+  const confidence = dag.nodes.length > 0
+    ? Number((maxReach / dag.nodes.length).toFixed(2))
     : 0.5;
 
   return {
@@ -267,13 +277,16 @@ export function calculateDwellTime(dag) {
   const t0 = sorted[0].timestamp;
   const tEnd = sorted[sorted.length - 1].timestamp;
 
-  // First alert that generated a detection
-  const firstDetection = sorted.find(n => n.severity === 'HIGH' || n.severity === 'CRITICAL') || sorted[0];
-  const tDetect = firstDetection.timestamp;
+  // First alert that generated a detection. If no HIGH/CRITICAL event
+  // exists, the incident was never detected: detection metrics are null
+  // (unknown), not 0 — the previous fallback silently substituted the
+  // first event and reported timeToDetectMs: 0.
+  const firstDetection = sorted.find(n => n.severity === 'HIGH' || n.severity === 'CRITICAL');
+  const tDetect = firstDetection ? firstDetection.timestamp : null;
 
   const dwellTimeMs = Math.max(0, tEnd - t0);
-  const timeToDetectMs = Math.max(0, tDetect - t0);
-  const timeToRemediateMs = Math.max(0, tEnd - tDetect);
+  const timeToDetectMs = tDetect === null ? null : Math.max(0, tDetect - t0);
+  const timeToRemediateMs = tDetect === null ? null : Math.max(0, tEnd - tDetect);
 
   const formatDuration = (ms) => {
     const sec = Math.floor(ms / 1000);
@@ -290,12 +303,12 @@ export function calculateDwellTime(dag) {
     dwellTimeMs,
     dwellTimeString: formatDuration(dwellTimeMs),
     initialCompromiseTime: new Date(t0).toISOString(),
-    firstDetectionTime: new Date(tDetect).toISOString(),
+    firstDetectionTime: tDetect === null ? null : new Date(tDetect).toISOString(),
     containmentTime: new Date(tEnd).toISOString(),
     timeToDetectMs,
-    timeToDetectString: formatDuration(timeToDetectMs),
+    timeToDetectString: timeToDetectMs === null ? null : formatDuration(timeToDetectMs),
     timeToRemediateMs,
-    timeToRemediateString: formatDuration(timeToRemediateMs)
+    timeToRemediateString: timeToRemediateMs === null ? null : formatDuration(timeToRemediateMs)
   };
 }
 

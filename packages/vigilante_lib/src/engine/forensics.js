@@ -43,7 +43,15 @@ export async function carveFilesFromPayload(payloadData, options = {}) {
 
     const cdMatch = headersRaw.match(/filename=["']?([^"'\r\n]+)["']?/i);
     if (cdMatch) {
-      filename = path.basename(cdMatch[1]);
+      const candidate = path.basename(cdMatch[1].trim());
+      // '..' / '.' / '' would make the write target the carve directory
+      // itself (or its parent) and abort the carve with EISDIR.
+      if (candidate && candidate !== '.' && candidate !== '..') {
+        filename = candidate;
+      }
+    }
+    if (cdMatch) {
+      // extension already implied by the server-supplied name
     } else {
       if (contentType.includes('json')) filename += '.json';
       else if (contentType.includes('text') || contentType.includes('shell')) filename += '.sh';
@@ -58,7 +66,20 @@ export async function carveFilesFromPayload(payloadData, options = {}) {
     const sha256 = crypto.createHash('sha256').update(fileBuf).digest('hex');
     const md5 = crypto.createHash('md5').update(fileBuf).digest('hex');
 
-    const carvedPath = path.join(carveDir, filename);
+    // Two responses carrying the same filename must not overwrite each
+    // other: suffix -1, -2, ... until the target is free.
+    let carvedPath = path.join(carveDir, filename);
+    for (let n = 1; ; n++) {
+      try {
+        await fs.access(carvedPath);
+        const ext = path.extname(filename);
+        const stem = ext ? filename.slice(0, -ext.length) : filename;
+        filename = `${stem}-${n}${ext}`;
+        carvedPath = path.join(carveDir, filename);
+      } catch {
+        break;
+      }
+    }
     await fs.writeFile(carvedPath, fileBuf);
 
     carvedFiles.push({
@@ -172,18 +193,28 @@ export function reconstructTcpStreams(packets = []) {
 
     const s = streams[streamKey];
     s.packetsCount++;
-    s.bytesTransferred += (pkt.length || pkt.size || (pkt.payload ? pkt.payload.length : 0));
+    // One length per packet, used for BOTH the byte total and the packet
+    // record: previously a payload-only packet counted its bytes toward
+    // bytesTransferred but was recorded with length 0.
+    const payloadLen = pkt.payload && typeof pkt.payload.length === 'number' ? pkt.payload.length : 0;
+    const pktLen = pkt.length || pkt.size || payloadLen;
+    s.bytesTransferred += pktLen;
     if (pkt.flags) {
       if (Array.isArray(pkt.flags)) pkt.flags.forEach(f => s.flags.add(f));
       else s.flags.add(pkt.flags);
     }
-    s.endTime = pkt.timestamp || s.endTime;
+    // Stream bounds are the min/max observed timestamps: an out-of-order
+    // packet must not drag endTime backwards (or leave end < start).
+    if (pkt.timestamp) {
+      if (pkt.timestamp < s.startTime) s.startTime = pkt.timestamp;
+      if (pkt.timestamp > s.endTime) s.endTime = pkt.timestamp;
+    }
     s.packets.push({
       seq: pkt.seq || s.packetsCount,
       src,
       dst,
       flags: pkt.flags || 'ACK',
-      length: pkt.length || 0,
+      length: pktLen,
       timestamp: pkt.timestamp || new Date().toISOString()
     });
   }

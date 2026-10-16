@@ -176,8 +176,17 @@ export async function triggerRansomwareContainment(podName, namespace = 'default
     logger.error('RANSOMWARE', `Isolate pod failed: ${err.message}`);
   }
 
+  // Success means both containment actions actually completed. The
+  // previous implementation returned containmentSuccess: true even when
+  // both SOAR calls had thrown and their results were nulled by the
+  // catches above.
+  const containmentFailures = [];
+  if (!freezeResult) containmentFailures.push('freeze');
+  if (!isolateResult) containmentFailures.push('isolate');
+
   return {
-    containmentSuccess: true,
+    containmentSuccess: containmentFailures.length === 0,
+    containmentFailures,
     podName,
     namespace,
     pid,

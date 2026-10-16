@@ -164,30 +164,7 @@ export async function saveTriageBundle(networkCidr, hostIp, bundle = {}) {
     });
   }
 
-  // 8. Triage summary index (NIST Volatility Rank 5)
-  const summary = {
-    standard: 'NIST SP 800-61 Rev. 2 / RFC 3227',
-    network: networkCidr,
-    host: hostIp,
-    capturedAt: timestamp,
-    totalArtifacts: savedFiles.length,
-    volatilityOrderApplied: true,
-    artifacts: savedFiles,
-    metadata: bundle.metadata || {}
-  };
-
-  const summaryRes = await saveEvidenceFile(networkCidr, hostIp, 'triage_summary.json', summary);
-  savedFiles.push({
-    name: 'triage_summary.json',
-    path: summaryRes.filePath,
-    type: 'IR Triage Summary Index',
-    volatilityRank: 5,
-    volatilityLevel: 'Authoritative Chain-of-Custody Index',
-    isSigned: summaryRes.isSigned,
-    signaturePath: summaryRes.signaturePath
-  });
-
-  // 9. Auto-generate and sign NIST Incident Record (NIST SP 800-61 Section 3.2)
+  // 8. Auto-generate and sign NIST Incident Record (NIST SP 800-61 Section 3.2)
   const detectedVector = classifyAttackVector({
     arp: bundle.arp,
     http: bundle.http,
@@ -217,6 +194,32 @@ export async function saveTriageBundle(networkCidr, hostIp, bundle = {}) {
     volatilityLevel: 'NIST Incident Record',
     isSigned: nistRes.isSigned,
     signaturePath: nistRes.signaturePath
+  });
+
+  // 9. Triage summary index (NIST Volatility Rank 5)
+  const summary = {
+    standard: 'NIST SP 800-61 Rev. 2 / RFC 3227',
+    network: networkCidr,
+    host: hostIp,
+    capturedAt: timestamp,
+    // Counted AFTER the NIST record exists, and +1 for this summary
+    // itself: the previous order stamped the count before the summary
+    // and NIST artifacts were appended, undercounting the bundle by 2.
+    totalArtifacts: savedFiles.length + 1,
+    volatilityOrderApplied: true,
+    artifacts: savedFiles,
+    metadata: bundle.metadata || {}
+  };
+
+  const summaryRes = await saveEvidenceFile(networkCidr, hostIp, 'triage_summary.json', summary);
+  savedFiles.push({
+    name: 'triage_summary.json',
+    path: summaryRes.filePath,
+    type: 'IR Triage Summary Index',
+    volatilityRank: 5,
+    volatilityLevel: 'Authoritative Chain-of-Custody Index',
+    isSigned: summaryRes.isSigned,
+    signaturePath: summaryRes.signaturePath
   });
 
   logger.info('EVIDENCE:TRIAGE_BUNDLE', `Completed NIST SP 800-61 triage bundle for ${hostIp} in ${networkCidr} (${savedFiles.length} artifacts)`);
@@ -275,7 +278,7 @@ export async function listEvidenceVault() {
               sizeBytes: stats.size,
               mtime: stats.mtime,
               isSigned: hasAsc,
-              signaturePath: hasAsc ? path.join(hostPath, `${file}.asc`) : null
+              signaturePath: ascFiles.has(`${file}.asc`) ? path.join(hostPath, `${file}.asc`) : (ascFiles.has(`${file}.sig`) ? path.join(hostPath, `${file}.sig`) : null)
             });
           } catch {
             // Ignore stat errors
@@ -330,7 +333,7 @@ export async function listHostEvidence(networkCidr, hostIp) {
         sizeBytes: stats.size,
         mtime: stats.mtime,
         isSigned: hasAsc,
-        signaturePath: hasAsc ? path.join(hostDir, `${file}.asc`) : null
+        signaturePath: ascFiles.has(`${file}.asc`) ? path.join(hostDir, `${file}.asc`) : (ascFiles.has(`${file}.sig`) ? path.join(hostDir, `${file}.sig`) : null)
       });
     }
   } catch {

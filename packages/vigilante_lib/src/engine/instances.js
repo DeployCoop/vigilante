@@ -65,7 +65,27 @@ export function ensureInstanceDirsSync(instanceName = 'vigilante-dev') {
  * @param {Object} metadata
  * @returns {Promise<string>} Path to instance.json
  */
+// instance.json updates are read-modify-write. Without serialization,
+// concurrent writers all read the same starting state and the last write
+// wins wholesale (8 concurrent namespace records left exactly 1
+// survivor). A per-instance promise chain serializes the writers in
+// this process; the *Unlocked core is what nested callers use while
+// already holding the chain.
+const instanceWriteChains = new Map();
+
+function withInstanceWriteLock(instanceName, fn) {
+  const key = sanitizePathComponent(instanceName || 'vigilante-dev');
+  const prev = instanceWriteChains.get(key) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  instanceWriteChains.set(key, run.catch(() => {}));
+  return run;
+}
+
 export async function saveInstanceMetadata(instanceName = 'vigilante-dev', metadata = {}) {
+  return withInstanceWriteLock(instanceName, () => saveInstanceMetadataUnlocked(instanceName, metadata));
+}
+
+async function saveInstanceMetadataUnlocked(instanceName = 'vigilante-dev', metadata = {}) {
   const { instanceDir } = await ensureInstanceDirs(instanceName);
   const metadataPath = path.join(instanceDir, 'instance.json');
 
@@ -115,21 +135,23 @@ export async function loadInstanceMetadata(instanceName = 'vigilante-dev') {
  * @param {Object} [extra={}]
  */
 export async function recordNamespaceDeployment(instanceName = 'vigilante-dev', namespace = 'default', modules = [], extra = {}) {
-  const meta = (await loadInstanceMetadata(instanceName)) || {};
-  const currentNamespaces = meta.namespaces || {};
+  return withInstanceWriteLock(instanceName, async () => {
+    const meta = (await loadInstanceMetadata(instanceName)) || {};
+    const currentNamespaces = meta.namespaces || {};
 
-  currentNamespaces[namespace] = {
-    modules,
-    ...extra,
-    updatedAt: new Date().toISOString()
-  };
+    currentNamespaces[namespace] = {
+      modules,
+      ...extra,
+      updatedAt: new Date().toISOString()
+    };
 
-  await saveInstanceMetadata(instanceName, {
-    ...meta,
-    namespaces: currentNamespaces
+    await saveInstanceMetadataUnlocked(instanceName, {
+      ...meta,
+      namespaces: currentNamespaces
+    });
+
+    logger.info('INSTANCES:NAMESPACE_DEPLOY', `Recorded deployment of [${modules.join(', ')}] in namespace '${namespace}' on instance '${instanceName}'`);
   });
-
-  logger.info('INSTANCES:NAMESPACE_DEPLOY', `Recorded deployment of [${modules.join(', ')}] in namespace '${namespace}' on instance '${instanceName}'`);
 }
 
 /**
@@ -148,12 +170,14 @@ export async function getDeployedNamespaces(instanceName = 'vigilante-dev') {
  * @param {string} [namespace='default']
  */
 export async function removeNamespaceDeployment(instanceName = 'vigilante-dev', namespace = 'default') {
-  const meta = (await loadInstanceMetadata(instanceName)) || {};
-  if (meta.namespaces && meta.namespaces[namespace]) {
-    delete meta.namespaces[namespace];
-    await saveInstanceMetadata(instanceName, meta);
-    logger.info('INSTANCES:NAMESPACE_REMOVE', `Removed namespace '${namespace}' metadata from instance '${instanceName}'`);
-  }
+  return withInstanceWriteLock(instanceName, async () => {
+    const meta = (await loadInstanceMetadata(instanceName)) || {};
+    if (meta.namespaces && meta.namespaces[namespace]) {
+      delete meta.namespaces[namespace];
+      await saveInstanceMetadataUnlocked(instanceName, meta);
+      logger.info('INSTANCES:NAMESPACE_REMOVE', `Removed namespace '${namespace}' metadata from instance '${instanceName}'`);
+    }
+  });
 }
 
 /**

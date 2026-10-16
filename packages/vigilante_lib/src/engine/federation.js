@@ -244,7 +244,7 @@ export async function ingestFederatedThreatRecord(signedRecord, options = {}) {
   let huntMatches = [];
   if (options.runHunt !== false && indicator) {
     try {
-      huntMatches = datalake.runRetrospectiveThreatHunt([indicator]);
+      huntMatches = await datalake.runRetrospectiveThreatHunt([indicator]);
       actionsTaken.push({
         action: 'DATALAKE_RETROSPECTIVE_HUNT',
         indicator,

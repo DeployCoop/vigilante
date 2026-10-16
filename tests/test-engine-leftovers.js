@@ -27,7 +27,7 @@ const kctf = await import('../src/engine/kctf.js');
     title: 'literal-words', level: 'high',
     detection: { selection: { indicator: 'this or that' }, condition: 'selection' }
   };
-  const matches = runSigmaThreatHunt([rule]);
+  const matches = await runSigmaThreatHunt([rule]);
   assert.strictEqual(matches.length, 1, 'Rule with an "or" inside its literal value must still match');
   assert.strictEqual(matches[0].matchCount, 1);
   assert.strictEqual(matches[0].events[0].indicator, 'this or that');
@@ -56,7 +56,7 @@ console.log('✔ Test 1 passed: Sigma literals containing and/or/not survive tra
   assert.ok(both.sql.includes('dest_port = 443') && both.sql.includes("indicator = 'evil'"), '"1 of selection*" still combines all selections');
 
   // End to end: only the port rows match the narrowed rule
-  const matches = runSigmaThreatHunt([ruleFor('1 of selection_port')]);
+  const matches = await runSigmaThreatHunt([ruleFor('1 of selection_port')]);
   assert.strictEqual(matches.length, 1);
   assert.strictEqual(matches[0].matchCount, 2, 'Both seeded rows have dest_port 443');
   closeDataLake();

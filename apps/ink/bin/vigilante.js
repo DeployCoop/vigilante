@@ -586,7 +586,7 @@ if (command === 'mcp') {
     console.log('='.repeat(70));
     console.log(`SQL: ${sql}\n`);
     try {
-      const rows = lake.queryDataLake(sql);
+      const rows = await lake.queryDataLake(sql);
       console.table(rows);
     } catch (err) {
       console.error('✖ Query error:', err.message);
@@ -623,7 +623,7 @@ if (command === 'mcp') {
     console.log(`Hypothesis: ${rule.hypothesis}`);
     console.log(`\nGenerated ANSI SQL:`);
     console.log(`  ${rule.sql}`);
-    const huntMatches = sigma.runSigmaThreatHunt([rule.sigma || rule]);
+    const huntMatches = await sigma.runSigmaThreatHunt([rule.sigma || rule]);
     console.log(`\nTelemetry Matches Found: ${huntMatches.length}`);
     if (huntMatches.length > 0) {
       console.table(huntMatches);
