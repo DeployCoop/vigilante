@@ -185,25 +185,28 @@ export async function runKubeAudit(target = 'cluster', profileId = 'kube-bench',
         auditData = parseKubeBenchOutput(rawOutput);
       }
     } else {
-      // Baseline synthetic report
+      // Baseline synthetic report. The audit did NOT run (runner is
+      // 'docker' or 'none', and only 'host' is ever invoked), so checks
+      // are UNKNOWN — never fabricated PASSes — and the saved record is
+      // marked synthetic below.
       auditData = {
         tests: [
           {
             id: '1.2.1',
             desc: 'Ensure that the --anonymous-auth argument is set to false',
-            status: 'PASS',
+            status: 'UNKNOWN',
             remediation: 'Edit api server pod specification',
             scored: true
           },
           {
             id: '1.2.2',
             desc: 'Ensure that the --basic-auth-file argument is not set',
-            status: 'PASS',
+            status: 'UNKNOWN',
             remediation: 'Follow documentation and remove --basic-auth-file',
             scored: true
           }
         ],
-        totals: { pass: 2, fail: 0, warn: 0, info: 0 }
+        totals: { pass: 0, fail: 0, warn: 0, info: 0, unknown: 2 }
       };
       rawOutput = JSON.stringify(auditData);
     }
@@ -227,12 +230,22 @@ export async function runKubeAudit(target = 'cluster', profileId = 'kube-bench',
     }
   }
 
+  // Only the 'host' runner ever executes the tool. Any other detected
+  // runner ('docker', 'none') means the data above is the synthetic
+  // baseline, and the record — which is persisted, GPG-signed, and filed
+  // as evidence — must say so, so consumers can distinguish "audited"
+  // from "never ran".
+  const detectedRunner = profile.tool === 'kube-bench' ? tools.kubeBench.runner : tools.kubeHunter.runner;
+  const ranForReal = detectedRunner === 'host';
+
   const record = {
     id: scanId,
     target,
     tool: profile.tool,
     profile: profile.id,
     timestamp,
+    synthetic: !ranForReal,
+    runner: ranForReal ? 'host' : 'none',
     ...auditData,
     rawOutput
   };
