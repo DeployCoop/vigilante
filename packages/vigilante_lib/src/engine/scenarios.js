@@ -2,7 +2,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import * as yaml from 'js-yaml';
 import { execFileSync } from 'child_process';
-import os from 'os';
 
 /**
  * Scenario Engine
@@ -10,7 +9,7 @@ import os from 'os';
  */
 
 import { fileURLToPath } from 'url';
-import { resolvePathInside, assertDnsLabel } from './config.js';
+import { resolvePathInside, assertDnsLabel, getVigilanteScenariosDir } from './config.js';
 
 /**
  * Split a scenario step command into argv words using shell quoting rules
@@ -63,7 +62,7 @@ export function splitCommandWords(command) {
 
 export class ScenarioEngine {
   constructor(options = {}) {
-    this.userScenarioDir = options.scenarioDir || path.join(os.homedir(), '.config', 'vigilante', 'scenarios');
+    this.userScenarioDir = options.scenarioDir || getVigilanteScenariosDir();
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     this.bundledScenarioDir = path.join(currentDir, '..', '..', 'scenarios');
   }

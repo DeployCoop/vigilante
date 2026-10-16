@@ -208,6 +208,14 @@ export function getVigilantePlaybooksDir() {
 }
 
 /**
+ * Get the user scenarios directory within XDG_CONFIG_HOME
+ * @returns {string}
+ */
+export function getVigilanteScenariosDir() {
+  return path.join(getVigilanteConfigDir(), 'scenarios');
+}
+
+/**
  * Get the instances directory for all k3d cluster instances
  * Structure: $XDG_CONFIG_HOME/.vigilante/instances/
  * @returns {string}
@@ -523,7 +531,7 @@ export const DEFAULT_CONFIG = {
   },
   modules: {
     vigilLocal: {
-      chartPath: '/home/djehauti/git/vigil/infra/helm/vigil'
+      chartPath: ''
     },
     kctf: {
       enabled: false,
@@ -683,7 +691,7 @@ ai:
 modules:
   vigilLocal:
     # Path to local checkout of Vigil SOC repository helm chart
-    chartPath: "/home/djehauti/git/vigil/infra/helm/vigil"
+    chartPath: ""
   flamingo:
     enabled: false
     protocols: "ssh,snmp,ldap,http,dns,ftp"
@@ -740,6 +748,7 @@ export async function ensureVigilanteConfig() {
   const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
+  const scenariosDir = getVigilanteScenariosDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
@@ -767,6 +776,7 @@ export async function ensureVigilanteConfig() {
     await fs.mkdir(purpleDir, { recursive: true });
     await fs.mkdir(evidenceDir, { recursive: true });
     await fs.mkdir(playbooksDir, { recursive: true });
+    await fs.mkdir(scenariosDir, { recursive: true });
     await fs.mkdir(instancesDir, { recursive: true });
     try {
       await fs.access(configFile);
@@ -802,6 +812,7 @@ export async function ensureVigilanteConfig() {
     purpleDir,
     evidenceDir,
     playbooksDir,
+    scenariosDir,
     instancesDir,
     configFile,
     created
@@ -825,6 +836,7 @@ export function ensureVigilanteConfigSync() {
   const pcapDir = getVigilantePcapDir();
   const dossiersDir = getVigilanteDossiersDir();
   const bloodhoundDir = getVigilanteBloodhoundDir();
+  const containmentsDir = getVigilanteContainmentsDir();
   const ctiDir = getVigilanteCtiDir();
   const canaryDir = getVigilanteCanaryDir();
   const carveDir = getVigilanteCarveDir();
@@ -833,6 +845,7 @@ export function ensureVigilanteConfigSync() {
   const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
+  const scenariosDir = getVigilanteScenariosDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
@@ -900,6 +913,9 @@ export function ensureVigilanteConfigSync() {
     if (!fsSync.existsSync(playbooksDir)) {
       fsSync.mkdirSync(playbooksDir, { recursive: true });
     }
+    if (!fsSync.existsSync(scenariosDir)) {
+      fsSync.mkdirSync(scenariosDir, { recursive: true });
+    }
     if (!fsSync.existsSync(instancesDir)) {
       fsSync.mkdirSync(instancesDir, { recursive: true });
     }
@@ -910,7 +926,7 @@ export function ensureVigilanteConfigSync() {
     // Ignore sync fallback error
   }
 
-  return { configDir, valuesDir, nmapsDir, oobscansDir, evidenceDir, instancesDir, configFile };
+  return { configDir, valuesDir, nmapsDir, oobscansDir, evidenceDir, scenariosDir, instancesDir, configFile };
 }
 
 /**

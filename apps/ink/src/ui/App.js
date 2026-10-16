@@ -41,7 +41,7 @@ import { ensureNamespace } from '../engine/k8s.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
-import { saveInstanceMetadata, deleteInstance, recordNamespaceDeployment } from '../engine/instances.js';
+import { deleteInstance, recordNamespaceDeployment } from '../engine/instances.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -580,7 +580,8 @@ const AppContent = ({
     setIsDone(false);
     setTasks([
       { id: 'down', label: `Tearing down k3d cluster '${clusterName}'`, status: 'running' },
-      { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' }
+      { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' },
+      { id: 'instance', label: `Remove local instance state and certificates`, status: 'pending' }
     ]);
 
     try {
@@ -611,6 +612,24 @@ const AppContent = ({
         updateTask('hosts', { status: 'done', detail: 'Skipped (disabled in config.yaml)' });
         addLog(`[hostr] Automatic /etc/hosts cleanup is disabled in config.yaml.`);
       }
+
+      // The cluster is already gone at this point; remove its local state
+      // (instance.json, generated values, logs, and the mkcert certificate
+      // and private key) so `down` does not leave a stale instance or TLS
+      // key behind. deleteCluster stays false to avoid a second deletion.
+      updateTask('instance', { status: 'running' });
+      const instanceResult = await deleteInstance(clusterName, {
+        deleteCluster: false,
+        onLog: (msg) => addLog(msg)
+      });
+      if (!instanceResult.success) {
+        const error = instanceResult.error || `Could not remove local state for instance '${clusterName}'`;
+        updateTask('instance', { status: 'error', error });
+        setFatalError(error);
+        setIsDone(true);
+        return;
+      }
+      updateTask('instance', { status: 'done' });
 
       addLog('Environment torn down successfully.');
       setIsDone(true);
