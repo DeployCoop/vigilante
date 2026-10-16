@@ -125,6 +125,63 @@ export function generateManagedBlock(hostnames = [], ip = '127.0.0.1') {
   return lines.join('\n');
 }
 
+/**
+ * Remove complete Vigilante blocks and malformed marker lines without ever
+ * discarding ordinary hosts entries. A BEGIN marker with no matching END
+ * does not establish where a managed block ends, so the lines after it are
+ * preserved rather than being swallowed by a later block's END marker.
+ */
+function stripManagedHostsBlocks(content) {
+  const lines = [];
+  let pendingBlockLines = null;
+  let firstBlockIndex = null;
+  let removedBlocks = 0;
+  let malformedMarkers = 0;
+
+  for (const line of String(content).split('\n')) {
+    const trimmed = line.trim();
+
+    if (pendingBlockLines !== null) {
+      if (trimmed === BLOCK_END) {
+        removedBlocks++;
+        pendingBlockLines = null;
+      } else if (trimmed === BLOCK_START) {
+        // A second BEGIN before an END means the previous block was never
+        // terminated. Preserve its would-be contents as ordinary lines and
+        // start a new candidate block at this marker.
+        lines.push(...pendingBlockLines);
+        malformedMarkers++;
+        pendingBlockLines = [];
+      } else {
+        pendingBlockLines.push(line);
+      }
+      continue;
+    }
+
+    if (trimmed === BLOCK_START) {
+      if (firstBlockIndex === null) firstBlockIndex = lines.length;
+      pendingBlockLines = [];
+    } else if (trimmed === BLOCK_END) {
+      malformedMarkers++;
+    } else {
+      lines.push(line);
+    }
+  }
+
+  if (pendingBlockLines !== null) {
+    // Unterminated block: remove only the marker, never the following lines.
+    lines.push(...pendingBlockLines);
+    malformedMarkers++;
+  }
+
+  return { lines, firstBlockIndex, removedBlocks, malformedMarkers };
+}
+
+function renderHostsLines(lines) {
+  const rendered = lines.join('\n').trimEnd();
+  return rendered ? `${rendered}\n` : '\n';
+}
+
 async function writeHostsFile(newContent, hostsPath = HOSTS_FILE_PATH, { onLog = null } = {}) {
   try {
     await fs.writeFile(hostsPath, newContent, 'utf8');
@@ -184,20 +241,19 @@ export async function syncHosts({
   const currentContent = await readHostsContent(hostsPath);
   const newBlock = generateManagedBlock(targetHosts, ip);
 
-  let newContent = '';
-  const startIndex = currentContent.indexOf(BLOCK_START);
-  const endIndex = currentContent.indexOf(BLOCK_END);
-
-  if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-    // Replace existing managed block
-    const before = currentContent.substring(0, startIndex);
-    const after = currentContent.substring(endIndex + BLOCK_END.length);
-    newContent = `${before.trimEnd()}\n${newBlock}\n${after.trimStart()}`.trimEnd() + '\n';
-  } else {
-    // Append managed block
-    const separator = currentContent.length > 0 && !currentContent.endsWith('\n') ? '\n\n' : '\n';
-    newContent = `${currentContent.trimEnd()}${separator}${newBlock}\n`;
+  // Replace every well-formed managed block with one fresh block at the
+  // first block's location. Malformed markers are repaired without deleting
+  // the ordinary entries that followed an unterminated BEGIN marker.
+  const stripped = stripManagedHostsBlocks(currentContent);
+  const baseLines = [...stripped.lines];
+  while (baseLines.length > 0 && baseLines[baseLines.length - 1].trim() === '') {
+    baseLines.pop();
   }
+  const insertIndex = stripped.firstBlockIndex === null
+    ? baseLines.length
+    : Math.min(stripped.firstBlockIndex, baseLines.length);
+  baseLines.splice(insertIndex, 0, ...newBlock.split('\n'));
+  const newContent = renderHostsLines(baseLines);
 
   if (currentContent.trim() === newContent.trim()) {
     if (onLog) onLog(`[hostr] Domain entries for *.${domain} are already up to date in '${hostsPath}'.`);
@@ -236,10 +292,9 @@ export async function removeHosts({
   onLog = null
 } = {}) {
   const currentContent = await readHostsContent(hostsPath);
-  const startIndex = currentContent.indexOf(BLOCK_START);
-  const endIndex = currentContent.indexOf(BLOCK_END);
+  const stripped = stripManagedHostsBlocks(currentContent);
 
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+  if (stripped.removedBlocks === 0 && stripped.malformedMarkers === 0) {
     if (onLog) onLog(`[hostr] No managed Vigilante block found in '${hostsPath}'.`);
     return {
       removed: false,
@@ -247,9 +302,7 @@ export async function removeHosts({
     };
   }
 
-  const before = currentContent.substring(0, startIndex).trimEnd();
-  const after = currentContent.substring(endIndex + BLOCK_END.length).trimStart();
-  const newContent = (before + (after ? '\n' + after : '')).trimEnd() + '\n';
+  const newContent = renderHostsLines(stripped.lines);
 
   if (onLog) {
     onLog(`[hostr] Removing Vigilante managed block from '${hostsPath}'...`);
@@ -263,6 +316,8 @@ export async function removeHosts({
 
   return {
     removed: true,
-    method: result.method
+    method: result.method,
+    removedBlocks: stripped.removedBlocks,
+    repairedMarkers: stripped.malformedMarkers
   };
 }

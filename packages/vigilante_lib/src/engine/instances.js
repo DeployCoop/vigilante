@@ -248,7 +248,7 @@ export async function listInstances() {
  * @param {Object} [options]
  * @param {boolean} [options.deleteCluster=true]
  * @param {Function} [options.onLog]
- * @returns {Promise<{ success: boolean, instanceName: string, deletedCluster: boolean }>}
+ * @returns {Promise<{ success: boolean, instanceName: string, deletedCluster: boolean, clusterStatus: string, removedInstanceDir: boolean, error?: string }>}
  */
 export async function deleteInstance(instanceName = 'vigilante-dev', {
   deleteCluster = true,
@@ -261,12 +261,21 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
   assertPathStrictlyInside(getVigilanteInstancesDir(), instancePath);
 
   let deletedCluster = false;
+  let clusterStatus = 'skipped';
+  let removedInstanceDir = false;
+  const errors = [];
+
   if (deleteCluster) {
     try {
       if (onLog) onLog(`Tearing down k3d cluster '${safeName}'...`);
-      await deleteK3dCluster(safeName, { onLog });
-      deletedCluster = true;
+      const clusterResult = await deleteK3dCluster(safeName, { onLog });
+      clusterStatus = clusterResult.status;
+      // deleteK3dCluster reports a missing cluster as a result, not an
+      // exception. Only an actual deletion may be reported as one.
+      deletedCluster = clusterResult.status === 'deleted';
     } catch (err) {
+      clusterStatus = 'error';
+      errors.push(`cluster deletion failed: ${err.message}`);
       logger.warn('INSTANCES:DELETE_CLUSTER', `Could not delete cluster '${safeName}': ${err.message}`);
     }
   }
@@ -274,14 +283,20 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
   try {
     if (onLog) onLog(`Removing instance directory at ${instancePath}...`);
     await fs.rm(instancePath, { recursive: true, force: true });
+    removedInstanceDir = true;
     logger.info('INSTANCES:DELETE', `Deleted instance files at ${instancePath}`);
   } catch (err) {
+    errors.push(`instance directory removal failed: ${err.message}`);
     logger.warn('INSTANCES:DELETE_DIR', `Could not remove instance directory: ${err.message}`);
   }
 
-  return {
-    success: true,
+  const result = {
+    success: errors.length === 0,
     instanceName: safeName,
-    deletedCluster
+    deletedCluster,
+    clusterStatus,
+    removedInstanceDir
   };
+  if (errors.length > 0) result.error = errors.join('; ');
+  return result;
 }

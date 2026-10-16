@@ -69,9 +69,20 @@ export const InstancesView = memo(function InstancesView({ onNavigate = null }) 
 
     // Delete instance [d] / [x]
     if ((keyChar === 'd' || keyChar === 'x') && selectedInstance) {
-      deleteInstance(selectedInstance.instanceName, { deleteCluster: true }).then(() => {
-        setFeedback({ type: 'success', text: `✔ Deleted instance '${selectedInstance.instanceName}'` });
+      deleteInstance(selectedInstance.instanceName, { deleteCluster: true }).then((result) => {
+        if (result.success) {
+          const clusterDetail = result.deletedCluster
+            ? 'and its k3d cluster'
+            : result.clusterStatus === 'not_found'
+              ? '(cluster was already absent)'
+              : '';
+          setFeedback({ type: 'success', text: `✔ Deleted instance '${selectedInstance.instanceName}' ${clusterDetail}`.trim() });
+        } else {
+          setFeedback({ type: 'error', text: `✘ Could not fully delete instance '${selectedInstance.instanceName}': ${result.error || 'unknown error'}` });
+        }
         loadInstances();
+      }).catch((err) => {
+        setFeedback({ type: 'error', text: `✘ Could not delete instance '${selectedInstance.instanceName}': ${err.message}` });
       });
       return;
     }
