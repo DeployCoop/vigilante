@@ -177,6 +177,43 @@ function stripManagedHostsBlocks(content) {
   return { lines, firstBlockIndex, removedBlocks, malformedMarkers };
 }
 
+/**
+ * Parse the entries of all well-formed managed blocks into
+ * [{ ip, hostname }]. Used to preserve other instances' mappings when
+ * one domain is synced or removed: the block is shared, so a sync must
+ * merge rather than replace, and a removal must be domain-scoped.
+ */
+export function extractManagedEntries(content) {
+  const entries = [];
+  // Only WELL-FORMED blocks contribute entries (same rule as
+  // stripManagedHostsBlocks): lines after an unterminated BEGIN marker
+  // are user content, not managed entries — treating them as managed
+  // would absorb them into the block on the next sync.
+  let pending = null;
+  const commitPending = () => {
+    for (const l of pending) {
+      const m = l.trim().match(/^(\S+)\s+(\S+)$/);
+      if (m) entries.push({ ip: m[1], hostname: m[2] });
+    }
+    pending = null;
+  };
+  for (const line of String(content).split('\n')) {
+    const trimmed = line.trim();
+    if (pending !== null) {
+      if (trimmed === BLOCK_END) commitPending();
+      else if (trimmed === BLOCK_START) pending = []; // previous block never terminated
+      else pending.push(line);
+      continue;
+    }
+    if (trimmed === BLOCK_START) pending = [];
+  }
+  return entries;
+}
+
+function hostnameBelongsToDomain(hostname, domain) {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
 function renderHostsLines(lines) {
   const rendered = lines.join('\n').trimEnd();
   return rendered ? `${rendered}\n` : '\n';
@@ -239,7 +276,18 @@ export async function syncHosts({
 } = {}) {
   const targetHosts = hostnames || getDomainHosts({ domain });
   const currentContent = await readHostsContent(hostsPath);
-  const newBlock = generateManagedBlock(targetHosts, ip);
+  // The managed block is shared by every instance: keep entries that
+  // belong to OTHER domains (with their recorded IPs) and replace only
+  // this domain's slice. Previously a sync rebuilt the block from the
+  // current domain alone, evicting every other instance's mappings.
+  const preserved = extractManagedEntries(currentContent)
+    .filter(e => !hostnameBelongsToDomain(e.hostname, domain) && !targetHosts.includes(e.hostname));
+  const newBlock = [
+    BLOCK_START,
+    ...targetHosts.map(h => `${ip} ${h}`),
+    ...preserved.map(e => `${e.ip} ${e.hostname}`),
+    BLOCK_END
+  ].join('\n');
 
   // Replace every well-formed managed block with one fresh block at the
   // first block's location. Malformed markers are repaired without deleting
@@ -288,10 +336,46 @@ export async function syncHosts({
  * Remove Vigilante managed block from /etc/hosts
  */
 export async function removeHosts({
+  domain = null,
   hostsPath = HOSTS_FILE_PATH,
   onLog = null
 } = {}) {
   const currentContent = await readHostsContent(hostsPath);
+
+  if (domain) {
+    // Domain-scoped removal: drop only this domain's entries and keep
+    // the block (with the other instances' mappings) intact. Without a
+    // domain the whole managed block is removed, as before.
+    const allEntries = extractManagedEntries(currentContent);
+    const removedEntries = allEntries.filter(e => hostnameBelongsToDomain(e.hostname, domain));
+    if (removedEntries.length === 0) {
+      if (onLog) onLog(`[hostr] No managed entries for *.${domain} found in '${hostsPath}'.`);
+      return { removed: false, reason: `No managed entries for domain '${domain}'`, domain };
+    }
+    const remaining = allEntries.filter(e => !hostnameBelongsToDomain(e.hostname, domain));
+    const strippedScoped = stripManagedHostsBlocks(currentContent);
+    const baseLines = [...strippedScoped.lines];
+    while (baseLines.length > 0 && baseLines[baseLines.length - 1].trim() === '') {
+      baseLines.pop();
+    }
+    if (remaining.length > 0) {
+      const insertIndex = strippedScoped.firstBlockIndex === null
+        ? baseLines.length
+        : Math.min(strippedScoped.firstBlockIndex, baseLines.length);
+      const block = [BLOCK_START, ...remaining.map(e => `${e.ip} ${e.hostname}`), BLOCK_END];
+      baseLines.splice(insertIndex, 0, ...block);
+    }
+    const result = await writeHostsFile(renderHostsLines(baseLines), hostsPath, { onLog });
+    if (onLog) onLog(`[hostr] Removed ${removedEntries.length} managed entr${removedEntries.length === 1 ? 'y' : 'ies'} for *.${domain} from '${hostsPath}' via ${result.method}.`);
+    return {
+      removed: true,
+      method: result.method,
+      domain,
+      removedEntries: removedEntries.length,
+      remainingEntries: remaining.length
+    };
+  }
+
   const stripped = stripManagedHostsBlocks(currentContent);
 
   if (stripped.removedBlocks === 0 && stripped.malformedMarkers === 0) {

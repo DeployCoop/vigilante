@@ -1,4 +1,7 @@
 import { execa } from 'execa';
+import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import path from 'node:path';
 import { logger } from './logger.js';
 
 /**
@@ -65,15 +68,33 @@ export async function execStream(file, args = [], { onLog, ...options } = {}) {
 }
 
 /**
- * Check if a command is available in PATH
+ * Check if a command is available in PATH.
+ * Falls back to scanning PATH directly: minimal environments may not
+ * ship a `which` binary, and depending on it made every prerequisite
+ * report "missing" there.
  */
 export async function commandExists(command) {
   try {
     await execa('which', [command]);
     return true;
   } catch {
-    return false;
+    // fall through to the PATH scan
   }
+  const extensions = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').map(e => e.toLowerCase())
+    : [''];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of extensions) {
+      try {
+        await fs.access(path.join(dir, command + ext), fsConstants.X_OK);
+        return true;
+      } catch {
+        // not in this dir
+      }
+    }
+  }
+  return false;
 }
 
 /**

@@ -1,6 +1,9 @@
 {
   "name": "@vigilante/web",
   "version": "0.1.0",
+  "engines": {
+    "node": ">=22.5"
+  },
   "type": "module",
   "private": true,
   "scripts": {
