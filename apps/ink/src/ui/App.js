@@ -41,7 +41,7 @@ import { ensureNamespace } from '../engine/k8s.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
-import { deleteInstance, recordNamespaceDeployment } from '../engine/instances.js';
+import { deleteInstance, recordNamespaceDeployment, saveInstanceMetadata } from '../engine/instances.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -505,7 +505,11 @@ const AppContent = ({
       // Step 4: Cluster
       updateTask('cluster', { status: 'running' });
       addLog(`Creating k3d cluster '${clusterName}'...`);
+      const httpPort = cfg.defaults?.httpPort;
+      const httpsPort = cfg.defaults?.httpsPort;
       await createK3dCluster(clusterName, {
+        httpPort,
+        httpsPort,
         onLog: (msg) => addLog(msg)
       });
       updateTask('cluster', { status: 'done' });
@@ -554,10 +558,17 @@ const AppContent = ({
         domain
       });
 
-      // Save instance & namespace deployment metadata
+      // Save instance & namespace deployment metadata. The effective
+      // ingress ports are persisted at instance level so listInstances /
+      // InstancesView report the real bindings (previously nothing ever
+      // wrote them and every instance displayed the 80/443 fallbacks).
       await recordNamespaceDeployment(clusterName, activeNs, modulesToInstall, {
         domain,
         ip
+      });
+      await saveInstanceMetadata(clusterName, {
+        httpPort: httpPort ?? 80,
+        httpsPort: httpsPort ?? 443
       });
 
       setIsDone(true);
@@ -603,7 +614,7 @@ const AppContent = ({
       if (hostrCleanEnabled) {
         addLog(`Cleaning up /etc/hosts managed domain mappings...`);
         try {
-          await removeHosts({ onLog: (msg) => addLog(msg) });
+          await removeHosts({ domain: cfg.defaults?.domain, onLog: (msg) => addLog(msg) });
           updateTask('hosts', { status: 'done' });
         } catch {
           updateTask('hosts', { status: 'done', detail: 'Skipped' });
@@ -1003,7 +1014,7 @@ const AppContent = ({
         }
       } else if (isRemove) {
         addLog(`Removing Vigilante managed block from /etc/hosts...`);
-        const res = await removeHosts({ onLog: (msg) => addLog(msg) });
+        const res = await removeHosts({ domain, onLog: (msg) => addLog(msg) });
         if (res.removed) {
           addLog(`✔ Removed managed hosts block from /etc/hosts.`);
         } else {

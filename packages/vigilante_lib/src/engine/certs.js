@@ -54,6 +54,26 @@ export async function setupCertificates(domain = 'vigilante.local', options = nu
   const certPath = path.join(certDir, `${domain}.pem`);
   const keyPath = path.join(certDir, `${domain}-key.pem`);
 
+  // Reuse existing certificates: every caller (up/apply/reset) used to
+  // re-run mkcert -install and overwrite both PEM files on every run,
+  // rotating the instance's TLS keys each time. Pass { force: true } to
+  // regenerate deliberately.
+  const force = Boolean(options && typeof options === 'object' && options.force);
+  if (!force) {
+    const existing = await checkCertificates(domain, options);
+    if (existing.exists) {
+      logger.info('CERTS:SETUP', `Certificates for *.${domain} already present in ${certDir}; reusing (pass { force: true } to regenerate).`);
+      return {
+        certPath: existing.certPath,
+        keyPath: existing.keyPath,
+        certDir,
+        domain,
+        caRoot: '',
+        regenerated: false
+      };
+    }
+  }
+
   logger.info('CERTS:SETUP', `Generating certificates for *.${domain} in ${certDir}`);
 
   // 1. Ensure mkcert local CA is installed
@@ -83,7 +103,8 @@ export async function setupCertificates(domain = 'vigilante.local', options = nu
     keyPath,
     certDir,
     domain,
-    caRoot
+    caRoot,
+    regenerated: true
   };
 }
 

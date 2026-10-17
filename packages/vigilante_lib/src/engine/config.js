@@ -22,10 +22,22 @@ export function getVigilanteConfigDir() {
   const xdg = getXdgConfigHome();
   const dotVigilante = path.join(xdg, '.vigilante');
   const vigilante = path.join(xdg, 'vigilante');
-  if (fsSync.existsSync(dotVigilante)) {
+  const dotExists = fsSync.existsSync(dotVigilante);
+  const plainExists = fsSync.existsSync(vigilante);
+  if (dotExists && plainExists) {
+    // Both trees exist: the one holding a config.yaml is the live one.
+    // The previous existence-only precedence let an empty '.vigilante'
+    // directory appearing (another tool, a stray mkdir) silently orphan
+    // a working 'vigilante' tree and all its state.
+    const dotHasConfig = fsSync.existsSync(path.join(dotVigilante, 'config.yaml'));
+    const plainHasConfig = fsSync.existsSync(path.join(vigilante, 'config.yaml'));
+    if (plainHasConfig && !dotHasConfig) return vigilante;
     return dotVigilante;
   }
-  if (fsSync.existsSync(vigilante)) {
+  if (dotExists) {
+    return dotVigilante;
+  }
+  if (plainExists) {
     return vigilante;
   }
   return vigilante;
@@ -514,6 +526,8 @@ export const DEFAULT_CONFIG = {
     domain: 'vigilante.local',
     clusterName: 'vigilante-dev',
     ip: '127.0.0.1',
+    httpPort: 80,
+    httpsPort: 443,
     valuesDir: ''
   },
   hostr: {
@@ -634,6 +648,10 @@ defaults:
   domain: "vigilante.local"
   clusterName: "vigilante-dev"
   ip: "127.0.0.1"
+  # Host ports bound to the cluster ingress (per instance; change these
+  # to run multiple instances side by side without port collisions)
+  httpPort: 80
+  httpsPort: 443
   # Optional custom values directory (defaults to $XDG_CONFIG_HOME/vigilante/values)
   valuesDir: ""
 
@@ -948,6 +966,10 @@ export function loadConfig() {
           theme: {
             name: parsed.theme?.name || DEFAULT_CONFIG.theme.name,
             colors: {
+              // Deliberately NOT pre-merged over DEFAULT_CONFIG colors:
+              // resolveTheme (the only consumer) merges these overrides
+              // over the NAMED theme's palette — pre-merging here would
+              // poison that fallback with the default palette.
               ...(parsed.theme?.colors || {})
             }
           },

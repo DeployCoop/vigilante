@@ -91,7 +91,12 @@ export const SelectModules = ({
     if (isEditingNamespace) {
       if (key.return) {
         // Confirm new namespace
-        const cleanNs = namespaceInput.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'default';
+        // Sanitize to a valid DNS label: strip characters, trim
+        // leading/trailing hyphens, cap at 63 chars (re-trimming after
+        // the cut), and fall back to 'default' if nothing survives.
+        let cleanNs = namespaceInput.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+        if (cleanNs.length > 63) cleanNs = cleanNs.slice(0, 63).replace(/-+$/g, '');
+        if (!cleanNs) cleanNs = 'default';
         setCurrentNamespace(cleanNs);
         setIsEditingNamespace(false);
         if (onNamespaceChange) {

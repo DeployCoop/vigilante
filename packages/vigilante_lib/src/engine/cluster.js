@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { execStream } from '../utils/exec.js';
+import { logger } from '../utils/logger.js';
 import { waitForApiServerReady } from './k8s.js';
 import { assertCliTarget } from './config.js';
 
@@ -10,7 +11,11 @@ export async function listK3dClusters() {
   try {
     const { stdout } = await execa('k3d', ['cluster', 'list', '-o', 'json']);
     return JSON.parse(stdout || '[]');
-  } catch {
+  } catch (err) {
+    // A broken/missing k3d must not be indistinguishable from "no
+    // clusters": callers still get [] (their contract), but the failure
+    // is on the record instead of being swallowed silently.
+    logger.warn('CLUSTER', `'k3d cluster list' failed (${err.message}); treating as no clusters.`);
     return [];
   }
 }
@@ -30,11 +35,20 @@ export async function createK3dCluster(clusterName = 'vigilante-dev', options = 
     onLog = null
   } = options;
 
+  for (const [label, port] of [['httpPort', httpPort], ['httpsPort', httpsPort]]) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid ${label} '${port}': expected an integer TCP port (1-65535).`);
+    }
+  }
+
   const clusters = await listK3dClusters();
   const existingCluster = clusters.find(c => c.name === clusterName);
 
   if (existingCluster) {
     if (onLog) onLog(`Cluster '${clusterName}' already exists.`);
+    if ((options.httpPort !== undefined || options.httpsPort !== undefined) && onLog) {
+      onLog(`Note: requested port bindings (${httpPort}->80, ${httpsPort}->443) are NOT re-applied to an existing cluster; it keeps its original bindings. Delete and recreate the cluster to change them.`);
+    }
     
     // Check if stopped and start if needed
     if (existingCluster.serversRunning === 0) {
