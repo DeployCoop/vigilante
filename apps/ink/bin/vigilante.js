@@ -241,10 +241,12 @@ const cli = meow(`
     },
     // Declared explicitly so --mock=false / --no-mock parse as booleans:
     // undeclared, meow delivered the string 'false' and Boolean('false')
-    // kept ctf spawn/reap in mock mode. Default preserves prior behaviour.
+    // kept ctf spawn/reap in mock mode. The default is false: mock mode
+    // is opt-in via --mock, so a bare `ctf spawn` provisions for real
+    // (B15 follow-up, decided 2026-10-19).
     mock: {
       type: 'boolean',
-      default: true
+      default: false
     }
   }
 });

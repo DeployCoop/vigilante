@@ -1464,7 +1464,7 @@ export function createVigilanteMcpServer() {
               },
               mock: {
                 type: 'boolean',
-                description: 'Run in mock sandbox mode without applying to live k8s cluster (default: true)'
+                description: 'Run in mock sandbox mode without applying to live k8s cluster (default: false)'
               }
             },
             required: ['challengeId']
@@ -3537,7 +3537,7 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
         ttlMinutes = 30,
         namespace = 'ctf-sandboxes',
         clusterName = 'vigilante-dev',
-        mock = true
+        mock = false
       } = args;
       if (!challengeId) {
         throw new Error("Argument 'challengeId' is required.");
