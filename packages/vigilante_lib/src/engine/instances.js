@@ -11,7 +11,7 @@ import {
   sanitizePathComponent,
   assertPathStrictlyInside
 } from './config.js';
-import { listK3dClusters, deleteK3dCluster } from './cluster.js';
+import { listK3dClusters, deleteK3dCluster, listK3sClusters, deleteCluster as deleteClusterEngine } from './cluster.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -102,6 +102,7 @@ async function saveInstanceMetadataUnlocked(instanceName = 'vigilante-dev', meta
     ...metadata,
     instanceName: sanitizePathComponent(instanceName || 'vigilante-dev'),
     clusterName: metadata.clusterName || instanceName || 'vigilante-dev',
+    provider: metadata.provider || existing.provider || 'k3d',
     updatedAt: new Date().toISOString()
   };
 
@@ -191,7 +192,11 @@ export async function listInstances() {
 
   let liveClusters = [];
   try {
-    liveClusters = await listK3dClusters();
+    const [k3dList, k3sList] = await Promise.all([
+      listK3dClusters(),
+      listK3sClusters()
+    ]);
+    liveClusters = [...k3dList, ...k3sList];
   } catch {
     liveClusters = [];
   }
@@ -212,11 +217,14 @@ export async function listInstances() {
         const raw = await fs.readFile(path.join(instancePath, 'instance.json'), 'utf8');
         meta = JSON.parse(raw);
       } catch {
-        meta = { instanceName, clusterName: instanceName };
+        meta = { instanceName, clusterName: instanceName, provider: 'k3d' };
       }
 
       const clusterName = meta.clusterName || instanceName;
-      const matchingCluster = liveClusters.find(c => c.name === clusterName);
+      const provider = meta.provider || 'k3d';
+      const matchingCluster = liveClusters.find(c =>
+        c.name === clusterName || (provider === 'k3s' && c.provider === 'k3s')
+      );
 
       // Check certs
       let hasCerts = false;
@@ -242,11 +250,13 @@ export async function listInstances() {
       instances.push({
         instanceName,
         clusterName,
+        provider,
         instanceDir: instancePath,
         certsDir,
         valuesDir,
         hasCerts,
         k3dStatus,
+        clusterStatus: k3dStatus,
         serversRunning,
         serversCount,
         agentsCount,
@@ -267,7 +277,7 @@ export async function listInstances() {
 }
 
 /**
- * Delete a Vigilante instance and its associated files and k3d cluster
+ * Delete a Vigilante instance and its associated files and cluster (k3d or k3s)
  * @param {string} instanceName
  * @param {Object} [options]
  * @param {boolean} [options.deleteCluster=true]
@@ -291,11 +301,11 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
 
   if (deleteCluster) {
     try {
-      if (onLog) onLog(`Tearing down k3d cluster '${safeName}'...`);
-      const clusterResult = await deleteK3dCluster(safeName, { onLog });
+      const meta = await loadInstanceMetadata(safeName);
+      const provider = meta?.provider || 'k3d';
+      if (onLog) onLog(`Tearing down ${provider.toUpperCase()} cluster '${safeName}'...`);
+      const clusterResult = await deleteClusterEngine(safeName, { provider, onLog });
       clusterStatus = clusterResult.status;
-      // deleteK3dCluster reports a missing cluster as a result, not an
-      // exception. Only an actual deletion may be reported as one.
       deletedCluster = clusterResult.status === 'deleted';
     } catch (err) {
       clusterStatus = 'error';

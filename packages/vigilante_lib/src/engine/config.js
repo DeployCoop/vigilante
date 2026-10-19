@@ -525,6 +525,7 @@ export const DEFAULT_CONFIG = {
   defaults: {
     domain: 'vigilante.local',
     clusterName: 'vigilante-dev',
+    clusterProvider: 'k3d',
     ip: '127.0.0.1',
     httpPort: 80,
     httpsPort: 443,
@@ -647,6 +648,8 @@ theme:
 defaults:
   domain: "vigilante.local"
   clusterName: "vigilante-dev"
+  # Cluster provider engine: 'k3d' (Docker containerized) or 'k3s' (native systemd/host)
+  clusterProvider: "k3d"
   ip: "127.0.0.1"
   # Host ports bound to the cluster ingress (per instance; change these
   # to run multiple instances side by side without port collisions)

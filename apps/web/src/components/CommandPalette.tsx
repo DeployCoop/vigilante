@@ -21,10 +21,14 @@ import {
   GitFork,
   Cloud,
   FileCheck2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 
 export const COMMAND_ITEMS = [
+  // Event
+  { href: '/intro', label: 'Agents Hunting Agents: Vigil-SOC Setup Guide', section: 'Event: Hands-on Lab', icon: Sparkles, key: 'i' },
+
   // Phase 1: Preparation
   { href: '/', label: 'Operations Hub Dashboard', section: 'NIST Phase 1: Preparation & Readiness', icon: Activity, key: '1' },
   { href: '/instances', label: 'Cluster Instances Manager', section: 'NIST Phase 1: Preparation & Readiness', icon: Server, key: '3' },

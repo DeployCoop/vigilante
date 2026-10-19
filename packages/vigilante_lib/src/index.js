@@ -105,7 +105,22 @@ export {
 export { ModuleRegistry, globalModuleRegistry } from './modules/registry.js';
 export { checkPrereqs, REQUIRED_TOOLS } from './engine/prereqs.js';
 export { setupCertificates, checkCertificates, applyK8sTlsSecret } from './engine/certs.js';
-export { createK3dCluster, deleteK3dCluster, getClusterInfo } from './engine/cluster.js';
+export {
+  createCluster,
+  deleteCluster,
+  listClusters,
+  createK3dCluster,
+  deleteK3dCluster,
+  listK3dClusters,
+  createK3sCluster,
+  deleteK3sCluster,
+  listK3sClusters,
+  detectK3sAvailability,
+  resolveKubeContext,
+  getClusterContext,
+  getClusterContextArgs,
+  getClusterInfo
+} from './engine/cluster.js';
 export { App } from './ui/App.js';
 export { Header } from './ui/Header.js';
 export { TaskRunner } from './ui/TaskRunner.js';

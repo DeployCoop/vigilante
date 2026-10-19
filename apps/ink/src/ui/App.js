@@ -36,7 +36,7 @@ import { enterAlternateScreen, leaveAlternateScreen, setupTerminalLifecycle } fr
 
 import { checkPrereqs } from '../engine/prereqs.js';
 import { setupCertificates, checkCertificates } from '../engine/certs.js';
-import { createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cluster.js';
+import { createCluster, deleteCluster, createK3dCluster, deleteK3dCluster, getClusterInfo } from '../engine/cluster.js';
 import { ensureNamespace } from '../engine/k8s.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
@@ -49,6 +49,7 @@ const AppContent = ({
   subCommand = null,
   domain = 'vigilante.local',
   clusterName = 'vigilante-dev',
+  clusterProvider = 'k3d',
   namespace: cliNamespace = null,
   selectedModules: cliSelectedModules,
   customValuesPath = null,
@@ -458,8 +459,8 @@ const AppContent = ({
       // Step 1: Prereqs
       if (!skipPrereqs) {
         updateTask('prereqs', { status: 'running' });
-        addLog('Checking prerequisites...');
-        const prereqResults = await checkPrereqs();
+        addLog(`Checking prerequisites for ${clusterProvider.toUpperCase()}...`);
+        const prereqResults = await checkPrereqs({ provider: clusterProvider });
         if (!prereqResults.ready) {
           const missingNames = prereqResults.missing.map(m => m.name).join(', ');
           const errDetail = prereqResults.missing.map(m => `• ${m.name}: ${m.error || m.installHint}`).join('\n');
@@ -504,10 +505,11 @@ const AppContent = ({
 
       // Step 4: Cluster
       updateTask('cluster', { status: 'running' });
-      addLog(`Creating k3d cluster '${clusterName}'...`);
+      addLog(`Initializing ${clusterProvider.toUpperCase()} cluster target '${clusterName}'...`);
       const httpPort = cfg.defaults?.httpPort;
       const httpsPort = cfg.defaults?.httpsPort;
-      await createK3dCluster(clusterName, {
+      await createCluster(clusterName, {
+        provider: clusterProvider,
         httpPort,
         httpsPort,
         onLog: (msg) => addLog(msg)
@@ -539,8 +541,8 @@ const AppContent = ({
       }
 
       addLog('All components provisioned successfully! Loading environment status...');
-      const prereqs = await checkPrereqs();
-      const cluster = await getClusterInfo(clusterName);
+      const prereqs = await checkPrereqs({ provider: clusterProvider });
+      const cluster = await getClusterInfo(clusterName, clusterProvider);
       const hosts = await checkHosts({ domain, ip });
       const allModules = globalModuleRegistry.getAll();
       const modulesStatus = await Promise.all(
@@ -564,7 +566,13 @@ const AppContent = ({
       // wrote them and every instance displayed the 80/443 fallbacks).
       await recordNamespaceDeployment(clusterName, activeNs, modulesToInstall, {
         domain,
-        ip
+        ip,
+        provider: clusterProvider
+      });
+      await saveInstanceMetadata(clusterName, {
+        domain,
+        ip,
+        provider: clusterProvider
       });
       await saveInstanceMetadata(clusterName, {
         httpPort: httpPort ?? 80,
@@ -590,14 +598,15 @@ const AppContent = ({
     setFatalError(null);
     setIsDone(false);
     setTasks([
-      { id: 'down', label: `Tearing down k3d cluster '${clusterName}'`, status: 'running' },
+      { id: 'down', label: `Tearing down ${clusterProvider.toUpperCase()} cluster '${clusterName}'`, status: 'running' },
       { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' },
       { id: 'instance', label: `Remove local instance state and certificates`, status: 'pending' }
     ]);
 
     try {
-      addLog(`Destroying cluster '${clusterName}'...`);
-      const res = await deleteK3dCluster(clusterName, {
+      addLog(`Destroying ${clusterProvider.toUpperCase()} cluster '${clusterName}'...`);
+      const res = await deleteCluster(clusterName, {
+        provider: clusterProvider,
         onLog: (msg) => addLog(msg)
       });
       if (res.status === 'not_found') {
@@ -667,8 +676,8 @@ const AppContent = ({
 
     try {
       addLog('Gathering prerequisite checks, cluster status, and module health...');
-      const prereqs = await checkPrereqs();
-      const cluster = await getClusterInfo(clusterName);
+      const prereqs = await checkPrereqs({ provider: clusterProvider });
+      const cluster = await getClusterInfo(clusterName, clusterProvider);
       const certs = await checkCertificates(domain, { clusterName, instanceName: clusterName });
       const hosts = await checkHosts({ domain, ip });
 

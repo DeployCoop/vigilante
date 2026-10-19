@@ -144,3 +144,35 @@ export async function waitForApiServerReady(clusterName = 'vigilante-dev', timeo
 
   return false;
 }
+
+/**
+ * Resolve kubectl context arguments dynamically for k3d and k3s
+ * @param {string} [clusterName='vigilante-dev']
+ * @param {string} [provider=null]
+ * @returns {Promise<string[]>}
+ */
+export async function getClusterContextArgs(clusterName = 'vigilante-dev', provider = null) {
+  try {
+    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name']);
+    const contexts = stdout.split('\n').map(c => c.trim()).filter(Boolean);
+
+    if (provider === 'k3s') {
+      if (contexts.includes(`k3s-${clusterName}`)) return ['--context', `k3s-${clusterName}`];
+      if (contexts.includes('k3s')) return ['--context', 'k3s'];
+      if (contexts.includes('default')) return ['--context', 'default'];
+      return [];
+    }
+
+    if (provider === 'k3d' && contexts.includes(`k3d-${clusterName}`)) {
+      return ['--context', `k3d-${clusterName}`];
+    }
+
+    if (contexts.includes(`k3d-${clusterName}`)) return ['--context', `k3d-${clusterName}`];
+    if (contexts.includes(`k3s-${clusterName}`)) return ['--context', `k3s-${clusterName}`];
+    if (contexts.includes('k3s')) return ['--context', 'k3s'];
+    if (contexts.includes('default')) return ['--context', 'default'];
+    return [];
+  } catch {
+    return [];
+  }
+}

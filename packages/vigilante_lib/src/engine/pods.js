@@ -6,6 +6,7 @@ import path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { runInteractiveTerminal } from '../utils/terminal-runner.js';
 import { sanitizePathComponent } from './config.js';
+import { resolveKubeContext, getClusterContext } from './cluster.js';
 
 /**
  * Format age from ISO timestamp into concise human string (e.g. 12s, 4m, 2h, 5d)
@@ -105,7 +106,10 @@ export async function getPodsWide({ clusterName = 'vigilante-dev', namespace = n
   }
 
   if (clusterName) {
-    args.push('--context', `k3d-${clusterName}`);
+    const targetCtx = await resolveKubeContext(clusterName);
+    if (targetCtx) {
+      args.push('--context', targetCtx);
+    }
   }
 
   args.push('--request-timeout=4s', '-o', 'json');
@@ -290,7 +294,10 @@ export async function getPodLogs({ clusterName = 'vigilante-dev', namespace = 'd
     args.push('-c', container);
   }
   if (clusterName) {
-    args.push('--context', `k3d-${clusterName}`);
+    const targetCtx = await resolveKubeContext(clusterName);
+    if (targetCtx) {
+      args.push('--context', targetCtx);
+    }
   }
   try {
     const { stdout } = await execa('kubectl', args);
@@ -312,13 +319,31 @@ export async function describePod({ clusterName = 'vigilante-dev', namespace = '
   if (!podName) return 'No pod specified';
   const args = ['describe', 'pod', podName, '-n', namespace];
   if (clusterName) {
-    args.push('--context', `k3d-${clusterName}`);
+    const targetCtx = await resolveKubeContext(clusterName);
+    if (targetCtx) {
+      args.push('--context', targetCtx);
+    }
   }
   try {
     const { stdout } = await execa('kubectl', args);
     return stdout || '(No describe output returned)';
   } catch (err) {
     return `Error describing ${namespace}/${podName}: ${err.message}`;
+  }
+}
+
+function resolveSyncContextArgs(clusterName) {
+  if (!clusterName) return [];
+  try {
+    const res = spawnSync('kubectl', ['config', 'get-contexts', '-o', 'name'], { encoding: 'utf8' });
+    const contexts = (res.stdout || '').split('\n').map(c => c.trim()).filter(Boolean);
+    if (contexts.includes(`k3d-${clusterName}`)) return ['--context', `k3d-${clusterName}`];
+    if (contexts.includes(`k3s-${clusterName}`)) return ['--context', `k3s-${clusterName}`];
+    if (contexts.includes('k3s')) return ['--context', 'k3s'];
+    if (contexts.includes('default')) return ['--context', 'default'];
+    return [];
+  } catch {
+    return [];
   }
 }
 
@@ -334,14 +359,14 @@ export function describePodInteractive({ clusterName = 'vigilante-dev', namespac
   logger.info('PODS:DESCRIBE', `Running kubectl describe pod ${podName} -n ${namespace}`);
   let output = '';
   try {
+    const ctxArgs = resolveSyncContextArgs(clusterName);
     const res = spawnSync('kubectl', [
       'describe',
       'pod',
       podName,
       '-n',
       namespace,
-      '--context',
-      `k3d-${clusterName}`
+      ...ctxArgs
     ], { encoding: 'utf8' });
     output = res.stdout || res.stderr || 'No describe output available.';
   } catch (err) {
@@ -362,14 +387,14 @@ export function viewPodLogsInteractive({ clusterName = 'vigilante-dev', namespac
   logger.info('PODS:LOGS', `Viewing kubectl logs for ${podName} -n ${namespace}`);
   let output = '';
   try {
+    const ctxArgs = resolveSyncContextArgs(clusterName);
     const res = spawnSync('kubectl', [
       'logs',
       '--tail=5000',
       podName,
       '-n',
       namespace,
-      '--context',
-      `k3d-${clusterName}`,
+      ...ctxArgs,
       '--all-containers=true'
     ], { encoding: 'utf8' });
     output = res.stdout || res.stderr || 'No logs available for this pod.';
@@ -396,14 +421,14 @@ export function openPodShellInteractive({ clusterName = 'vigilante-dev', namespa
   logger.info('PODS:SHELL', `Opening shell into pod ${podName} -n ${namespace}`);
   runInteractiveTerminal(() => {
     console.log(`\x1b[1;32m=== Connecting interactive shell to pod: ${namespace}/${podName} (Type 'exit' to return to Vigilante) ===\x1b[0m\n`);
+    const ctxArgs = resolveSyncContextArgs(clusterName);
     spawnSync('kubectl', [
       'exec',
       '-it',
       podName,
       '-n',
       namespace,
-      '--context',
-      `k3d-${clusterName}`,
+      ...ctxArgs,
       '--',
       '/bin/sh',
       '-c',
