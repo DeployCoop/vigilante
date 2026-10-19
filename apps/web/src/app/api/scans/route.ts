@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, parseNmapXml } from 'vigilante_lib/engine/nmap-xml.js';
 import { saveEvidenceFile } from 'vigilante_lib/engine/evidence.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'scans:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -31,8 +35,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'scans:run');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
+
     const xmlContent = body.xmlContent;
     const target = body.target || 'uploaded_scan';
 

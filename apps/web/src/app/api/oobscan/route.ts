@@ -9,10 +9,14 @@ import {
   OOB_SCAN_PROFILES
 } from 'vigilante_lib/engine/oobscan.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = await authorizeRequest(request, 'scans:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'all';
@@ -50,6 +54,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'scans:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const { target = '127.0.0.1', profile = 'standard' } = body;
@@ -75,8 +82,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await authorizeRequest(request, 'scans:run');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
+
     const scanId = searchParams.get('scanId');
 
     if (!scanId) {

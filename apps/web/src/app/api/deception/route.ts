@@ -6,10 +6,14 @@ import {
   generateCanarySecret,
   generateCanaryServiceAccount
 } from 'vigilante_lib/engine/deception.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const canaries = await listActiveCanaries();
     return NextResponse.json({
@@ -29,8 +33,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'simulations:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { action = 'deploy', canaryId, type = 'smb', name, namespace = 'default' } = body;
 
     if (action === 'alarm') {

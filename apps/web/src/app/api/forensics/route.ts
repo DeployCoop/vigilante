@@ -5,12 +5,17 @@ import {
   reconstructTcpStreams,
   generateFlowLadder
 } from 'vigilante_lib/engine/forensics.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'forensics:read');
+  if (denied) return denied;
+
   try {
     const files = await listCarvedFiles();
+
     
     // Generate sample reconstructed streams if none present for interactive inspection
     const samplePackets = [
@@ -44,8 +49,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'forensics:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { payload } = body;
 
     if (!payload) {

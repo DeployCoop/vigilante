@@ -479,3 +479,48 @@ export {
   exportToPcap,
   generateSyntheticPacketStream
 } from './engine/sniffer.js';
+
+export {
+  getVigilanteAuthzFile,
+  getVigilanteAuditLogFile
+} from './engine/config.js';
+
+export {
+  PERMISSIONS,
+  ROLES,
+  PRINCIPAL_KINDS,
+  ROLE_PERMISSIONS,
+  PERMISSION_SUBJECT,
+  TOKEN_PREFIX,
+  SESSION_TTL_MS,
+  MAX_SESSIONS_PER_PRINCIPAL,
+  MIN_PASSWORD_LENGTH,
+  AuthzInvariantError,
+  generateToken,
+  hashToken,
+  hashPassword,
+  verifyPasswordOrToken,
+  resolvePrincipalByToken,
+  loadAuthzStore,
+  saveAuthzStore,
+  invalidateAuthzCache,
+  assertNotLastOwner,
+  createSession,
+  resolvePrincipalBySession,
+  revokeSession,
+  toPublicPrincipal,
+  initOwner,
+  addPrincipal,
+  updatePrincipal,
+  removePrincipal,
+  rotatePrincipalToken,
+  buildAbilityFor,
+  matchesGrantContext,
+  decide
+} from './engine/authz.js';
+
+export {
+  getOidcConfig,
+  resetOidcCache,
+  verifyOidcToken
+} from './engine/authz-oidc.js';

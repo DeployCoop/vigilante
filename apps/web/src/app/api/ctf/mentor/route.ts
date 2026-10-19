@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSocraticHintTier, parseCrashContext } from 'vigilante_lib/engine/llm.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'ctf:manage');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
+
     const { action, tier = 1, userQuery, crashLog, challengeId } = body;
 
     if (action === 'crash') {

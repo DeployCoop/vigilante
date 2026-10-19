@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BUILTIN_FALCO_RULES, validateFalcoRule } from 'vigilante_lib/engine/falco.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
     const priority = searchParams.get('priority');
@@ -24,8 +28,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'telemetry:write');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
+
     const validation = validateFalcoRule(body);
 
     return NextResponse.json({

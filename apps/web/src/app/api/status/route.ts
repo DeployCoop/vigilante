@@ -3,12 +3,17 @@ import { getClusterInfo } from 'vigilante_lib/engine/cluster.js';
 import { getDeployedNamespaces, listInstances } from 'vigilante_lib/engine/instances.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { globalModuleRegistry } from 'vigilante_lib/modules/registry.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'cluster:read');
+  if (denied) return denied;
+
   try {
     const config = loadConfig();
+
     const clusterName = config.defaults?.clusterName || 'vigilante-dev';
     const domain = config.defaults?.domain || 'vigilante.local';
 

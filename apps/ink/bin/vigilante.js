@@ -74,6 +74,7 @@ const cli = meow(`
     snapshot    Forensic volatile memory and disk snapshot archive
     evidencepack Court-admissible ISO 27037 & RFC 3161 evidence bundle generator
     falco       Inspect Falco eBPF runtime threat sensor, detection rules, and metrics
+    authz       Manage RBAC authorization store, principals, tokens, and grants
 
   Options
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
@@ -271,6 +272,11 @@ if (command === 'mcp') {
       console.error('Fatal MCP Server error:', err);
       process.exit(1);
     });
+  });
+} else if (command === 'authz') {
+  import('vigilante_lib/cli/authz.js').then(async ({ runAuthzCli }) => {
+    const code = await runAuthzCli(cli.input.slice(1));
+    process.exit(code);
   });
 } else if (command === 'nist' || command === 'incident' || command === 'incidents') {
   import('../src/engine/nist.js').then(async ({

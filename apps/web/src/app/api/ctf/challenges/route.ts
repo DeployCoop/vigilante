@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { CHALLENGE_TEMPLATES, CHALLENGE_CATEGORIES } from 'vigilante_lib/engine/kctf.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'ctf:read');
+  if (denied) return denied;
+
   return NextResponse.json({
+
     success: true,
     categories: CHALLENGE_CATEGORIES,
     challengesCount: CHALLENGE_TEMPLATES.length,

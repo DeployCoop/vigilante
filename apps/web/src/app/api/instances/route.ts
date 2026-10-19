@@ -5,10 +5,14 @@ import {
   saveInstanceMetadata
 } from 'vigilante_lib/engine/instances.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'cluster:read');
+  if (denied) return denied;
+
   try {
     const instances = await listInstances();
     const config = loadConfig();
@@ -32,6 +36,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'cluster:write');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const { instanceName, domain = 'vigilante.local', ip = '127.0.0.1', provider = 'k3d' } = body;
@@ -58,8 +65,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await authorizeRequest(request, 'cluster:write');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
+
     const instanceName = searchParams.get('instanceName');
     const deleteCluster = searchParams.get('deleteCluster') === 'true';
 

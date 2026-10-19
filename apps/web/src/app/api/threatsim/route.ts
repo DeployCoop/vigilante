@@ -5,10 +5,14 @@ import {
   executeThreatPlaybook
 } from 'vigilante_lib/engine/threats.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const playbooks = await listAvailablePlaybooks();
     const config = loadConfig();
@@ -32,8 +36,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'simulations:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { playbookId, namespace = 'opensearch' } = body;
 
     if (!playbookId) {

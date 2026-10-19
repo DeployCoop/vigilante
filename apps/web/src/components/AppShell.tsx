@@ -24,9 +24,14 @@ import {
   Terminal,
   Search,
   Command,
-  Sparkles
+  Sparkles,
+  Key,
+  LogOut,
+  LogIn,
+  ShieldCheck
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { useAbilityContext } from '@/lib/ability';
 
 const NAV_SECTIONS = [
   {
@@ -41,8 +46,10 @@ const NAV_SECTIONS = [
       { href: '/', label: 'Ops Hub', icon: Activity },
       { href: '/instances', label: 'Cluster Instances', icon: Server },
       { href: '/values', label: 'Helm Values', icon: FileCode },
+      { href: '/settings/access', label: 'Access Control', icon: Key },
     ]
   },
+
   {
     title: 'Phase 2: Detection & Analysis',
     items: [
@@ -78,6 +85,7 @@ const NAV_SECTIONS = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const { status, principal, signOut, openSignInPrompt } = useAbilityContext();
 
   return (
     <>
@@ -108,20 +116,59 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </kbd>
         </button>
 
-        <div className="flex items-center gap-4 text-xs font-mono text-slate-400">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+        <div className="flex items-center gap-3 text-xs font-mono text-slate-400">
+          <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Cluster: <strong className="text-slate-200">vigilante-dev</strong></span>
           </div>
           <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
             <span>Domain: <strong className="text-cyan-400">vigilante.local</strong></span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/60 border border-slate-800 text-slate-400">
+
+          {/* Auth Status & Controls */}
+          {status === 'ready' && principal ? (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-cyan-300">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <span>
+                <strong>{principal.name}</strong>{' '}
+                <span className="text-[10px] uppercase px-1 rounded bg-cyan-900/60 text-cyan-200">
+                  {principal.role}
+                </span>
+              </span>
+              <button
+                onClick={() => void signOut()}
+                title="Sign out"
+                className="text-slate-400 hover:text-rose-400 transition-colors ml-1 p-0.5"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            </div>
+          ) : status === 'local-board' ? (
+            <Link
+              href="/settings/access"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-950/60 border border-amber-800/60 text-amber-300 hover:bg-amber-900/40 transition-colors"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span>Local Board</span>
+              <span className="text-[9px] uppercase px-1 rounded bg-amber-900/80 text-amber-200">Setup</span>
+            </Link>
+          ) : (
+            <button
+              onClick={openSignInPrompt}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold transition-colors"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+          )}
+
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900/60 border border-slate-800 text-slate-400">
             <Terminal className="w-3.5 h-3.5 text-cyan-400" />
             <span>CLI: <code>pnpm cli</code></span>
           </div>
         </div>
       </header>
+
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}

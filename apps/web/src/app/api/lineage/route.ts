@@ -4,12 +4,17 @@ import {
   detectAnomalousProcessLineage,
   renderAsciiProcessTree
 } from 'vigilante_lib/engine/lineage.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const sampleEvents = [
+
       { pid: 1, ppid: 0, comm: 'systemd', user: 'root', podName: 'host' },
       { pid: 100, ppid: 1, comm: 'containerd', user: 'root', podName: 'host' },
       { pid: 200, ppid: 100, comm: 'nginx', args: ['-g', 'daemon off;'], user: 'www-data', podName: 'ingress-nginx-4b7' },
@@ -41,8 +46,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'telemetry:write');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { events = [] } = body;
 
     const tree = buildProcessLineageTree(events);

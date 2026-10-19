@@ -4,14 +4,18 @@ import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { ensureNamespace } from 'vigilante_lib/engine/k8s.js';
 import { setupCertificates } from 'vigilante_lib/engine/certs.js';
 import { recordNamespaceDeployment } from 'vigilante_lib/engine/instances.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const namespace = searchParams.get('namespace') || 'default';
+  const { searchParams } = new URL(request.url);
+  const namespace = searchParams.get('namespace') || 'default';
 
+  const denied = await authorizeRequest(request, 'modules:read', { namespace });
+  if (denied) return denied;
+
+  try {
     const config = loadConfig();
     const clusterName = config.defaults?.clusterName || 'vigilante-dev';
     const domain = config.defaults?.domain || 'vigilante.local';
@@ -61,7 +65,11 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action = 'install', moduleId, namespace = 'default' } = body;
 
+    const denied = await authorizeRequest(request, 'modules:deploy', { moduleId, namespace });
+    if (denied) return denied;
+
     const config = loadConfig();
+
     const clusterName = config.defaults?.clusterName || 'vigilante-dev';
     const domain = config.defaults?.domain || 'vigilante.local';
 

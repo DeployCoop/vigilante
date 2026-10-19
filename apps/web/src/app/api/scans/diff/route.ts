@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, compareNmapScans } from 'vigilante_lib/engine/nmap-xml.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'scans:read');
+  if (denied) return denied;
+
   try {
     const { baseId, targetId } = await req.json();
+
 
     const scans = await listSavedXmlScans();
     const baseMeta = scans.find(s => s.id === baseId || s.filename === baseId || s.filePath === baseId);

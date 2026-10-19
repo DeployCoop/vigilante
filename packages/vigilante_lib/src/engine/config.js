@@ -1034,3 +1034,22 @@ export async function saveConfig(config) {
   await fs.writeFile(configFile, yamlStr, 'utf8');
   logger.info('CONFIG', `Saved configuration to ${configFile}`);
 }
+
+/**
+ * Get the full path to authz.yaml
+ * Supports VIGILANTE_AUTHZ_FILE env override
+ * @returns {string}
+ */
+export function getVigilanteAuthzFile() {
+  return process.env.VIGILANTE_AUTHZ_FILE || path.join(getVigilanteConfigDir(), 'authz.yaml');
+}
+
+/**
+ * Get the full path to the security audit log
+ * Supports VIGILANTE_AUDIT_LOG env override
+ * @returns {string}
+ */
+export function getVigilanteAuditLogFile() {
+  return process.env.VIGILANTE_AUDIT_LOG || path.join(getVigilanteConfigDir(), 'audit.log');
+}
+

@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { simulateFalcoEvent, evaluateFalcoSoarAction } from 'vigilante_lib/engine/falco.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'simulations:run');
+  if (denied) return denied;
+
   try {
     const body = await req.json().catch(() => ({}));
+
     const scenario = body.scenario || 'shell-spawn';
     const overrides = body.overrides || {};
 

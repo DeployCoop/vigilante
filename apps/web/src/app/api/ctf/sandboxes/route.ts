@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawnEphemeralSandbox, listActiveSandboxes, terminateSandbox, redactSandboxRecord } from 'vigilante_lib/engine/kctf.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'ctf:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
     const teamId = searchParams.get('teamId') || null;
@@ -19,6 +23,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'ctf:manage');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { challengeId, teamId = 'web-team', ttlMinutes = 30 } = body;
@@ -45,8 +52,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'ctf:manage');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
+
     const sandboxId = searchParams.get('sandboxId');
 
     if (!sandboxId) {

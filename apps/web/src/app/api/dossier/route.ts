@@ -8,12 +8,17 @@ import { listPcapRecordings, replayPcap } from 'vigilante_lib/engine/traffic.js'
 import { listBloodhoundIngests } from 'vigilante_lib/engine/bloodhound.js';
 import { generateMitreCoverageMatrix } from 'vigilante_lib/engine/mitre.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = await authorizeRequest(request, 'scans:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
+
     const target = searchParams.get('target');
     const config = loadConfig();
     const defaultIp = config.defaults?.ip || '127.0.0.1';
@@ -67,8 +72,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'scans:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { action = 'build', target = '127.0.0.1', pcapFile } = body;
 
     if (action === 'replay' && pcapFile) {

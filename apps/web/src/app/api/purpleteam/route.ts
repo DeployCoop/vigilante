@@ -4,10 +4,14 @@ import {
   runPurpleTeamSimulation,
   calculatePurpleScorecard
 } from 'vigilante_lib/engine/purpleteam.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const scenarios = Object.entries(WARGAME_SCENARIOS).map(([key, s]: [string, any]) => ({
       id: key,
@@ -36,8 +40,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'simulations:run');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { scenarioKey = 'lateral-smb-exfil' } = body;
 
     const simulation = await runPurpleTeamSimulation(scenarioKey);

@@ -8,12 +8,17 @@ import {
 } from 'vigilante_lib/engine/sniffer.js';
 import path from 'node:path';
 import os from 'node:os';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = await authorizeRequest(request, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
+
     const filter = searchParams.get('filter') || '';
     const count = parseInt(searchParams.get('count') || '15', 10);
 
@@ -81,8 +86,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'telemetry:write');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { count = 20 } = body;
 
     const buffers = generateSyntheticPacketStream(count);

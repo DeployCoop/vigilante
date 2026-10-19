@@ -4,12 +4,17 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { listChartValues, exportStarterValues } from 'vigilante_lib/engine/helm.js';
 import { getVigilanteConfigFile, getVigilanteValuesDir, ensureVigilanteConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = await authorizeRequest(request, 'cluster:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
+
     const filePath = searchParams.get('file');
 
     await ensureVigilanteConfig();
@@ -73,8 +78,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizeRequest(request, 'cluster:write');
+  if (denied) return denied;
+
   try {
     const body = await request.json();
+
     const { action = 'save', filePath, content, exportType = 'local' } = body;
 
     if (action === 'export') {

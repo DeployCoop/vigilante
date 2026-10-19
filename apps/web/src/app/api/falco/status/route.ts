@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import { FalcoModule } from 'vigilante_lib/modules/falco/index.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const config = loadConfig();
+
     const clusterName = config.defaults?.clusterName || 'vigilante-dev';
     const domain = config.defaults?.domain || 'vigilante.local';
 

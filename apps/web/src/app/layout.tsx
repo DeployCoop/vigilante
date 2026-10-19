@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AppShell } from '@/components/AppShell';
+import { AbilityProvider } from '@/lib/ability';
 
 export const metadata: Metadata = {
   title: 'Vigilante | Autonomous Security Operations Platform',
@@ -15,9 +16,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-[#070a13] text-slate-100 min-h-screen flex flex-col font-sans">
-        <AppShell>{children}</AppShell>
+        <AbilityProvider>
+          <AppShell>{children}</AppShell>
+        </AbilityProvider>
       </body>
     </html>
   );
 }
+
 

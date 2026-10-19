@@ -4,12 +4,17 @@ import {
   auditCloudStorageExposure,
   calculateCloudRiskScore
 } from 'vigilante_lib/engine/cloudsec.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   try {
     const mockWorkloads = [
+
       {
         metadata: {
           name: 'payment-gateway',

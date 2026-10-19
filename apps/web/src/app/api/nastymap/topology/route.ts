@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, generateTopology, geocodeIp } from 'vigilante_lib/engine/nmap-xml.js';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'scans:read');
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(req.url);
+
     const scanId = searchParams.get('scanId');
     const layout = (searchParams.get('layout') as 'force2d' | 'radial' | 'tree') || 'force2d';
 

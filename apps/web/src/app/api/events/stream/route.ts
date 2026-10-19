@@ -1,9 +1,14 @@
 import { NextRequest } from 'next/server';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = await authorizeRequest(req, 'telemetry:read');
+  if (denied) return denied;
+
   const encoder = new TextEncoder();
+
 
   const stream = new ReadableStream({
     start(controller) {

@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getPodsWide } from 'vigilante_lib/engine/pods.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
+import { resolveKubeContext } from 'vigilante_lib/engine/cluster.js';
 import { execa } from 'execa';
+import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const namespace = searchParams.get('namespace') || null;
+
+  const denied = await authorizeRequest(request, 'cluster:read', namespace ? { namespace } : undefined);
+  if (denied) return denied;
+
   try {
-    const { searchParams } = new URL(request.url);
-    const namespace = searchParams.get('namespace') || null;
     const podName = searchParams.get('pod');
+
     const action = searchParams.get('action'); // 'describe' | 'logs'
     const container = searchParams.get('container') || undefined;
 
