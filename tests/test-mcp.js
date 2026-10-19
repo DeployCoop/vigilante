@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createVigilanteMcpServer } from '../src/mcp/server.js';
@@ -245,6 +248,37 @@ async function runTests() {
     throw new Error('ask_ctf_crash_analyzer failed to detect SIGSEGV or De Bruijn cyclic offset');
   }
   console.log(`✔ Test 17 passed: ask_ctf_crash_analyzer extracted offset ${parsedCrash.deBruijnOffset} via MCP.`);
+
+  // Test 18: spawn_ctf_sandbox WITHOUT a mock argument defaults to real
+  // mode (B15 follow-up, decided 2026-10-19 - consistent with the CLI
+  // flag and the engine, whose default was already false). A kubectl
+  // stub on PATH records the attempt; the stub exits 1, so the tool
+  // call errors - what matters is that kubectl was invoked at all,
+  // which mock mode never does.
+  if (process.platform !== 'win32') {
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vigilante-mcp-stub-'));
+    const callsLog = path.join(stubDir, 'kubectl-calls.log');
+    fs.writeFileSync(path.join(stubDir, 'kubectl'), `#!/bin/sh\necho called >> ${callsLog}\nexit 1\n`, { mode: 0o755 });
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${stubDir}:${oldPath}`;
+    try {
+      await client.callTool({
+        name: 'spawn_ctf_sandbox',
+        arguments: { challengeId: 'web-auth-bypass', teamId: 'mcp-default-team' }
+      });
+    } catch {
+      // Expected: the stub kubectl exits 1, so the real-mode apply fails
+      // and the MCP client surfaces it as an error. That failure IS the
+      // evidence the real path ran - mock mode would have succeeded
+      // silently without ever invoking kubectl.
+    } finally {
+      process.env.PATH = oldPath;
+    }
+    if (!fs.existsSync(callsLog)) {
+      throw new Error('spawn_ctf_sandbox without mock must attempt kubectl (real mode is the default)');
+    }
+    console.log('✔ Test 18 passed: spawn_ctf_sandbox defaults to real mode (mock is opt-in).');
+  }
 
   await client.close();
   console.log('🎉 All Model Context Protocol (MCP) Server tests passed successfully!');
