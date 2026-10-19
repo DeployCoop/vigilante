@@ -23,8 +23,7 @@ import {
   Terminal,
   Zap,
   CheckCircle2,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react';
 
 const OPERATIONS_SECTIONS = [
@@ -259,35 +258,6 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* Event Tomorrow Announcement Banner */}
-      <div className="rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-slate-950 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl shadow-cyan-950/20">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shrink-0">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400">Event Tomorrow</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">Hands-on Lab (Not a CTF)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Vigil v0.6.0 + LogLM</span>
-            </div>
-            <h2 className="text-base sm:text-lg font-bold text-white">
-              Agents Hunting Agents: Attendee Setup & Introduction Guide
-            </h2>
-            <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Everyone runs the setup guide end-to-end on your laptop. Verify Docker, Ollama, model assignment, dataset unpack, and LogLM findings import.
-            </p>
-          </div>
-        </div>
-        <Link
-          href="/intro"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition-all shrink-0 shadow-lg shadow-cyan-500/20"
-        >
-          <span>Open Setup Guide</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
-      </div>
-
       {/* Hero Banner */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-cyan-950/30 p-8">
         <div className="relative z-10 max-w-3xl space-y-4">

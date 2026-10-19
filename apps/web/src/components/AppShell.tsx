@@ -24,7 +24,6 @@ import {
   Terminal,
   Search,
   Command,
-  Sparkles,
   Key,
   LogOut,
   LogIn,
@@ -34,12 +33,6 @@ import { CommandPalette } from './CommandPalette';
 import { useAbilityContext } from '@/lib/ability';
 
 const NAV_SECTIONS = [
-  {
-    title: 'Event: Hands-on Lab',
-    items: [
-      { href: '/intro', label: 'Agents Hunting Agents', icon: Sparkles, badge: 'Workshop', pulse: true },
-    ]
-  },
   {
     title: 'Phase 1: Readiness',
     items: [

@@ -22,14 +22,10 @@ import {
   Cloud,
   FileCheck2,
   X,
-  Sparkles,
   Key
 } from 'lucide-react';
 
 export const COMMAND_ITEMS = [
-  // Event
-  { href: '/intro', label: 'Agents Hunting Agents: Vigil-SOC Setup Guide', section: 'Event: Hands-on Lab', icon: Sparkles, key: 'i' },
-
   // Settings & Access
   { href: '/settings/access', label: 'Access Control & Security Audit (CASL RBAC)', section: 'Settings & Administration', icon: Key, key: 'a' },
 
