@@ -14,6 +14,10 @@ import {
   GENESIS_PREV_HASH
 } from '../src/engine/ledger.js';
 
+// Ledger signing fails closed without a provisioned secret; configure one
+// for this test process.
+process.env.VIGILANTE_LEDGER_SECRET = 'test-ledger-secret';
+
 async function runTests() {
   console.log('🧪 Testing Cryptographic Merkle Ledger & Legal Chain-of-Custody...');
 

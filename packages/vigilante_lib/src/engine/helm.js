@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { getVigilanteValuesDir, getInstanceValuesDir, sanitizePathComponent } from './config.js';
 
 /**
@@ -219,7 +220,7 @@ export async function exportStarterValues({
   const exported = [];
 
   // Discover modules with values templates
-  const modulesDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../modules');
+  const modulesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../modules');
   const availableModules = await getAvailableModuleIds(modulesDir);
 
   const targetModules = moduleId ? [moduleId] : availableModules;
@@ -291,7 +292,7 @@ async function getAvailableModuleIds(modulesDir) {
  */
 export async function listChartValues({ customValuesDir } = {}) {
   const cwd = process.cwd();
-  const modulesDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../modules');
+  const modulesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../modules');
   const results = [];
 
   const availableModules = await getAvailableModuleIds(modulesDir);

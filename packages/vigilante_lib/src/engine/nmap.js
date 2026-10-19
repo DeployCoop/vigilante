@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getVigilanteNmapsDir, ensureVigilanteConfig, resolvePathInside } from './config.js';
+import { getVigilanteNmapsDir, ensureVigilanteConfig, resolvePathInside, assertCliTarget } from './config.js';
 import { autoSignIfConfigured } from './gpg.js';
 import { logger } from '../utils/logger.js';
 
@@ -339,7 +339,9 @@ export async function runNmapScan({
     throw new Error(check.error);
   }
 
-  const cleanTarget = (target || '127.0.0.1').trim();
+  // The target is the final positional argument: a leading-dash value
+  // would be parsed as nmap options (e.g. -iL file reads, -oN overwrite).
+  const cleanTarget = assertCliTarget((target || '127.0.0.1').trim(), 'nmap target');
   // Safe filename replacing / and : with _
   const safeTargetName = cleanTarget.replace(/[/:]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
   const timestamp = Date.now();

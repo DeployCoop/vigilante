@@ -1,9 +1,30 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { execa } from 'execa';
-import { getVigilanteEvidenceDir, ensureVigilanteConfig } from './config.js';
+import { getVigilanteEvidenceDir, ensureVigilanteConfig, shQuote } from './config.js';
 import { saveEvidenceFile, listHostEvidence } from './evidence.js';
 import { logger } from '../utils/logger.js';
+
+/** Escape a value for embedding in the GMP XML payload. */
+export function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Build the in-pod gvm-cli invocation. kubectl exec runs this through
+ * `sh -c` inside the openvas pod, so every interpolated value — credentials
+ * and the XML payload alike — is single-quote escaped with shQuote: a
+ * quote, space, or $ in a password or host can no longer break out of its
+ * argument and execute as shell inside the pod.
+ */
+export function gvmCliCommand(username, password, xml) {
+  return `gvm-cli --gmp-username=${shQuote(username)} --gmp-password=${shQuote(password)} socket --socketpath=/run/gvmd/gvmd.sock -X ${shQuote(xml)}`;
+}
 
 export const SCAN_PROFILES = [
   {
@@ -269,6 +290,12 @@ export function generateVulnerabilityFindings(host, profileId = 'full-and-fast')
     references: ['https://www.greenbone.net/en/technology/']
   });
 
+  // Every finding from this evaluator is generated heuristically from
+  // open ports and banner guesses — no vulnerability test observed it.
+  // Mark each one so saved reports cannot present them as confirmed
+  // scanner results.
+  for (const f of findings) f.synthetic = true;
+
   return findings;
 }
 
@@ -318,12 +345,12 @@ export async function runHostVulnerabilityScan({
       };
       const configId = configMap[profile] || 'daba56c8-73ec-11df-a475-002264764cea';
 
-      const targetXml = `<create_target><name>Target_${hostIp.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}</name><hosts>${hostIp}</hosts><port_list id="33d0cd82-57c6-11e1-8ed1-406186ea4fc5"/></create_target>`;
+      const targetXml = `<create_target><name>Target_${hostIp.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}</name><hosts>${escapeXml(hostIp)}</hosts><port_list id="33d0cd82-57c6-11e1-8ed1-406186ea4fc5"/></create_target>`;
       const { stdout: targetRes } = await execa('kubectl', [
         'exec', '-n', effectiveNamespace, 'deployment/openvas', '-c', 'gvm-tools',
         '--context', `k3d-${clusterName}`,
         '--', 'su', '-', 'nobody', '-s', '/bin/sh', '-c',
-        `gvm-cli --gmp-username=${username} --gmp-password=${password} socket --socketpath=/run/gvmd/gvmd.sock -X '${targetXml}'`
+        gvmCliCommand(username, password, targetXml)
       ]);
 
       const targetIdMatch = targetRes.match(/id="([^"]+)"/);
@@ -335,7 +362,7 @@ export async function runHostVulnerabilityScan({
           'exec', '-n', effectiveNamespace, 'deployment/openvas', '-c', 'gvm-tools',
           '--context', `k3d-${clusterName}`,
           '--', 'su', '-', 'nobody', '-s', '/bin/sh', '-c',
-          `gvm-cli --gmp-username=${username} --gmp-password=${password} socket --socketpath=/run/gvmd/gvmd.sock -X '${taskXml}'`
+          gvmCliCommand(username, password, taskXml)
         ]);
         const taskIdMatch = taskRes.match(/id="([^"]+)"/);
         if (taskIdMatch) {
@@ -376,6 +403,11 @@ export async function runHostVulnerabilityScan({
     target: hostIp,
     networkTarget,
     profile: profileObj,
+    // The findings payload is always produced by the heuristic port
+    // evaluator (generateVulnerabilityFindings), even when a GMP task was
+    // registered — say so on the result that gets saved as a report.
+    synthetic: true,
+    findingsSource: 'heuristic-port-evaluation',
     timestamp: new Date().toISOString(),
     durationMs,
     clusterStatus: status,

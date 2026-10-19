@@ -101,7 +101,9 @@ assert.ok(team1.adDefenseScore > team2.adDefenseScore, 'Team with passing SLA ea
 console.log('✔ Test 8 passed: Attack-Defense tick evaluated SLA and awarded defense points.');
 
 // Test 9: King of the Hill (KotH) Claim & Tick
-const claimRes = engine.claimHill({ hillId: 'citadel-01', teamId: team2.id });
+// Claims require the hill's current proof token (see test-integrity-leftovers
+// for the rejection/rotation cases); the old no-token claim enshrined E11.
+const claimRes = engine.claimHill({ hillId: 'citadel-01', teamId: team2.id, proofToken: engine.getHillProofToken('citadel-01') });
 assert.strictEqual(claimRes.success, true);
 assert.strictEqual(claimRes.king, 'BitBusters');
 const kothTick = engine.runKothTick();

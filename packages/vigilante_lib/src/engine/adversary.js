@@ -44,7 +44,11 @@ export function buildAttackGraphFromBloodhound(bloodhoundData = {}, targetHvt = 
   // Find all entry points (nodes with no incoming edges or marked as compromised)
   const incoming = new Set(edges.map(e => e.target));
   const entryNodes = nodes.filter(n => n.compromised || !incoming.has(n.id));
-  const candidateStarts = entryNodes.length > 0 ? entryNodes : (nodes.length > 0 ? [nodes[0]] : []);
+  // The target HVT is never its own attack path: an HVT with no incoming
+  // edges otherwise "qualifies" as an entry point and yields a spurious
+  // 0-hop path from itself that sorts ahead of every real path.
+  const rawStarts = entryNodes.length > 0 ? entryNodes : (nodes.length > 0 ? [nodes[0]] : []);
+  const candidateStarts = rawStarts.filter(n => n.id !== targetId);
 
   const discoveredPaths = [];
 
@@ -178,7 +182,10 @@ export function calculateAdversaryResilienceScore(simulationResult) {
   if (contained) {
     mttdSec = containmentStep * 4;
     mttrSec = mttdSec + 15;
-    const efficiencyRatio = (totalHops - containmentStep + 1) / totalHops;
+    // Guard the degenerate totalHops: 0 simulation: dividing by it made
+    // the score NaN (graded 'F') for an instantly-contained run.
+    const safeTotalHops = Number.isFinite(totalHops) && totalHops > 0 ? totalHops : 1;
+    const efficiencyRatio = (safeTotalHops - containmentStep + 1) / safeTotalHops;
     score = Math.min(100, Math.round(75 + efficiencyRatio * 25));
   } else {
     mttdSec = totalHops * 10;

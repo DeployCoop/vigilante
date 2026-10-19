@@ -50,7 +50,7 @@ assert.strictEqual(policy.hooks.length, 3);
 assert.ok(policy.cSource.includes('SEC("lsm/bprm_check_security")'));
 assert.ok(policy.cSource.includes('SEC("lsm/file_open")'));
 assert.ok(policy.cSource.includes('SEC("lsm/socket_connect")'));
-assert.ok(policy.cSource.includes('#define EPERM 13'));
+assert.ok(policy.cSource.includes('#define EPERM 1'));
 console.log('✔ Test 2 passed: generateBpfLsmPolicy synthesized C source and hook definitions.');
 
 // Test 3: simulateLsmPolicyEvaluation - Block shell spawned by node

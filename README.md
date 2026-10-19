@@ -738,7 +738,7 @@ pnpm mcp
   "mcpServers": {
     "vigilante": {
       "command": "node",
-      "args": ["/home/djehauti/git/DeployCoop/vigilante/bin/vigilante.js", "mcp"]
+      "args": ["/path/to/vigilante/bin/vigilante.js", "mcp"]
     }
   }
 }

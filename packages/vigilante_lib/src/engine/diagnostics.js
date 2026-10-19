@@ -1,6 +1,7 @@
 import { execa } from 'execa';
 import { saveTriageBundle } from './evidence.js';
 import { logger } from '../utils/logger.js';
+import { assertCliTarget } from './config.js';
 
 /**
  * Check if a command binary is available in PATH
@@ -23,7 +24,7 @@ export async function isBinaryAvailable(binary) {
  * @returns {Promise<{ success: boolean, output: string, error?: string }>}
  */
 export async function runPing(host, count = 4) {
-  const target = (host || '127.0.0.1').trim();
+  const target = assertCliTarget((host || '127.0.0.1').trim(), 'ping target');
   logger.info('DIAG:PING', `Executing ping -c ${count} ${target}`);
 
   try {
@@ -136,7 +137,7 @@ export async function runBenchmark(host, {
  * @returns {Promise<{ success: boolean, output: string, tool: string }>}
  */
 export async function runMtr(host) {
-  const target = (host || '127.0.0.1').trim();
+  const target = assertCliTarget((host || '127.0.0.1').trim(), 'mtr target');
   const hasMtr = await isBinaryAvailable('mtr');
 
   if (hasMtr) {
@@ -234,7 +235,7 @@ export async function runCurlHeaders(host, { port = null, isHttps = false } = {}
  * @returns {Promise<{ success: boolean, output: string }>}
  */
 export async function runDnsLookup(host) {
-  const target = (host || '127.0.0.1').trim();
+  const target = assertCliTarget((host || '127.0.0.1').trim(), 'dig target');
   const hasDig = await isBinaryAvailable('dig');
 
   if (hasDig) {

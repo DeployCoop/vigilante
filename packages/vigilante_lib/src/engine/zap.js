@@ -131,11 +131,17 @@ export async function runZapScan(targetUrl, profileId = 'spider', opts = {}) {
     urls = [targetUrl];
   }
 
+  // When ZAP is unreachable, the alerts above are the synthetic emulation
+  // fallback, not observed findings. zapReachable already implied it, but
+  // the persisted/signed record now states it explicitly like the other
+  // scanner records.
   const record = {
     id: scanId,
     target: targetUrl,
     profile: profile.id,
     timestamp,
+    synthetic: !zapStatus.reachable,
+    runner: zapStatus.reachable ? 'api' : 'none',
     zapReachable: zapStatus.reachable,
     zapVersion: zapStatus.version,
     alerts,

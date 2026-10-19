@@ -9,10 +9,10 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { logger } from '../utils/logger.js';
+import { requireLedgerSigningSecret, resolveLedgerSigningSecret } from './config.js';
 
 export const GENESIS_PREV_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 const DEFAULT_LEDGER_DIR = path.resolve(process.cwd(), '.vigilante/ledger');
-const DEFAULT_SIGNING_SECRET = 'vigilante-soar-cryptographic-ledger-master-key';
 
 /**
  * Deterministic SHA-256 hash helper
@@ -139,7 +139,9 @@ export async function appendLedgerEntry(entryType, payload, signerInfo = {}, opt
   };
 
   const entryHash = calculateEntryHash(draftEntry);
-  const secret = options.signingSecret || DEFAULT_SIGNING_SECRET;
+  // Fail closed: an entry signed with a source-shipped default secret is
+  // forgeable by anyone, so refuse to append without a provisioned key.
+  const secret = requireLedgerSigningSecret(options.signingSecret);
   const signature = crypto.createHmac('sha256', secret).update(entryHash).digest('hex');
 
   const finalEntry = {
@@ -266,7 +268,16 @@ export async function verifyLedgerIntegrity(ledgerDir = DEFAULT_LEDGER_DIR, opti
     return { valid: true, count: 0, merkleRoot: null, lastHash: GENESIS_PREV_HASH };
   }
 
-  const secret = options.signingSecret || DEFAULT_SIGNING_SECRET;
+  const secret = resolveLedgerSigningSecret(options.signingSecret);
+  if (!secret) {
+    return {
+      valid: false,
+      count: entries.length,
+      merkleRoot: null,
+      lastHash: entries[entries.length - 1].entryHash,
+      issue: 'Ledger signing secret is not configured: entry signatures cannot be verified (set VIGILANTE_LEDGER_SECRET or ledger.signingSecret in config.yaml)'
+    };
+  }
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];

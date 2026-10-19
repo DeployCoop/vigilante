@@ -11,6 +11,10 @@ import {
 } from '../src/engine/ctf-client.js';
 import { TournamentEngine } from '../src/engine/tournament.js';
 
+// Solve-evidence sealing anchors into the audit ledger, whose signing
+// fails closed without a provisioned secret; configure one for this test.
+process.env.VIGILANTE_LEDGER_SECRET = 'test-ledger-secret';
+
 console.log('🧪 Testing CTF Participant Client (Workspace Scaffolder & Writeup Generator)...');
 
 // Test 1: Workspace Scaffolding
@@ -45,7 +49,7 @@ console.log('✔ Test 1 passed: Workspace scaffolding generated directory tree a
 // Test 2: Local flag submission against TournamentEngine
 const engine = new TournamentEngine();
 const team = engine.registerTeam({ name: 'HackersAnonymous' });
-engine.addChallenge({ id: 'web-sqli', name: 'SQLi', defaultFlag: 'VIGILANTE{sqli_win}' });
+engine.addChallenge({ id: 'web-sqli', name: 'SQLi', defaultFlag: 'VIGILANTE{sqli_win}', isDynamicFlag: false });
 engine.start();
 
 const submitResult = await submitLocalFlag({

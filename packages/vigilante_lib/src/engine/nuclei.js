@@ -204,11 +204,16 @@ export async function runNucleiScan(target, profileId = 'cves', opts = {}) {
     info: findings.filter((f) => f.severity === 'info').length
   };
 
+  // When the runner is 'none', the findings above are the synthetic
+  // emulation fallback, not scanner output. The record is persisted and
+  // GPG-signed, so it must carry that distinction for consumers.
   const record = {
     id: scanId,
     target,
     profile: profile.id,
     timestamp,
+    synthetic: tool.runner === 'none',
+    runner: tool.runner,
     stats,
     findings,
     rawOutput

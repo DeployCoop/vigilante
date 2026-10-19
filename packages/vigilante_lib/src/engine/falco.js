@@ -160,9 +160,20 @@ export function validateFalcoRule(ruleDef) {
   if (!ruleDef.condition || typeof ruleDef.condition !== 'string' || ruleDef.condition.trim().length === 0) {
     errors.push('Rule must include a non-empty "condition" filter expression.');
   } else {
-    // Basic syntax checking for balanced parentheses
+    // Basic syntax checking for balanced parentheses. Parentheses inside
+    // quoted strings are data, not syntax (e.g. proc.cmdline contains
+    // ")"), so the counter must track quote state.
     let openCount = 0;
-    for (const ch of ruleDef.condition) {
+    let quote = null;
+    const condChars = ruleDef.condition;
+    for (let ci = 0; ci < condChars.length; ci++) {
+      const ch = condChars[ci];
+      if (quote) {
+        if (ch === '\\') ci++;
+        else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") { quote = ch; continue; }
       if (ch === '(') openCount++;
       else if (ch === ')') openCount--;
       if (openCount < 0) {
@@ -563,7 +574,15 @@ export function renderFalcoRulesYaml(rules = BUILTIN_FALCO_RULES) {
 export function parseFalcoRulesYaml(yamlContent) {
   try {
     const parsed = yamlLoad(yamlContent);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) return parsed;
+    // Real-world Falco files are not always a bare list: accept a mapping
+    // wrapping the list ({rules: [...]}) and a single rule mapping
+    // ({rule: ..., condition: ...}) instead of silently yielding no rules.
+    if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.rules)) return parsed.rules;
+      if (typeof parsed.rule === 'string' || typeof parsed.condition === 'string') return [parsed];
+    }
+    return [];
   } catch (err) {
     logger.error('FALCO', `Failed to parse Falco rules YAML: ${err.message}`);
     return [];

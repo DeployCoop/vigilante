@@ -41,7 +41,7 @@ import { ensureNamespace } from '../engine/k8s.js';
 import { checkHosts, syncHosts, removeHosts } from '../engine/hosts.js';
 import { exportStarterValues, listChartValues } from '../engine/helm.js';
 import { ensureVigilanteConfig, getVigilanteConfigFile, getVigilanteValuesDir, loadConfig } from '../engine/config.js';
-import { saveInstanceMetadata, deleteInstance, recordNamespaceDeployment } from '../engine/instances.js';
+import { deleteInstance, recordNamespaceDeployment, saveInstanceMetadata } from '../engine/instances.js';
 import { globalModuleRegistry } from '../modules/registry.js';
 
 const AppContent = ({
@@ -506,8 +506,12 @@ const AppContent = ({
       // Step 4: Cluster
       updateTask('cluster', { status: 'running' });
       addLog(`Initializing ${clusterProvider.toUpperCase()} cluster target '${clusterName}'...`);
+      const httpPort = cfg.defaults?.httpPort;
+      const httpsPort = cfg.defaults?.httpsPort;
       await createCluster(clusterName, {
         provider: clusterProvider,
+        httpPort,
+        httpsPort,
         onLog: (msg) => addLog(msg)
       });
       updateTask('cluster', { status: 'done' });
@@ -556,7 +560,10 @@ const AppContent = ({
         domain
       });
 
-      // Save instance & namespace deployment metadata
+      // Save instance & namespace deployment metadata. The effective
+      // ingress ports are persisted at instance level so listInstances /
+      // InstancesView report the real bindings (previously nothing ever
+      // wrote them and every instance displayed the 80/443 fallbacks).
       await recordNamespaceDeployment(clusterName, activeNs, modulesToInstall, {
         domain,
         ip,
@@ -566,6 +573,10 @@ const AppContent = ({
         domain,
         ip,
         provider: clusterProvider
+      });
+      await saveInstanceMetadata(clusterName, {
+        httpPort: httpPort ?? 80,
+        httpsPort: httpsPort ?? 443
       });
 
       setIsDone(true);
@@ -588,7 +599,8 @@ const AppContent = ({
     setIsDone(false);
     setTasks([
       { id: 'down', label: `Tearing down ${clusterProvider.toUpperCase()} cluster '${clusterName}'`, status: 'running' },
-      { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' }
+      { id: 'hosts', label: `Clean up /etc/hosts domain mappings`, status: 'pending' },
+      { id: 'instance', label: `Remove local instance state and certificates`, status: 'pending' }
     ]);
 
     try {
@@ -611,7 +623,7 @@ const AppContent = ({
       if (hostrCleanEnabled) {
         addLog(`Cleaning up /etc/hosts managed domain mappings...`);
         try {
-          await removeHosts({ onLog: (msg) => addLog(msg) });
+          await removeHosts({ domain: cfg.defaults?.domain, onLog: (msg) => addLog(msg) });
           updateTask('hosts', { status: 'done' });
         } catch {
           updateTask('hosts', { status: 'done', detail: 'Skipped' });
@@ -620,6 +632,24 @@ const AppContent = ({
         updateTask('hosts', { status: 'done', detail: 'Skipped (disabled in config.yaml)' });
         addLog(`[hostr] Automatic /etc/hosts cleanup is disabled in config.yaml.`);
       }
+
+      // The cluster is already gone at this point; remove its local state
+      // (instance.json, generated values, logs, and the mkcert certificate
+      // and private key) so `down` does not leave a stale instance or TLS
+      // key behind. deleteCluster stays false to avoid a second deletion.
+      updateTask('instance', { status: 'running' });
+      const instanceResult = await deleteInstance(clusterName, {
+        deleteCluster: false,
+        onLog: (msg) => addLog(msg)
+      });
+      if (!instanceResult.success) {
+        const error = instanceResult.error || `Could not remove local state for instance '${clusterName}'`;
+        updateTask('instance', { status: 'error', error });
+        setFatalError(error);
+        setIsDone(true);
+        return;
+      }
+      updateTask('instance', { status: 'done' });
 
       addLog('Environment torn down successfully.');
       setIsDone(true);
@@ -993,7 +1023,7 @@ const AppContent = ({
         }
       } else if (isRemove) {
         addLog(`Removing Vigilante managed block from /etc/hosts...`);
-        const res = await removeHosts({ onLog: (msg) => addLog(msg) });
+        const res = await removeHosts({ domain, onLog: (msg) => addLog(msg) });
         if (res.removed) {
           addLog(`✔ Removed managed hosts block from /etc/hosts.`);
         } else {

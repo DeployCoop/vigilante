@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { load as yamlLoad, dump as yamlDump } from 'js-yaml';
 import { logger } from '../utils/logger.js';
+import { shDoubleQuoteEscape } from './config.js';
 
 /**
  * Generate a patch for a specific finding in Kubernetes or Dockerfile content
@@ -172,17 +173,21 @@ export async function applyPatchToFile(filePath, patchedContent, options = {}) {
  */
 export function generateRemediationPrScript(filesModified = [], branchName = '') {
   const branch = branchName || `security-hardening-${Date.now().toString(36)}`;
-  const filesList = filesModified.map(f => `"${f}"`).join(' ');
+  // The generated script is meant to be executed by an operator, so every
+  // interpolated value is escaped for its double-quoted context: an
+  // unescaped $(...) or backtick in a branch name or file path would run
+  // as a command even inside double quotes.
+  const filesList = filesModified.map(f => `"${shDoubleQuoteEscape(f)}"`).join(' ');
 
   return `#!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH_NAME="${branch}"
+BRANCH_NAME="${shDoubleQuoteEscape(branch)}"
 echo "🌿 Creating security hardening branch: \${BRANCH_NAME}"
 git checkout -b "\${BRANCH_NAME}"
 
 echo "📦 Staging auto-remediated files..."
-git add ${filesList}
+git add -- ${filesList}
 
 echo "✍️ Committing security fixes..."
 git commit -m "security(vigilante): auto-remediate container & manifest hardening

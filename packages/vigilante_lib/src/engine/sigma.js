@@ -61,6 +61,7 @@ export function parseSigmaRule(input) {
     const lines = input.split(/\r?\n/);
     let currentSection = null;
     let currentSubSection = null;
+    let listField = null; // detection field currently collecting '- item' list entries
 
     for (let rawLine of lines) {
       const line = rawLine.trim();
@@ -84,6 +85,7 @@ export function parseSigmaRule(input) {
           const [k, ...v] = line.split(':');
           const subKey = k.trim();
           const subVal = v.join(':').trim();
+          listField = null;
           if (subKey === 'condition') {
             rule.detection.condition = subVal.replace(/^['"]|['"]$/g, '');
             currentSubSection = null;
@@ -91,11 +93,20 @@ export function parseSigmaRule(input) {
             currentSubSection = subKey;
             rule.detection[currentSubSection] = subVal ? { _val: subVal.replace(/^['"]|['"]$/g, '') } : {};
           }
+        } else if (currentSubSection && listField && line.startsWith('-')) {
+          // YAML list item under the current field: collect it instead of
+          // dropping it (a field with list values previously collapsed to
+          // an empty string and hunted for nothing).
+          const item = line.replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '');
+          const cur = rule.detection[currentSubSection][listField];
+          if (Array.isArray(cur)) cur.push(item);
+          else rule.detection[currentSubSection][listField] = [item];
         } else if (currentSubSection && line.includes(':')) {
           const [k, ...v] = line.split(':');
           const field = k.trim().replace(/^-\s*/, '');
           const val = v.join(':').trim().replace(/^['"]|['"]$/g, '');
           rule.detection[currentSubSection][field] = val;
+          listField = val === '' ? field : null;
         }
       }
     }
@@ -112,6 +123,35 @@ export function parseSigmaRule(input) {
  * @param {any} value
  * @returns {string}
  */
+/** Quote a value as an SQL string literal (single quotes doubled). */
+function quoteSqlString(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Escape a literal segment for use inside a LIKE pattern: the escape
+ * character itself, then the two LIKE wildcards, so a literal % or _ in a
+ * rule value matches only itself. Clauses using this must add ESCAPE '\'.
+ */
+function escapeLikeLiteral(segment) {
+  return String(segment).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
+ * Build a LIKE pattern from a Sigma value. In Sigma, `*` is the wildcard;
+ * every other character is literal. Splitting on `*`, escaping each literal
+ * segment, and joining with `%` preserves the intended matching while
+ * making quote breakout and wildcard smuggling impossible.
+ */
+function sigmaLikePattern(value, { contains = false, startswith = false, endswith = false } = {}) {
+  const segments = String(value).split('*').map(escapeLikeLiteral);
+  let pattern = segments.join('%');
+  if (contains) pattern = `%${pattern}%`;
+  if (startswith) pattern = `${pattern}%`;
+  if (endswith) pattern = `%${pattern}`;
+  return pattern;
+}
+
 function transpileFieldClause(field, value) {
   let [fieldName, ...modifiers] = field.split('|');
   const normalizedCol = SIGMA_FIELD_MAPPINGS[fieldName.toLowerCase()];
@@ -124,30 +164,33 @@ function transpileFieldClause(field, value) {
   const hasEndswith = modifiers.includes('endswith');
 
   if (targetCol === 'raw_json') {
-    // If not a direct column, search within raw_json or indicator
-    const pattern = stringVal.replace(/\*/g, '%');
-    return `(raw_json LIKE '%"${fieldName}":"%${pattern}%"%' OR indicator LIKE '%${pattern}%' OR raw_json LIKE '%${pattern}%')`;
+    // If not a direct column, search within raw_json or indicator. The
+    // field name and value are rule-supplied data: both are LIKE-escaped
+    // and the finished patterns are quoted as SQL literals, so neither
+    // can break out of the string and alter the WHERE clause.
+    const fieldPattern = escapeLikeLiteral(fieldName);
+    const valuePattern = sigmaLikePattern(stringVal, { contains: true });
+    return `(raw_json LIKE ${quoteSqlString(`%"${fieldPattern}":"${valuePattern}"%`)} ESCAPE '\\' OR indicator LIKE ${quoteSqlString(valuePattern)} ESCAPE '\\' OR raw_json LIKE ${quoteSqlString(valuePattern)} ESCAPE '\\')`;
   }
 
   if (hasContains || stringVal.includes('*')) {
-    const pattern = stringVal.replace(/\*/g, '%');
-    const sqlPattern = hasContains && !pattern.includes('%') ? `%${pattern}%` : pattern;
-    return `${targetCol} LIKE '${sqlPattern}'`;
+    const pattern = sigmaLikePattern(stringVal, { contains: hasContains });
+    return `${targetCol} LIKE ${quoteSqlString(pattern)} ESCAPE '\\'`;
   }
 
   if (hasStartswith) {
-    return `${targetCol} LIKE '${stringVal}%'`;
+    return `${targetCol} LIKE ${quoteSqlString(sigmaLikePattern(stringVal, { startswith: true }))} ESCAPE '\\'`;
   }
 
   if (hasEndswith) {
-    return `${targetCol} LIKE '%${stringVal}'`;
+    return `${targetCol} LIKE ${quoteSqlString(sigmaLikePattern(stringVal, { endswith: true }))} ESCAPE '\\'`;
   }
 
   if (typeof value === 'number' || (!isNaN(Number(value)) && normalizedCol === 'dest_port')) {
     return `${targetCol} = ${Number(value)}`;
   }
 
-  return `${targetCol} = '${stringVal.replace(/'/g, "''")}'`;
+  return `${targetCol} = ${quoteSqlString(stringVal)}`;
 }
 
 /**
@@ -180,7 +223,12 @@ function transpileSelection(selection) {
  */
 export function transpileSigmaToSql(ruleInput, options = {}) {
   const rule = parseSigmaRule(ruleInput);
+  // The table name is interpolated into the SQL raw, so it must be a plain
+  // identifier — anything else is rejected rather than sanitized silently.
   const tableName = options.table || 'security_events';
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+    throw new Error(`Invalid table name '${tableName}': expected a plain SQL identifier`);
+  }
 
   const detection = rule.detection || {};
   const condition = (detection.condition || 'selection').trim();
@@ -192,37 +240,40 @@ export function transpileSigmaToSql(ruleInput, options = {}) {
     selectionClauses[name] = transpileSelection(def);
   }
 
-  let sqlCondition = condition;
+  // Normalize boolean operators FIRST, on the bare condition (selection
+  // names and operators only). Doing this after substitution rewrote the
+  // words and/or/not inside quoted literal values in the generated
+  // clauses, silently corrupting them ('this or that' became
+  // 'this OR that' and matched nothing).
+  let sqlCondition = condition
+    .replace(/\band\b/gi, 'AND')
+    .replace(/\bor\b/gi, 'OR')
+    .replace(/\bnot\b/gi, 'NOT');
 
-  // Handle "1 of selection*" pattern
-  if (/1 of (selection\*|[a-zA-Z0-9_]+)/i.test(sqlCondition)) {
-    const matching = Object.keys(selectionClauses).filter(k => k.startsWith('selection'));
-    const orBlock = matching.length > 0
-      ? matching.map(k => `(${selectionClauses[k]})`).join(' OR ')
+  // Handle "1 of <pattern>" / "all of <pattern>": the captured pattern
+  // decides which named selections participate (prefix match; a trailing
+  // '*' is optional). Previously the pattern was discarded and EVERY
+  // selection_* clause was combined, matching far more broadly than the
+  // rule specifies.
+  const expandOfPattern = (quantifier, joiner) => {
+    const re = new RegExp(`${quantifier} of (selection\\*|[a-zA-Z0-9_]+)`, 'i');
+    const m = sqlCondition.match(re);
+    if (!m) return;
+    const prefix = m[1].endsWith('*') ? m[1].slice(0, -1) : m[1];
+    const matching = Object.keys(selectionClauses).filter(k => k.startsWith(prefix));
+    const block = matching.length > 0
+      ? matching.map(k => `(${selectionClauses[k]})`).join(` ${joiner} `)
       : '1=1';
-    sqlCondition = sqlCondition.replace(/1 of (selection\*|[a-zA-Z0-9_]+)/gi, `(${orBlock})`);
-  }
-
-  // Handle "all of selection*" pattern
-  if (/all of (selection\*|[a-zA-Z0-9_]+)/i.test(sqlCondition)) {
-    const matching = Object.keys(selectionClauses).filter(k => k.startsWith('selection'));
-    const andBlock = matching.length > 0
-      ? matching.map(k => `(${selectionClauses[k]})`).join(' AND ')
-      : '1=1';
-    sqlCondition = sqlCondition.replace(/all of (selection\*|[a-zA-Z0-9_]+)/gi, `(${andBlock})`);
-  }
+    sqlCondition = sqlCondition.replace(new RegExp(`${quantifier} of (selection\\*|[a-zA-Z0-9_]+)`, 'gi'), `(${block})`);
+  };
+  expandOfPattern('1', 'OR');
+  expandOfPattern('all', 'AND');
 
   // Replace discrete named selections
   for (const [name, clause] of Object.entries(selectionClauses)) {
     const regex = new RegExp(`\\b${name}\\b`, 'g');
     sqlCondition = sqlCondition.replace(regex, `(${clause})`);
   }
-
-  // Normalize boolean operators
-  sqlCondition = sqlCondition
-    .replace(/\band\b/gi, 'AND')
-    .replace(/\bor\b/gi, 'OR')
-    .replace(/\bnot\b/gi, 'NOT');
 
   const technique = (rule.tags || []).find(t => /^attack\.t\d{4}/i.test(t))?.replace(/^attack\./i, '').toUpperCase() || null;
 
@@ -241,14 +292,14 @@ export function transpileSigmaToSql(ruleInput, options = {}) {
  * @param {Array<Object|string>} sigmaRules
  * @returns {Array<Object>} Matched threat hunt findings
  */
-export function runSigmaThreatHunt(sigmaRules = []) {
+export async function runSigmaThreatHunt(sigmaRules = []) {
   const matches = [];
   const rules = Array.isArray(sigmaRules) ? sigmaRules : (sigmaRules ? [sigmaRules] : []);
 
   for (const item of rules) {
     try {
       const transpiled = transpileSigmaToSql(item);
-      const rows = queryDataLake(transpiled.sql);
+      const rows = await queryDataLake(transpiled.sql);
 
       if (rows && rows.length > 0) {
         matches.push({

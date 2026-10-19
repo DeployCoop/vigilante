@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
+import { isValidDnsLabel } from './config.js';
 
 /**
  * Apply Kubernetes manifest YAML with validation fallback and transient error retries
@@ -58,6 +59,13 @@ export async function safeKubectlApply(yamlContent, options = {}) {
 export async function ensureNamespace(namespace = 'default', options = {}) {
   if (!namespace || namespace === 'default') {
     return;
+  }
+
+  // A namespace is a DNS label: reject names kubectl would refuse (or
+  // that arrived unsanitized from UI input) with a clear error instead
+  // of passing them verbatim to kubectl create.
+  if (!isValidDnsLabel(namespace)) {
+    throw new Error(`Invalid namespace '${namespace}': expected a DNS label (lowercase alphanumerics and '-', 1-63 chars, starting and ending with an alphanumeric).`);
   }
 
   const { onLog = null } = options;

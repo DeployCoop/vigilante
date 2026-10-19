@@ -1,4 +1,7 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   spawnEphemeralSandbox,
   listActiveSandboxes,
@@ -8,6 +11,12 @@ import {
   activeSandboxesRegistry,
   MAX_SANDBOXES_PER_TEAM
 } from '../src/engine/kctf.js';
+
+// Isolate the persisted sandbox registry in a temp config dir and configure
+// the CTF flag secret (flag derivation fails closed without one).
+const tempXdg = fs.mkdtempSync(path.join(os.tmpdir(), 'vigilante-spawner-test-'));
+process.env.XDG_CONFIG_HOME = tempXdg;
+process.env.VIGILANTE_CTF_SECRET = 'test-spawner-secret';
 
 console.log('🧪 Testing Ephemeral Sandbox Spawner, Dynamic Ingress & TTL Reaper...');
 

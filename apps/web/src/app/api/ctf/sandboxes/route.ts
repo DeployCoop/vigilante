@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { spawnEphemeralSandbox, listActiveSandboxes, terminateSandbox } from 'vigilante_lib/engine/kctf.js';
+import { spawnEphemeralSandbox, listActiveSandboxes, terminateSandbox, redactSandboxRecord } from 'vigilante_lib/engine/kctf.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      sandbox: sbx
+      // Never expose the flag or the flag-bearing manifest over the API.
+      sandbox: redactSandboxRecord(sbx)
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

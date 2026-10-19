@@ -1,8 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import * as yaml from 'js-yaml';
-import { execSync } from 'child_process';
-import os from 'os';
+import { execFileSync } from 'child_process';
 
 /**
  * Scenario Engine
@@ -10,11 +9,60 @@ import os from 'os';
  */
 
 import { fileURLToPath } from 'url';
-import { resolvePathInside } from './config.js';
+import { resolvePathInside, assertDnsLabel, getVigilanteScenariosDir } from './config.js';
+
+/**
+ * Split a scenario step command into argv words using shell quoting rules
+ * (whitespace separation, single quotes literal, double quotes with \"
+ * and \\ escapes, backslash escaping). The result is executed WITHOUT a
+ * shell, so metacharacters in the command (`;`, `&&`, `$()`, backticks,
+ * redirects) become inert literal arguments instead of host commands.
+ * Quoting still works for the intended use: everything after a `--` in a
+ * kubectl step (e.g. `sh -c '...'`) is passed through as pod argv exactly
+ * as written.
+ */
+export function splitCommandWords(command) {
+  const words = [];
+  let current = '';
+  let hasWord = false;
+  let quote = null; // null | "'" | '"'
+  const s = String(command);
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else current += ch;
+    } else if (quote === '"') {
+      if (ch === '"') quote = null;
+      else if (ch === '\\' && (s[i + 1] === '"' || s[i + 1] === '\\')) current += s[++i];
+      else current += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      hasWord = true;
+    } else if (ch === '\\' && i + 1 < s.length) {
+      current += s[++i];
+      hasWord = true;
+    } else if (/\s/.test(ch)) {
+      if (hasWord || current.length > 0) {
+        words.push(current);
+        current = '';
+        hasWord = false;
+      }
+    } else {
+      current += ch;
+      hasWord = true;
+    }
+  }
+  if (quote !== null) {
+    throw new Error(`Unterminated ${quote} quote in scenario command`);
+  }
+  if (hasWord || current.length > 0) words.push(current);
+  return words;
+}
 
 export class ScenarioEngine {
   constructor(options = {}) {
-    this.userScenarioDir = options.scenarioDir || path.join(os.homedir(), '.config', 'vigilante', 'scenarios');
+    this.userScenarioDir = options.scenarioDir || getVigilanteScenariosDir();
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     this.bundledScenarioDir = path.join(currentDir, '..', '..', 'scenarios');
   }
@@ -104,9 +152,10 @@ export class ScenarioEngine {
 
   executeKubectl(command, namespace = 'default') {
     try {
-      const fullCmd = `kubectl ${command} -n ${namespace}`;
-      console.log(`    > ${fullCmd}`);
-      execSync(fullCmd, { stdio: 'inherit' });
+      assertDnsLabel(namespace, 'namespace');
+      const args = [...splitCommandWords(command), '-n', namespace];
+      console.log(`    > kubectl ${args.join(' ')}`);
+      execFileSync('kubectl', args, { stdio: 'inherit' });
     } catch (err) {
       console.error(`[-] Error executing kubectl command: ${err.message}`);
     }
@@ -114,9 +163,9 @@ export class ScenarioEngine {
 
   executeHelm(command) {
     try {
-      const fullCmd = `helm ${command}`;
-      console.log(`    > ${fullCmd}`);
-      execSync(fullCmd, { stdio: 'inherit' });
+      const args = splitCommandWords(command);
+      console.log(`    > helm ${args.join(' ')}`);
+      execFileSync('helm', args, { stdio: 'inherit' });
     } catch (err) {
       console.error(`[-] Error executing helm command: ${err.message}`);
     }

@@ -1,8 +1,11 @@
 import { execa } from 'execa';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import net from 'node:net';
 import http from 'node:http';
+import path from 'node:path';
 import { logger } from '../utils/logger.js';
+import { getCtfSandboxesFile, requireCtfFlagSecret, assertDnsLabel, isValidHostname } from './config.js';
 
 export const CHALLENGE_CATEGORIES = [
   { id: 'web', name: 'Web Exploitation', icon: '🌐', color: 'blue', description: 'HTTP/HTTPS vulnerabilities, auth bypass, injection & token flaws' },
@@ -328,7 +331,15 @@ export function generateChallengeManifest({
 } = {}) {
   const tpl = CHALLENGE_TEMPLATES.find(t => t.id === templateId) || CHALLENGE_TEMPLATES[0];
   const name = (customName || tpl.id).toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  const category = customCategory || tpl.category;
+  // Namespace, category, and pow land in the manifest as raw YAML scalars
+  // and label values: validate/sanitize them like the name above instead
+  // of interpolating caller text into an applied manifest.
+  assertDnsLabel(namespace, 'namespace');
+  const category = String(customCategory || tpl.category).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const powDifficulty = Number(powDifficultySeconds);
+  if (!Number.isFinite(powDifficulty) || powDifficulty < 0) {
+    throw new Error(`Invalid powDifficultySeconds '${powDifficultySeconds}': expected a non-negative number`);
+  }
   const port = customPort ? parseInt(customPort, 10) : tpl.port;
   const flag = customFlag || tpl.defaultFlag;
   const targetPort = tpl.containerConfig?.ports?.[0] || port;
@@ -364,7 +375,7 @@ metadata:
 spec:
   deployed: true
   category: ${category}
-  powDifficultySeconds: ${powDifficultySeconds}
+  powDifficultySeconds: ${powDifficulty}
   network:
     public: true
     ports:
@@ -783,10 +794,60 @@ export const DEFAULT_SANDBOX_TTL_MINUTES = 45;
 export const MAX_SANDBOX_TTL_MINUTES = 120;
 
 /**
- * In-memory sandbox registry for tracking ephemeral team instances
+ * In-memory sandbox registry for tracking ephemeral team instances.
+ * The registry is persisted to ctf-sandboxes.json in the Vigilante config
+ * directory so sandboxes spawned by one process (e.g. the CLI) stay visible
+ * to the next (the MCP server, a later CLI invocation). The Map remains the
+ * live store within a process; it is loaded lazily on first use and written
+ * back on every mutation.
  * @type {Map<string, Object>}
  */
 export const activeSandboxesRegistry = new Map();
+
+let sandboxRegistryLoaded = false;
+
+async function ensureSandboxRegistryLoaded() {
+  if (sandboxRegistryLoaded) return;
+  sandboxRegistryLoaded = true;
+  try {
+    const raw = await fs.readFile(getCtfSandboxesFile(), 'utf8');
+    const records = JSON.parse(raw);
+    if (Array.isArray(records)) {
+      for (const rec of records) {
+        if (rec && rec.id && !activeSandboxesRegistry.has(rec.id)) {
+          activeSandboxesRegistry.set(rec.id, rec);
+        }
+      }
+    }
+  } catch {
+    // No registry file yet (or unreadable) — start from the in-memory state.
+  }
+}
+
+async function persistSandboxRegistry() {
+  try {
+    const file = getCtfSandboxesFile();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmpFile = `${file}.tmp`;
+    await fs.writeFile(tmpFile, JSON.stringify(Array.from(activeSandboxesRegistry.values()), null, 2));
+    await fs.rename(tmpFile, file);
+  } catch (err) {
+    logger.warn('KCTF:REGISTRY', `Failed to persist sandbox registry: ${err.message}`);
+  }
+}
+
+/**
+ * Return a copy of a sandbox record with the flag and the flag-bearing
+ * manifest removed. API and MCP surfaces must serve this redacted view:
+ * the flag belongs only in the applied cluster manifest, never in a
+ * list/spawn response that other teams (or unauthenticated callers of
+ * the web API) can read.
+ */
+export function redactSandboxRecord(record) {
+  if (!record) return record;
+  const { flag, manifest, ...rest } = record;
+  return rest;
+}
 
 /**
  * Generate a deterministic dynamic HMAC flag for a team on a specific challenge
@@ -796,8 +857,8 @@ export const activeSandboxesRegistry = new Map();
  * @param {string} [options.secretKey]
  * @returns {string}
  */
-export function deriveTeamHmacFlag({ teamId, challengeId, secretKey = 'vigilante-ctf-secret' }) {
-  const hmac = crypto.createHmac('sha256', secretKey);
+export function deriveTeamHmacFlag({ teamId, challengeId, secretKey }) {
+  const hmac = crypto.createHmac('sha256', requireCtfFlagSecret(secretKey));
   hmac.update(`${teamId}:${challengeId}`);
   const digest = hmac.digest('hex').slice(0, 16);
   return `VIGILANTE{${challengeId}_${teamId}_${digest}}`;
@@ -817,15 +878,31 @@ export function generateEphemeralSandboxManifest({
   targetPort = 8080,
   containerConfig = {}
 }) {
+  // Every identifier below lands in the manifest as a YAML scalar, label
+  // value, or double-quoted env value. Labels and names use the sanitized
+  // forms, env values are JSON-escaped, and namespace/domain are
+  // validated — caller text must not be able to rewrite the manifest.
+  assertDnsLabel(namespace, 'namespace');
+  if (!isValidHostname(domain)) {
+    throw new Error(`Invalid domain '${domain}': expected a dotted hostname`);
+  }
   const safeTeam = teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
   const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const safeSandbox = String(sandboxId).toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const appName = `${safeTeam}-${safeChal}`;
   const ingressHost = `${appName}.ctf.${domain}`;
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
   const createdAt = new Date().toISOString();
 
   const image = containerConfig.image || 'nginx:alpine';
-  const containerPort = (containerConfig.ports && containerConfig.ports[0]) || 80;
+  if (/\s/.test(image)) {
+    throw new Error(`Invalid container image '${image}': must not contain whitespace`);
+  }
+  const containerPort = Number((containerConfig.ports && containerConfig.ports[0]) || 80);
+  const servicePort = Number(targetPort);
+  if (!Number.isFinite(containerPort) || !Number.isFinite(servicePort)) {
+    throw new Error('Invalid port: container and target ports must be numbers');
+  }
 
   return `---
 apiVersion: v1
@@ -841,14 +918,14 @@ metadata:
   name: ${appName}
   namespace: ${namespace}
   labels:
-    vigilante.dev/sandbox-id: ${sandboxId}
-    vigilante.dev/team-id: ${teamId}
-    vigilante.dev/challenge-id: ${challengeId}
+    vigilante.dev/sandbox-id: ${safeSandbox}
+    vigilante.dev/team-id: ${safeTeam}
+    vigilante.dev/challenge-id: ${safeChal}
     app: ${appName}
   annotations:
     vigilante.dev/created-at: "${createdAt}"
     vigilante.dev/expires-at: "${expiresAt}"
-    vigilante.dev/ttl-minutes: "${ttlMinutes}"
+    vigilante.dev/ttl-minutes: ${JSON.stringify(String(ttlMinutes))}
 spec:
   replicas: 1
   selector:
@@ -858,9 +935,9 @@ spec:
     metadata:
       labels:
         app: ${appName}
-        vigilante.dev/sandbox-id: ${sandboxId}
-        vigilante.dev/team-id: ${teamId}
-        vigilante.dev/challenge-id: ${challengeId}
+        vigilante.dev/sandbox-id: ${safeSandbox}
+        vigilante.dev/team-id: ${safeTeam}
+        vigilante.dev/challenge-id: ${safeChal}
     spec:
       containers:
         - name: challenge
@@ -876,11 +953,11 @@ spec:
               memory: 128Mi
           env:
             - name: FLAG
-              value: "${flag}"
+              value: ${JSON.stringify(flag)}
             - name: TEAM_ID
-              value: "${teamId}"
+              value: ${JSON.stringify(teamId)}
             - name: CHALLENGE_ID
-              value: "${challengeId}"
+              value: ${JSON.stringify(challengeId)}
 ---
 apiVersion: v1
 kind: Service
@@ -889,14 +966,14 @@ metadata:
   namespace: ${namespace}
   labels:
     app: ${appName}
-    vigilante.dev/sandbox-id: ${sandboxId}
+    vigilante.dev/sandbox-id: ${safeSandbox}
 spec:
   type: ClusterIP
   selector:
     app: ${appName}
   ports:
     - name: challenge-port
-      port: ${targetPort}
+      port: ${servicePort}
       targetPort: ${containerPort}
       protocol: TCP
 ---
@@ -919,7 +996,7 @@ spec:
               service:
                 name: ${appName}
                 port:
-                  number: ${targetPort}
+                  number: ${servicePort}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -964,13 +1041,25 @@ export async function spawnEphemeralSandbox({
   namespace = 'ctf-sandboxes',
   ttlMinutes = DEFAULT_SANDBOX_TTL_MINUTES,
   domain = 'vigilante.local',
-  secretKey = 'vigilante-ctf-secret',
+  secretKey,
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
   if (!teamId || !challengeId) {
     throw new Error('Both teamId and challengeId are required to spawn a sandbox');
   }
+
+  // TTL policy applies at creation, not only on extension (which already
+  // clamps): reject non-numeric values and clamp into
+  // [1, MAX_SANDBOX_TTL_MINUTES], so a spawn cannot mint a never-expiring
+  // or instantly-expired sandbox.
+  const ttlValue = Number(ttlMinutes);
+  if (!Number.isFinite(ttlValue)) {
+    throw new Error(`Invalid ttlMinutes '${ttlMinutes}': expected a number of minutes`);
+  }
+  const effectiveTtlMinutes = Math.min(MAX_SANDBOX_TTL_MINUTES, Math.max(1, Math.floor(ttlValue)));
+
+  await ensureSandboxRegistryLoaded();
 
   // 1. Check team concurrency quota
   const existingTeamSandboxes = Array.from(activeSandboxesRegistry.values()).filter(
@@ -1003,7 +1092,7 @@ export async function spawnEphemeralSandbox({
   const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
   const sandboxId = `sbx-${safeTeam}-${safeChal}-${crypto.randomBytes(3).toString('hex')}`;
   const now = Date.now();
-  const expiresAt = new Date(now + ttlMinutes * 60 * 1000).toISOString();
+  const expiresAt = new Date(now + effectiveTtlMinutes * 60 * 1000).toISOString();
   const host = `${safeTeam}-${safeChal}.ctf.${domain}`;
   const connectionUrl = chal.serviceType === 'HTTP' ? `http://${host}` : `nc ${domain} ${chal.port}`;
 
@@ -1015,7 +1104,7 @@ export async function spawnEphemeralSandbox({
     namespace,
     domain,
     flag: dynamicFlag,
-    ttlMinutes,
+    ttlMinutes: effectiveTtlMinutes,
     targetPort: chal.port,
     containerConfig: chal.containerConfig
   });
@@ -1029,7 +1118,9 @@ export async function spawnEphemeralSandbox({
         '--context', `k3d-${clusterName}`
       ], { input: manifest });
     } catch (err) {
-      logger.warn('KCTF:SPAWNER', `Kubernetes apply fallback: ${err.message}`);
+      // A failed apply means nothing was provisioned — fail the spawn
+      // instead of registering an ACTIVE sandbox that does not exist.
+      throw new Error(`Kubernetes apply failed for sandbox '${sandboxId}': ${err.message}`);
     }
   }
 
@@ -1049,13 +1140,14 @@ export async function spawnEphemeralSandbox({
     namespace,
     createdAt: new Date(now).toISOString(),
     expiresAt,
-    ttlMinutes,
+    ttlMinutes: effectiveTtlMinutes,
     status: 'ACTIVE',
     manifest
   };
 
   activeSandboxesRegistry.set(sandboxId, sandboxRecord);
-  logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${ttlMinutes}m)`);
+  await persistSandboxRegistry();
+  logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${effectiveTtlMinutes}m)`);
 
   return sandboxRecord;
 }
@@ -1066,8 +1158,10 @@ export async function spawnEphemeralSandbox({
 export async function listActiveSandboxes({
   namespace = 'ctf-sandboxes',
   teamId = null,
-  clusterName = 'vigilante-dev'
+  clusterName = 'vigilante-dev',
+  includeSecrets = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   const now = Date.now();
   const results = [];
 
@@ -1078,11 +1172,18 @@ export async function listActiveSandboxes({
     const remainingMinutes = Math.max(0, Math.round(remainingMs / 60000));
     const isExpired = remainingMs <= 0;
 
-    results.push({
+    const entry = {
       ...sbx,
       remainingMinutes,
       status: isExpired ? 'EXPIRED' : sbx.status
-    });
+    };
+    // Flags and flag-bearing manifests are secrets: only callers that
+    // explicitly opt in (trusted in-process operator tooling) receive them.
+    if (!includeSecrets) {
+      delete entry.flag;
+      delete entry.manifest;
+    }
+    results.push(entry);
   }
 
   return results;
@@ -1098,6 +1199,7 @@ export async function extendSandboxTtl({
   additionalMinutes = 15,
   maxTtlMinutes = MAX_SANDBOX_TTL_MINUTES
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   let record = null;
 
   if (sandboxId && activeSandboxesRegistry.has(sandboxId)) {
@@ -1124,6 +1226,7 @@ export async function extendSandboxTtl({
 
   record.expiresAt = new Date(newExpiryTime).toISOString();
   record.ttlMinutes = newTtlMinutes;
+  await persistSandboxRegistry();
 
   logger.info('KCTF:SPAWNER', `Extended TTL for sandbox '${record.id}' to ${record.expiresAt} (Total: ${newTtlMinutes}m)`);
 
@@ -1144,6 +1247,7 @@ export async function reapExpiredSandboxes({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   const now = Date.now();
   const reaped = [];
 
@@ -1158,12 +1262,15 @@ export async function reapExpiredSandboxes({
         const safeChal = sbx.challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
         const appName = `${safeTeam}-${safeChal}`;
         try {
+          // Type-qualified names: a comma type list with several names
+          // deletes every type x every name, including same-named
+          // unrelated objects of other types in the namespace.
           await execa('kubectl', [
             'delete',
-            'deployment,service,ingress,networkpolicy',
-            appName,
-            `${appName}-ingress`,
-            `${appName}-netpol`,
+            `deployment/${appName}`,
+            `service/${appName}`,
+            `ingress/${appName}-ingress`,
+            `networkpolicy/${appName}-netpol`,
             '-n', namespace,
             '--context', `k3d-${clusterName}`,
             '--ignore-not-found=true'
@@ -1184,6 +1291,10 @@ export async function reapExpiredSandboxes({
     }
   }
 
+  if (reaped.length > 0) {
+    await persistSandboxRegistry();
+  }
+
   return reaped;
 }
 
@@ -1198,6 +1309,7 @@ export async function terminateSandbox({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
+  await ensureSandboxRegistryLoaded();
   let targetId = sandboxId;
   let targetRecord = null;
 
@@ -1219,6 +1331,7 @@ export async function terminateSandbox({
 
   targetRecord.status = 'TERMINATED';
   activeSandboxesRegistry.delete(targetId);
+  await persistSandboxRegistry();
 
   if (!mock) {
     const safeTeam = targetRecord.teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1227,10 +1340,10 @@ export async function terminateSandbox({
     try {
       await execa('kubectl', [
         'delete',
-        'deployment,service,ingress,networkpolicy',
-        appName,
-        `${appName}-ingress`,
-        `${appName}-netpol`,
+        `deployment/${appName}`,
+        `service/${appName}`,
+        `ingress/${appName}-ingress`,
+        `networkpolicy/${appName}-netpol`,
         '-n', namespace,
         '--context', `k3d-${clusterName}`,
         '--ignore-not-found=true'

@@ -22,10 +22,22 @@ export function getVigilanteConfigDir() {
   const xdg = getXdgConfigHome();
   const dotVigilante = path.join(xdg, '.vigilante');
   const vigilante = path.join(xdg, 'vigilante');
-  if (fsSync.existsSync(dotVigilante)) {
+  const dotExists = fsSync.existsSync(dotVigilante);
+  const plainExists = fsSync.existsSync(vigilante);
+  if (dotExists && plainExists) {
+    // Both trees exist: the one holding a config.yaml is the live one.
+    // The previous existence-only precedence let an empty '.vigilante'
+    // directory appearing (another tool, a stray mkdir) silently orphan
+    // a working 'vigilante' tree and all its state.
+    const dotHasConfig = fsSync.existsSync(path.join(dotVigilante, 'config.yaml'));
+    const plainHasConfig = fsSync.existsSync(path.join(vigilante, 'config.yaml'));
+    if (plainHasConfig && !dotHasConfig) return vigilante;
     return dotVigilante;
   }
-  if (fsSync.existsSync(vigilante)) {
+  if (dotExists) {
+    return dotVigilante;
+  }
+  if (plainExists) {
     return vigilante;
   }
   return vigilante;
@@ -208,6 +220,14 @@ export function getVigilantePlaybooksDir() {
 }
 
 /**
+ * Get the user scenarios directory within XDG_CONFIG_HOME
+ * @returns {string}
+ */
+export function getVigilanteScenariosDir() {
+  return path.join(getVigilanteConfigDir(), 'scenarios');
+}
+
+/**
  * Get the instances directory for all k3d cluster instances
  * Structure: $XDG_CONFIG_HOME/.vigilante/instances/
  * @returns {string}
@@ -278,6 +298,65 @@ export function sanitizePathComponent(str) {
  * @param {...string} segments
  * @returns {string} Absolute path inside baseDir
  */
+/**
+ * Quote a value as a single POSIX shell word. Single quotes preserve every
+ * character literally except the single quote itself, which is escaped as
+ * '\'' — so $(...), backticks, semicolons, and spaces in the value can
+ * never be interpreted by a shell. Use this whenever a value must appear
+ * inside a shell string; prefer argv-array execution (execa/execFile)
+ * wherever one is available instead.
+ */
+export function shQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Escape a value for embedding inside a double-quoted shell string:
+ * backslash, the quote itself, `$`, and backtick are backslash-escaped, so
+ * command substitution and parameter expansion cannot fire. Prefer shQuote
+ * (single quotes) for new code; this exists for generated scripts whose
+ * format depends on double quoting.
+ */
+export function shDoubleQuoteEscape(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
+}
+
+const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Kubernetes-style DNS label (lowercase alphanumerics and interior dashes). */
+export function isValidDnsLabel(value) {
+  return typeof value === 'string' && DNS_LABEL_PATTERN.test(value);
+}
+
+export function assertDnsLabel(value, label = 'value') {
+  if (!isValidDnsLabel(value)) {
+    throw new Error(`Invalid ${label} '${value}': expected a DNS label (lowercase letters, digits, and interior dashes, 1-63 chars)`);
+  }
+  return value;
+}
+
+const HOSTNAME_PATTERN = /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+
+/** Dotted hostname (letters, digits, hyphens, dots; no empty labels). */
+export function isValidHostname(value) {
+  return typeof value === 'string' && HOSTNAME_PATTERN.test(value);
+}
+
+/**
+ * Guard for values passed as positional arguments to CLI tools. Argv-array
+ * execution already neutralizes shell metacharacters, but a value starting
+ * with '-' is parsed as a flag by the receiving binary (flag injection:
+ * dig -f, mkcert options, nmap -iL, ...), and whitespace/control characters
+ * have no legitimate place in a target, name, or image reference.
+ */
+export function assertCliTarget(value, label = 'target') {
+  const v = String(value ?? '');
+  if (!v || v.startsWith('-') || /[\s\u0000-\u001f\u007f]/.test(v)) {
+    throw new Error(`Invalid ${label} '${value}': must be non-empty, must not start with '-', and must not contain whitespace or control characters`);
+  }
+  return v;
+}
+
 export function resolvePathInside(baseDir, ...segments) {
   const base = path.resolve(baseDir);
   const target = path.resolve(base, ...segments);
@@ -320,6 +399,109 @@ export function getHostEvidenceDir(networkCidr, hostIp) {
 /**
  * Default Vigilante Configuration Object
  */
+/**
+ * Get the file used to persist the CTF sandbox registry across processes
+ * (the CLI, the Ink UI and the MCP server are separate processes)
+ * @returns {string}
+ */
+export function getCtfSandboxesFile() {
+  return path.join(getVigilanteConfigDir(), 'ctf-sandboxes.json');
+}
+
+/**
+ * Resolve the HMAC secret used to derive and verify per-team CTF flags.
+ * Order: explicit argument, the VIGILANTE_CTF_SECRET environment variable,
+ * then `ctf.flagSecret` in config.yaml. Returns null when no secret is
+ * configured — there is deliberately no built-in default, because a shipped
+ * default secret makes every flag publicly derivable.
+ * @param {string} [explicitSecret]
+ * @returns {string|null}
+ */
+export function resolveCtfFlagSecret(explicitSecret) {
+  if (explicitSecret) return explicitSecret;
+  if (process.env.VIGILANTE_CTF_SECRET) return process.env.VIGILANTE_CTF_SECRET;
+  try {
+    const cfg = loadConfig();
+    if (cfg && cfg.ctf && cfg.ctf.flagSecret) return cfg.ctf.flagSecret;
+  } catch {
+    // Config unreadable — treat the secret as unconfigured.
+  }
+  return null;
+}
+
+/**
+ * Like resolveCtfFlagSecret, but fail closed: deriving or verifying a flag
+ * without an operator-configured secret is refused outright.
+ * @param {string} [explicitSecret]
+ * @returns {string}
+ */
+export function requireCtfFlagSecret(explicitSecret) {
+  const secret = resolveCtfFlagSecret(explicitSecret);
+  if (!secret) {
+    throw new Error(
+      'CTF flag secret is not configured: set the VIGILANTE_CTF_SECRET environment variable or ctf.flagSecret in config.yaml. Flags are never derived from a built-in default.'
+    );
+  }
+  return secret;
+}
+
+/**
+ * Shared resolver for operator-provisioned signing keys. Order: explicit
+ * argument, environment variable, then a config.yaml section key. Returns
+ * null when unconfigured — cryptographic material is never defaulted to a
+ * value shipped in the source tree, because anyone can read the source.
+ */
+function resolveProvisionedKey(explicitKey, envName, configSection, configKey) {
+  if (explicitKey) return explicitKey;
+  if (process.env[envName]) return process.env[envName];
+  try {
+    const cfg = loadConfig();
+    if (cfg && cfg[configSection] && cfg[configSection][configKey]) {
+      return cfg[configSection][configKey];
+    }
+  } catch {
+    // Config unreadable — treat the key as unconfigured.
+  }
+  return null;
+}
+
+function requireProvisionedKey(explicitKey, envName, configSection, configKey, label) {
+  const key = resolveProvisionedKey(explicitKey, envName, configSection, configKey);
+  if (!key) {
+    throw new Error(
+      `${label} is not configured: set the ${envName} environment variable or ${configSection}.${configKey} in config.yaml. Signing keys are never taken from a built-in default.`
+    );
+  }
+  return key;
+}
+
+/** HMAC key for the audit ledger (engine/ledger.js). */
+export function resolveLedgerSigningSecret(explicitSecret) {
+  return resolveProvisionedKey(explicitSecret, 'VIGILANTE_LEDGER_SECRET', 'ledger', 'signingSecret');
+}
+
+export function requireLedgerSigningSecret(explicitSecret) {
+  return requireProvisionedKey(explicitSecret, 'VIGILANTE_LEDGER_SECRET', 'ledger', 'signingSecret', 'Ledger signing secret');
+}
+
+/** HMAC key for the RFC 3161 time-stamp authority (engine/evidencepack.js). */
+export function resolveTsaKey(explicitKey) {
+  return resolveProvisionedKey(explicitKey, 'VIGILANTE_TSA_KEY', 'evidencepack', 'tsaKey');
+}
+
+export function requireTsaKey(explicitKey) {
+  return requireProvisionedKey(explicitKey, 'VIGILANTE_TSA_KEY', 'evidencepack', 'tsaKey', 'RFC 3161 TSA key');
+}
+
+/** HMAC key sealing forensic snapshots (engine/snapshot.js). */
+export function resolveSnapshotSealingKey(explicitKey) {
+  return resolveProvisionedKey(explicitKey, 'VIGILANTE_SNAPSHOT_KEY', 'snapshot', 'sealingKey');
+}
+
+export function requireSnapshotSealingKey(explicitKey) {
+  return requireProvisionedKey(explicitKey, 'VIGILANTE_SNAPSHOT_KEY', 'snapshot', 'sealingKey', 'Snapshot sealing key');
+}
+
 export const DEFAULT_CONFIG = {
   theme: {
     name: 'default',
@@ -345,6 +527,8 @@ export const DEFAULT_CONFIG = {
     clusterName: 'vigilante-dev',
     clusterProvider: 'k3d',
     ip: '127.0.0.1',
+    httpPort: 80,
+    httpsPort: 443,
     valuesDir: ''
   },
   hostr: {
@@ -362,7 +546,7 @@ export const DEFAULT_CONFIG = {
   },
   modules: {
     vigilLocal: {
-      chartPath: '/home/djehauti/git/vigil/infra/helm/vigil'
+      chartPath: ''
     },
     kctf: {
       enabled: false,
@@ -467,6 +651,10 @@ defaults:
   # Cluster provider engine: 'k3d' (Docker containerized) or 'k3s' (native systemd/host)
   clusterProvider: "k3d"
   ip: "127.0.0.1"
+  # Host ports bound to the cluster ingress (per instance; change these
+  # to run multiple instances side by side without port collisions)
+  httpPort: 80
+  httpsPort: 443
   # Optional custom values directory (defaults to $XDG_CONFIG_HOME/vigilante/values)
   valuesDir: ""
 
@@ -524,7 +712,7 @@ ai:
 modules:
   vigilLocal:
     # Path to local checkout of Vigil SOC repository helm chart
-    chartPath: "/home/djehauti/git/vigil/infra/helm/vigil"
+    chartPath: ""
   flamingo:
     enabled: false
     protocols: "ssh,snmp,ldap,http,dns,ftp"
@@ -581,6 +769,7 @@ export async function ensureVigilanteConfig() {
   const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
+  const scenariosDir = getVigilanteScenariosDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
@@ -608,6 +797,7 @@ export async function ensureVigilanteConfig() {
     await fs.mkdir(purpleDir, { recursive: true });
     await fs.mkdir(evidenceDir, { recursive: true });
     await fs.mkdir(playbooksDir, { recursive: true });
+    await fs.mkdir(scenariosDir, { recursive: true });
     await fs.mkdir(instancesDir, { recursive: true });
     try {
       await fs.access(configFile);
@@ -643,6 +833,7 @@ export async function ensureVigilanteConfig() {
     purpleDir,
     evidenceDir,
     playbooksDir,
+    scenariosDir,
     instancesDir,
     configFile,
     created
@@ -666,6 +857,7 @@ export function ensureVigilanteConfigSync() {
   const pcapDir = getVigilantePcapDir();
   const dossiersDir = getVigilanteDossiersDir();
   const bloodhoundDir = getVigilanteBloodhoundDir();
+  const containmentsDir = getVigilanteContainmentsDir();
   const ctiDir = getVigilanteCtiDir();
   const canaryDir = getVigilanteCanaryDir();
   const carveDir = getVigilanteCarveDir();
@@ -674,6 +866,7 @@ export function ensureVigilanteConfigSync() {
   const purpleDir = getVigilantePurpleDir();
   const evidenceDir = getVigilanteEvidenceDir();
   const playbooksDir = getVigilantePlaybooksDir();
+  const scenariosDir = getVigilanteScenariosDir();
   const instancesDir = getVigilanteInstancesDir();
   const configFile = getVigilanteConfigFile();
 
@@ -741,6 +934,9 @@ export function ensureVigilanteConfigSync() {
     if (!fsSync.existsSync(playbooksDir)) {
       fsSync.mkdirSync(playbooksDir, { recursive: true });
     }
+    if (!fsSync.existsSync(scenariosDir)) {
+      fsSync.mkdirSync(scenariosDir, { recursive: true });
+    }
     if (!fsSync.existsSync(instancesDir)) {
       fsSync.mkdirSync(instancesDir, { recursive: true });
     }
@@ -751,7 +947,7 @@ export function ensureVigilanteConfigSync() {
     // Ignore sync fallback error
   }
 
-  return { configDir, valuesDir, nmapsDir, oobscansDir, evidenceDir, instancesDir, configFile };
+  return { configDir, valuesDir, nmapsDir, oobscansDir, evidenceDir, scenariosDir, instancesDir, configFile };
 }
 
 /**
@@ -773,6 +969,10 @@ export function loadConfig() {
           theme: {
             name: parsed.theme?.name || DEFAULT_CONFIG.theme.name,
             colors: {
+              // Deliberately NOT pre-merged over DEFAULT_CONFIG colors:
+              // resolveTheme (the only consumer) merges these overrides
+              // over the NAMED theme's palette — pre-merging here would
+              // poison that fallback with the default palette.
               ...(parsed.theme?.colors || {})
             }
           },

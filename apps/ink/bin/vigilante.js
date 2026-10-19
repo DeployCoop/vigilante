@@ -598,7 +598,7 @@ if (command === 'mcp') {
     console.log('='.repeat(70));
     console.log(`SQL: ${sql}\n`);
     try {
-      const rows = lake.queryDataLake(sql);
+      const rows = await lake.queryDataLake(sql);
       console.table(rows);
     } catch (err) {
       console.error('✖ Query error:', err.message);
@@ -635,7 +635,7 @@ if (command === 'mcp') {
     console.log(`Hypothesis: ${rule.hypothesis}`);
     console.log(`\nGenerated ANSI SQL:`);
     console.log(`  ${rule.sql}`);
-    const huntMatches = sigma.runSigmaThreatHunt([rule.sigma || rule]);
+    const huntMatches = await sigma.runSigmaThreatHunt([rule.sigma || rule]);
     console.log(`\nTelemetry Matches Found: ${huntMatches.length}`);
     if (huntMatches.length > 0) {
       console.table(huntMatches);
@@ -970,34 +970,44 @@ rule InFlight_Suspicious_Strings {
   import('../src/engine/snapshot.js').then(async (snap) => {
     console.log('\n📸 CONTAINER VOLATILE FORENSIC SNAPSHOT');
     console.log('='.repeat(70));
-    const res = await snap.createForensicsSnapshot({
-      podName: cli.flags.pod || 'cluster-core-service',
-      pid: process.pid
-    });
-    console.log(`Snapshot ID:  ${res.snapshotId}`);
-    console.log(`Output Path:  ${res.snapshotDir}`);
-    console.log(`SHA-256 Seal: ${res.sha256Seal}`);
-    console.log();
-    process.exit(0);
+    try {
+      const res = await snap.createForensicsSnapshot({
+        podName: cli.flags.pod || 'cluster-core-service',
+        pid: process.pid
+      });
+      console.log(`Snapshot ID:  ${res.snapshotId}`);
+      console.log(`Output Path:  ${res.snapshotDir}`);
+      console.log(`SHA-256 Seal: ${res.sha256Seal}`);
+      console.log();
+      process.exit(0);
+    } catch (err) {
+      console.error(`✖ Snapshot failed: ${err.message}`);
+      process.exit(1);
+    }
   });
 } else if (command === 'evidencepack') {
   import('../src/engine/evidencepack.js').then(async (ep) => {
     console.log('\n⚖️  RFC 3161 COURT-ADMISSIBLE EVIDENCE BUNDLE');
     console.log('='.repeat(70));
-    const bundle = await ep.createEvidenceBundle(
-      { caseNumber: 'CASE-2026-INC-01', title: 'Kubernetes Incident Triage' },
-      [
-        { filename: 'cluster_volatiles.json', content: '{"status": "captured"}' },
-        { filename: 'network_audit.pcap', content: 'PCAP_RAW_STREAM_DATA' }
-      ]
-    );
-    console.log(`Bundle ID:     ${bundle.bundleId}`);
-    console.log(`Directory:     ${bundle.bundleDir}`);
-    console.log(`RFC 3161 Time: ${bundle.rfc3161Token.tstInfo.genTime}`);
-    console.log(`TSA Authority: ${bundle.rfc3161Token.tstInfo.tsa}`);
-    console.log(`Standalone Verifier: ${bundle.verifyBashPath}`);
-    console.log();
-    process.exit(0);
+    try {
+      const bundle = await ep.createEvidenceBundle(
+        { caseNumber: 'CASE-2026-INC-01', title: 'Kubernetes Incident Triage' },
+        [
+          { filename: 'cluster_volatiles.json', content: '{"status": "captured"}' },
+          { filename: 'network_audit.pcap', content: 'PCAP_RAW_STREAM_DATA' }
+        ]
+      );
+      console.log(`Bundle ID:     ${bundle.bundleId}`);
+      console.log(`Directory:     ${bundle.bundleDir}`);
+      console.log(`RFC 3161 Time: ${bundle.rfc3161Token.tstInfo.genTime}`);
+      console.log(`TSA Authority: ${bundle.rfc3161Token.tstInfo.tsa}`);
+      console.log(`Standalone Verifier: ${bundle.verifyBashPath}`);
+      console.log();
+      process.exit(0);
+    } catch (err) {
+      console.error(`✖ Evidence bundle failed: ${err.message}`);
+      process.exit(1);
+    }
   });
 } else if (command === 'falco' || command === 'ebpf') {
   Promise.all([
@@ -1219,18 +1229,25 @@ Usage:
         console.error('Usage: vigilante ctf submit <challenge-id> <flag>');
         process.exit(1);
       }
-      console.log(`\n🚩 Submitting flag for [${challengeId}]: ${flag}`);
-      const engine = new tournamentMod.TournamentEngine();
-      const team = engine.registerTeam({ name: 'LocalParticipant' });
-      engine.addChallenge({ id: challengeId, name: challengeId, defaultFlag: flag });
-      engine.start();
-      const res = engine.submitFlag({ teamId: team.id, challengeId, flag });
-      if (res.success) {
-        console.log(`🎉 Flag Accepted! Earned: +${res.points} pts (Badge: ${res.bloodBadge || '✔'})\n`);
-      } else {
-        console.log(`✖ Submission Failed: ${res.reason}\n`);
+      const teamId = cli.flags.team || 'demo-team';
+      console.log(`\n🚩 Submitting flag for [${challengeId}] (Team: ${teamId}): ${flag}`);
+      // Verify against the flag derived from the operator-configured CTF
+      // secret. The previous flow registered the submitted flag as the
+      // challenge's expected flag in a throwaway engine, so every
+      // submission was accepted.
+      let expectedFlag;
+      try {
+        expectedFlag = kctfMod.deriveTeamHmacFlag({ teamId, challengeId });
+      } catch (err) {
+        console.log(`✖ Submission Failed: ${err.message}\n`);
+        process.exit(1);
       }
-      process.exit(0);
+      if (flag.trim() === expectedFlag) {
+        console.log(`🎉 Flag Accepted! '${flag}' is the correct flag for Team '${teamId}' on '${challengeId}'.\n`);
+        process.exit(0);
+      }
+      console.log(`✖ Submission Failed: Incorrect flag for Team '${teamId}' on '${challengeId}'.\n`);
+      process.exit(1);
     } else if (subCommand === 'spawn') {
       const challengeId = cli.input[2];
       if (!challengeId) {
