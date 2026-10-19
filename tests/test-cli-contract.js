@@ -181,7 +181,10 @@ async function runTests() {
     fs.writeFileSync(path.join(stubDir, 'kubectl'), `#!/bin/sh\necho called >> ${callsLog}\nexit 1\n`, { mode: 0o755 });
     const stubEnv = { PATH: `${stubDir}:${process.env.PATH}`, VIGILANTE_CTF_SECRET: 'cli-contract-test-secret' };
 
-    runCli(['ctf', 'spawn', 'web-auth-bypass'], { extraEnv: stubEnv });
+    // Unique team per run: the sandbox registry persists across
+    // processes and dedupes an ACTIVE team+challenge pair, which would
+    // otherwise short-circuit provisioning on re-runs.
+    runCli(['ctf', 'spawn', 'web-auth-bypass', '--team', `cli-default-${process.pid}`], { extraEnv: stubEnv });
     assert(fs.existsSync(callsLog), 'bare ctf spawn (no --mock) must invoke kubectl: real mode is the default');
     console.log('✔ Test 13 passed: bare ctf spawn defaults to real provisioning (mock is opt-in).');
   }

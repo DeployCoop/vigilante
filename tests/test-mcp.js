@@ -264,7 +264,7 @@ async function runTests() {
     try {
       await client.callTool({
         name: 'spawn_ctf_sandbox',
-        arguments: { challengeId: 'web-auth-bypass', teamId: 'mcp-default-team' }
+        arguments: { challengeId: 'web-auth-bypass', teamId: `mcp-default-team-${process.pid}` }
       });
     } catch {
       // Expected: the stub kubectl exits 1, so the real-mode apply fails
