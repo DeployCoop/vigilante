@@ -343,6 +343,7 @@ export const DEFAULT_CONFIG = {
   defaults: {
     domain: 'vigilante.local',
     clusterName: 'vigilante-dev',
+    clusterProvider: 'k3d',
     ip: '127.0.0.1',
     valuesDir: ''
   },
@@ -463,6 +464,8 @@ theme:
 defaults:
   domain: "vigilante.local"
   clusterName: "vigilante-dev"
+  # Cluster provider engine: 'k3d' (Docker containerized) or 'k3s' (native systemd/host)
+  clusterProvider: "k3d"
   ip: "127.0.0.1"
   # Optional custom values directory (defaults to $XDG_CONFIG_HOME/vigilante/values)
   valuesDir: ""

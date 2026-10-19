@@ -34,7 +34,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { instanceName, domain = 'vigilante.local', ip = '127.0.0.1' } = body;
+    const { instanceName, domain = 'vigilante.local', ip = '127.0.0.1', provider = 'k3d' } = body;
 
     if (!instanceName) {
       return NextResponse.json({ success: false, error: 'instanceName is required' }, { status: 400 });
@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       clusterName: instanceName,
       domain,
       ip,
+      provider,
       createdAt: new Date().toISOString()
     });
 

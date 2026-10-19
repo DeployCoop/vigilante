@@ -18,8 +18,11 @@ export async function GET(request: Request) {
 
     // If specific pod action requested (logs or describe)
     if (podName && namespace && action) {
+      const targetCtx = await resolveKubeContext(clusterName, config.defaults?.clusterProvider);
+      const ctxArgs = targetCtx ? ['--context', targetCtx] : [];
+
       if (action === 'logs') {
-        const args = ['logs', podName, '-n', namespace, '--tail=150', '--context', `k3d-${clusterName}`];
+        const args = ['logs', podName, '-n', namespace, '--tail=150', ...ctxArgs];
         if (container) args.push('-c', container);
         const { stdout, stderr } = await execa('kubectl', args).catch((err: any) => ({
           stdout: '',
@@ -32,7 +35,7 @@ export async function GET(request: Request) {
       }
 
       if (action === 'describe') {
-        const args = ['describe', 'pod', podName, '-n', namespace, '--context', `k3d-${clusterName}`];
+        const args = ['describe', 'pod', podName, '-n', namespace, ...ctxArgs];
         const { stdout, stderr } = await execa('kubectl', args).catch((err: any) => ({
           stdout: '',
           stderr: err.message

@@ -23,11 +23,18 @@ import {
   FileCheck2,
   Terminal,
   Search,
-  Command
+  Command,
+  Sparkles
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
 const NAV_SECTIONS = [
+  {
+    title: 'Event: Hands-on Lab',
+    items: [
+      { href: '/intro', label: 'Agents Hunting Agents', icon: Sparkles, badge: 'Workshop', pulse: true },
+    ]
+  },
   {
     title: 'Phase 1: Readiness',
     items: [

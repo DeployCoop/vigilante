@@ -17,6 +17,7 @@ import {
 interface InstanceItem {
   instanceName: string;
   clusterName: string;
+  provider?: 'k3d' | 'k3s';
   domain: string;
   ip: string;
   createdAt: string;
@@ -30,6 +31,7 @@ export default function InstancesPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [newInstanceName, setNewInstanceName] = useState<string>('');
   const [newDomain, setNewDomain] = useState<string>('vigilante.local');
+  const [newProvider, setNewProvider] = useState<'k3d' | 'k3s'>('k3d');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchInstances = () => {
@@ -58,14 +60,16 @@ export default function InstancesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instanceName: newInstanceName.trim(),
-          domain: newDomain.trim()
+          domain: newDomain.trim(),
+          provider: newProvider
         })
       });
       const data = await res.json();
       if (data.success) {
-        setStatusMessage(`✔ Registered instance metadata for '${newInstanceName}'`);
+        setStatusMessage(`✔ Registered instance metadata for '${newInstanceName}' (${newProvider.toUpperCase()})`);
         setIsModalOpen(false);
         setNewInstanceName('');
+        setNewProvider('k3d');
         fetchInstances();
         setTimeout(() => setStatusMessage(null), 4000);
       }
@@ -107,7 +111,7 @@ export default function InstancesPage() {
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              Manage isolated multi-cluster k3d instances, directories, TLS certificates, and domain ingress mappings.
+              Manage isolated multi-cluster k3d and native host k3s instances, directories, TLS certificates, and domain ingress mappings.
             </p>
           </div>
         </div>
@@ -144,55 +148,70 @@ export default function InstancesPage() {
             <Server className="w-8 h-8 text-slate-600 mx-auto" />
             <p className="text-slate-400">No managed cluster instances found.</p>
             <p className="text-[11px] text-slate-500">
-              Click &quot;Create Instance&quot; above to register a new k3d cluster workspace.
+              Click &quot;Create Instance&quot; above to register a new k3d or k3s cluster workspace.
             </p>
           </div>
         ) : (
-          instances.map((inst) => (
-            <div
-              key={inst.instanceName}
-              className={`p-5 rounded-xl border transition-all space-y-3 ${
-                inst.instanceName === activeCluster
-                  ? 'bg-cyan-950/20 border-cyan-500/40 shadow-lg shadow-cyan-950/20'
-                  : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white text-sm flex items-center gap-2">
-                  <span>{inst.instanceName}</span>
-                  {inst.instanceName === activeCluster && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                      ACTIVE
+          instances.map((inst) => {
+            const provider = inst.provider || 'k3d';
+            return (
+              <div
+                key={inst.instanceName}
+                className={`p-5 rounded-xl border transition-all space-y-3 ${
+                  inst.instanceName === activeCluster
+                    ? 'bg-cyan-950/20 border-cyan-500/40 shadow-lg shadow-cyan-950/20'
+                    : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm">
+                      {inst.instanceName}
                     </span>
-                  )}
-                </span>
-                <span className="text-[10px] text-slate-500">k3d-{inst.clusterName}</span>
-              </div>
-
-              <div className="space-y-1 text-[11px] text-slate-400">
-                <div>Domain: <strong className="text-cyan-400">*.{inst.domain || 'vigilante.local'}</strong></div>
-                <div>IP Binding: <strong>{inst.ip || '127.0.0.1'}</strong></div>
-                {inst.createdAt && (
-                  <div className="text-[10px] text-slate-500">
-                    Created: {new Date(inst.createdAt).toLocaleDateString()}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                      provider === 'k3s'
+                        ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                        : 'bg-blue-950/40 text-blue-300 border-blue-800/60'
+                    }`}>
+                      {provider.toUpperCase()}
+                    </span>
+                    {inst.instanceName === activeCluster && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                        ACTIVE
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
+                  <span className="text-[10px] text-slate-500">
+                    {provider === 'k3s' ? `k3s-${inst.clusterName}` : `k3d-${inst.clusterName}`}
+                  </span>
+                </div>
 
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                <span className="text-[10px] text-slate-500">
-                  {inst.deployedModules?.length || 0} modules deployed
-                </span>
-                <button
-                  onClick={() => handleDeleteInstance(inst.instanceName)}
-                  title="Delete Cluster Instance"
-                  className="p-1 rounded bg-slate-900 hover:bg-rose-950 hover:text-rose-400 text-slate-500 border border-slate-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="space-y-1 text-[11px] text-slate-400">
+                  <div>Domain: <strong className="text-cyan-400">*.{inst.domain || 'vigilante.local'}</strong></div>
+                  <div>IP Binding: <strong>{inst.ip || '127.0.0.1'}</strong></div>
+                  <div>Provider Engine: <strong className="text-slate-300">{provider === 'k3s' ? 'K3s (Host Service)' : 'K3d (Containerized)'}</strong></div>
+                  {inst.createdAt && (
+                    <div className="text-[10px] text-slate-500">
+                      Created: {new Date(inst.createdAt).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">
+                    {inst.deployedModules?.length || 0} modules deployed
+                  </span>
+                  <button
+                    onClick={() => handleDeleteInstance(inst.instanceName)}
+                    title="Delete Cluster Instance"
+                    className="p-1 rounded bg-slate-900 hover:bg-rose-950 hover:text-rose-400 text-slate-500 border border-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -208,6 +227,42 @@ export default function InstancesPage() {
             </div>
 
             <div className="p-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-slate-400">Cluster Provider Engine:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewProvider('k3d')}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      newProvider === 'k3d'
+                        ? 'bg-cyan-950/50 border-cyan-500 text-white shadow-sm'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center justify-between">
+                      <span>k3d</span>
+                      <span className="text-[10px] text-cyan-400">Docker</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Containerized cluster</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewProvider('k3s')}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      newProvider === 'k3s'
+                        ? 'bg-cyan-950/50 border-cyan-500 text-white shadow-sm'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center justify-between">
+                      <span>k3s</span>
+                      <span className="text-[10px] text-amber-400">Native</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Host system service</p>
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-slate-400">Instance Name:</label>
                 <input
@@ -233,7 +288,7 @@ export default function InstancesPage() {
                 onClick={handleCreateInstance}
                 className="w-full py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-colors"
               >
-                Provision Instance Directory
+                Provision Instance Directory ({newProvider.toUpperCase()})
               </button>
             </div>
           </div>

@@ -79,6 +79,8 @@ const cli = meow(`
     --domain, -d       Local top-level domain (Default: ${config.defaults?.domain || 'vigilante.local'})
     --cluster-name, -c Cluster name (Default: ${config.defaults?.clusterName || 'vigilante-dev'})
     --instance, -i     Instance name alias for --cluster-name
+    --provider, -P     Cluster provider: k3d or k3s (Default: ${config.defaults?.clusterProvider || 'k3d'})
+    --k3s              Shorthand flag to deploy into K3s instead of K3d
     --namespace, -n    Target Kubernetes namespace (e.g. 'default', 'threat-lab', 'tenant-a')
     --module, -m       Specific module(s) to install/uninstall/reset (comma-separated, Default: vigil-soc)
     --delete-namespace Delete target Kubernetes namespace during uninstall
@@ -124,6 +126,15 @@ const cli = meow(`
     instance: {
       type: 'string',
       shortFlag: 'i'
+    },
+    provider: {
+      type: 'string',
+      shortFlag: 'P',
+      default: config.defaults?.clusterProvider || 'k3d'
+    },
+    k3s: {
+      type: 'boolean',
+      default: false
     },
     namespace: {
       type: 'string',
@@ -252,6 +263,7 @@ const command = cli.input[0] || 'up';
 const subCommand = cli.input[1];
 const hostsAction = cli.flags.remove ? 'remove' : cli.flags.check ? 'check' : 'sync';
 const effectiveClusterName = cli.flags.instance || cli.flags.clusterName || config.defaults?.clusterName || 'vigilante-dev';
+const effectiveProvider = cli.flags.k3s ? 'k3s' : (cli.flags.provider || config.defaults?.clusterProvider || 'k3d');
 
 if (command === 'mcp') {
   import('../src/mcp/server.js').then(({ runMcpServer }) => {
@@ -1481,6 +1493,7 @@ Participant Solver Workbench:
       subCommand,
       domain: cli.flags.domain,
       clusterName: effectiveClusterName,
+      clusterProvider: effectiveProvider,
       namespace: cli.flags.namespace || null,
       selectedModules: cli.flags.module ? cli.flags.module.split(',').map(m => m.trim()) : undefined,
       customValuesPath: cli.flags.values,

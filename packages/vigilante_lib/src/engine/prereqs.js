@@ -1,4 +1,5 @@
 import { execa } from 'execa';
+import fsSync from 'node:fs';
 import { commandExists } from '../utils/exec.js';
 
 export const REQUIRED_TOOLS = [
@@ -15,6 +16,13 @@ export const REQUIRED_TOOLS = [
     command: 'k3d',
     docUrl: 'https://k3d.io/#installation',
     installHint: 'Install k3d via: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash'
+  },
+  {
+    id: 'k3s',
+    name: 'k3s (Lightweight Kubernetes)',
+    command: 'k3s',
+    docUrl: 'https://k3s.io/',
+    installHint: 'Install k3s via: curl -sfL https://get.k3s.io | sh -'
   },
   {
     id: 'mkcert',
@@ -102,6 +110,19 @@ export async function checkTool(tool) {
         version = stdout.trim();
         break;
       }
+      case 'k3s': {
+        try {
+          const { stdout } = await execa('k3s', ['--version']);
+          version = stdout.split('\n')[0].trim();
+        } catch {
+          if (fsSync.existsSync('/etc/rancher/k3s/k3s.yaml')) {
+            version = 'k3s (kubeconfig found)';
+          } else {
+            throw new Error('k3s binary or /etc/rancher/k3s/k3s.yaml not found.');
+          }
+        }
+        break;
+      }
       default:
         version = 'installed';
     }
@@ -125,10 +146,25 @@ export async function checkTool(tool) {
 }
 
 /**
- * Check all prerequisites
+ * Check all prerequisites with optional provider filtering (k3d vs k3s)
+ * @param {Object} [options]
+ * @param {string} [options.provider='k3d'] - 'k3d' | 'k3s' | 'all'
  */
-export async function checkPrereqs() {
-  const results = await Promise.all(REQUIRED_TOOLS.map(tool => checkTool(tool)));
+export async function checkPrereqs(options = {}) {
+  const provider = options.provider || 'k3d';
+  const toolsToCheck = REQUIRED_TOOLS.filter(tool => {
+    if (provider === 'k3s') {
+      // For k3s provider, docker and k3d are not required
+      return tool.id !== 'docker' && tool.id !== 'k3d';
+    }
+    if (provider === 'k3d') {
+      // For k3d provider, k3s is not required
+      return tool.id !== 'k3s';
+    }
+    return true;
+  });
+
+  const results = await Promise.all(toolsToCheck.map(tool => checkTool(tool)));
   const allReady = results.every(r => r.ready);
   const missing = results.filter(r => !r.ready);
 
