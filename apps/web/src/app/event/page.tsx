@@ -171,23 +171,30 @@ export default function CTFEventGuidePage() {
       {/* Top Header Banner */}
       <div className="relative overflow-hidden rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-slate-950 p-6 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold tracking-wider uppercase">
-                CTF Cyber Range Platform
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px]">
-                Tournament Edition
-              </span>
+          <div className="flex items-start gap-4">
+            <img
+              src="/images/vigilante-badge.jpg"
+              alt="Vigilante Emblem"
+              className="w-16 h-16 rounded-xl border-2 border-cyan-400/60 shadow-[0_0_20px_rgba(6,182,212,0.4)] object-cover shrink-0 hidden sm:block"
+            />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold tracking-wider uppercase">
+                  CTF Cyber Range Platform
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px]">
+                  Tournament Edition
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+                <Flag className="w-7 h-7 text-cyan-400" />
+                <span>Player Field Manual & Operational Guide</span>
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-3xl leading-relaxed">
+                Welcome to the Vigilante Cyber Range. Use this manual to initialize your participant workspace, master
+                Vigilante's multi-vector investigation tools, and harness the built-in Solver Workbench and Socratic AI Mentor.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-              <Flag className="w-7 h-7 text-cyan-400" />
-              <span>Player Field Manual & Operational Guide</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-3xl leading-relaxed">
-              Welcome to the Vigilante Cyber Range. Use this manual to initialize your participant workspace, master
-              Vigilante's multi-vector investigation tools, and harness the built-in Solver Workbench and Socratic AI Mentor.
-            </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <Link
@@ -309,6 +316,35 @@ export default function CTFEventGuidePage() {
               <p className="text-[11px] text-slate-500">
                 Managed under 30-min team TTLs with nsjail containment
               </p>
+            </div>
+          </div>
+
+          {/* Cyberpunk Operative Tactical Field Banner */}
+          <div className="relative rounded-2xl overflow-hidden border border-cyan-500/30 bg-slate-900 group shadow-lg">
+            <div className="flex flex-col md:flex-row items-center">
+              <div className="w-full md:w-2/5 h-48 md:h-52 relative overflow-hidden">
+                <img
+                  src="/images/vigilante-rogue-operative.jpg"
+                  alt="Vigilante Operative"
+                  className="w-full h-full object-cover object-top group-hover:scale-105 transition duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent to-slate-900" />
+              </div>
+              <div className="w-full md:w-3/5 p-5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase font-mono">
+                    Tactical Operative Rig
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">PROMISCUOUS: ACTIVE</span>
+                </div>
+                <h3 className="text-base font-bold text-white">
+                  Equipped for Reconnaissance, Exploitation & Containment
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Your local workspace is loaded with offensive and defensive toolchains: RF/SDR sniffing scripts,
+                  eBPF socket listeners, De Bruijn cyclic buffers, and automated RSA factorizers.
+                </p>
+              </div>
             </div>
           </div>
 
