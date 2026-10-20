@@ -52,6 +52,7 @@ export const COMMAND_ITEMS = [
   { href: '/cloudsec', label: 'Multi-Cloud Workload Identity & CSPM', section: 'NIST Phase 2: Detection & Analysis', icon: Cloud, key: 'c' },
   { href: '/timeline', label: 'Attack Timeline & Causal DAG Explorer', section: 'NIST Phase 2: Detection & Analysis', icon: Clock, key: 't' },
   { href: '/sniffer', label: 'Terminal Live Packet Sniffer & Dissector', section: 'NIST Phase 2: Detection & Analysis', icon: Radio, key: 'u' },
+  { href: '/falco', label: 'Falco eBPF Runtime Threat Sensor & SOAR', section: 'NIST Phase 2: Detection & Analysis', icon: ShieldAlert, key: 'q' },
   { href: '/graph', label: 'Composite Attack Graph & Kill Chains', section: 'NIST Phase 2: Detection & Analysis', icon: Share2, key: 'x' },
 
   // Phase 3: Containment, Eradication & Recovery

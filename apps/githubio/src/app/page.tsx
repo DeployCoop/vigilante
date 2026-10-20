@@ -1,11 +1,12 @@
 import React from 'react';
 import Link from 'next/link';
+import { Search } from './components/Search';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
       {/* Navigation */}
-      <nav className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+      <nav data-pagefind-ignore className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <img
             src="/vigilante/images/vigilante-badge.jpg"
@@ -21,18 +22,16 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center space-x-6 text-sm text-slate-400">
-          <Link href="/docs" className="hover:text-emerald-400 transition">Documentation</Link>
-          <Link href="/docs/ctf" className="hover:text-emerald-400 transition">CTF Cyber Range</Link>
-          <Link href="/docs/web-authz" className="hover:text-emerald-400 transition">Web Portal & Authz</Link>
-          <a href="#dossier" className="hover:text-emerald-400 transition">Operative</a>
-          <a href="#features" className="hover:text-emerald-400 transition">Capabilities</a>
-          <a href="#modules" className="hover:text-emerald-400 transition">Modules</a>
-          <a href="#quickstart" className="hover:text-emerald-400 transition">Quickstart</a>
-          <a href="https://github.com/DeployCoop/vigilante" target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 transition font-medium">GitHub →</a>
+          <Search />
+          <Link href="/docs" className="hover:text-emerald-400 transition hidden md:block">Documentation</Link>
+          <Link href="/docs/ctf" className="hover:text-emerald-400 transition hidden md:block">CTF Range</Link>
+          <Link href="/docs/web-authz" className="hover:text-emerald-400 transition hidden lg:block">Web Portal</Link>
+          <a href="#quickstart" className="hover:text-emerald-400 transition hidden sm:block">Quickstart</a>
+          <a href="https://github.com/DeployCoop/vigilante" target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 transition font-medium hidden sm:block">GitHub →</a>
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-12 space-y-20">
+      <main data-pagefind-body className="max-w-6xl mx-auto px-6 py-12 space-y-20">
         {/* Hero Section with Cyberpunk Character Split */}
         <section className="grid lg:grid-cols-12 gap-8 items-center pt-4 pb-12 border-b border-slate-800">
           <div className="lg:col-span-7 space-y-6">
@@ -377,7 +376,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-800 mt-20 py-8 text-center text-sm text-slate-500">
+      <footer data-pagefind-ignore className="border-t border-slate-800 mt-20 py-8 text-center text-sm text-slate-500">
         <p>Vigilante Security Orchestration & Cyber Range Platform &copy; 2026. Built by DeployCoop.</p>
       </footer>
     </div>

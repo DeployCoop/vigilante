@@ -27,7 +27,12 @@ import {
   GitFork,
   Flame,
   Award,
-  RefreshCw
+  RefreshCw,
+  FileCode,
+  FileText,
+  Lock,
+  Binary,
+  Layers
 } from 'lucide-react';
 
 export default function CTFEventGuidePage() {
@@ -38,6 +43,10 @@ export default function CTFEventGuidePage() {
   const [sandboxes, setSandboxes] = useState<any[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
+  // Preflight check state
+  const [preflightData, setPreflightData] = useState<any>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+
   // Workspace Scaffolder state
   const [targetDir, setTargetDir] = useState('./ctf-workspace');
   const [teamName, setTeamName] = useState('CyberTeam-1');
@@ -46,8 +55,19 @@ export default function CTFEventGuidePage() {
   const [scaffoldResult, setScaffoldResult] = useState<any>(null);
   const [scaffoldError, setScaffoldError] = useState<string | null>(null);
 
+  // Proof Sealer & Writeup Studio state
+  const [sealChalId, setSealChalId] = useState('pwn-rop-bof');
+  const [sealTeam, setSealTeam] = useState('CyberTeam-1');
+  const [sealFlag, setSealFlag] = useState('');
+  const [sealNotes, setSealNotes] = useState('Discovered 72-byte buffer overflow in vuln(). Chained pop rdi; ret gadget to execute system("/bin/sh").');
+  const [sealLoading, setSealLoading] = useState(false);
+  const [sealResult, setSealResult] = useState<any>(null);
+  const [writeupLoading, setWriteupLoading] = useState(false);
+  const [writeupResult, setWriteupResult] = useState<any>(null);
+  const [proofStudioError, setProofStudioError] = useState<string | null>(null);
+
   // Solver Workbench state
-  const [solverTool, setSolverTool] = useState<'cyclic' | 'cipher' | 'jwt' | 'rsa' | 'xor'>('cyclic');
+  const [solverTool, setSolverTool] = useState<'cyclic' | 'cipher' | 'jwt' | 'rsa' | 'xor' | 'rop' | 'checksec'>('cyclic');
   const [cyclicLength, setCyclicLength] = useState('256');
   const [cyclicPattern, setCyclicPattern] = useState('');
   const [cyclicNeedle, setCyclicNeedle] = useState('');
@@ -62,6 +82,15 @@ export default function CTFEventGuidePage() {
   const [xorCt2, setXorCt2] = useState('');
   const [xorCrib, setXorCrib] = useState('VIGILANTE{');
   const [xorResult, setXorResult] = useState<any>(null);
+
+  // ROP & checksec state
+  const [ropHex, setRopHex] = useState('5fc35e5ac358c30f05c3');
+  const [ropFilePath, setRopFilePath] = useState('');
+  const [ropResult, setRopResult] = useState<any>(null);
+  const [checksecHex, setChecksecHex] = useState('7f454c4602010100000000000000000003003e0001000000');
+  const [checksecFilePath, setChecksecFilePath] = useState('');
+  const [checksecResult, setChecksecResult] = useState<any>(null);
+
   const [solverLoading, setSolverLoading] = useState(false);
   const [solverError, setSolverError] = useState<string | null>(null);
 
@@ -80,8 +109,22 @@ export default function CTFEventGuidePage() {
     });
   };
 
+  const handleRunPreflight = () => {
+    setPreflightLoading(true);
+    fetch('/api/ctf/preflight')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setPreflightData(data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPreflightLoading(false));
+  };
+
   useEffect(() => {
     fetchStatus();
+    handleRunPreflight();
   }, []);
 
   const handleCopy = (text: string, key: string) => {
@@ -109,10 +152,74 @@ export default function CTFEventGuidePage() {
         throw new Error(data.error || 'Failed to initialize workspace');
       }
       setScaffoldResult(data);
+      // Re-run preflight to update workspace check
+      handleRunPreflight();
     } catch (err: any) {
       setScaffoldError(err.message);
     } finally {
       setScaffoldLoading(false);
+    }
+  };
+
+  const handleSealSolve = async () => {
+    if (!sealFlag.trim()) {
+      setProofStudioError('Flag is required to seal solve evidence.');
+      return;
+    }
+    setSealLoading(true);
+    setProofStudioError(null);
+    try {
+      const res = await fetch('/api/ctf/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'seal',
+          challengeId: sealChalId,
+          teamId: sealTeam.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          flag: sealFlag.trim(),
+          solveScriptContent: `# Exploit Script for ${sealChalId}\n# Author: ${sealTeam}\n# Notes: ${sealNotes}\n\nprint("Solve confirmed")\n`,
+          writeupContent: `# Solve Writeup: ${sealChalId}\n\n${sealNotes}\n\nFlag: ${sealFlag}\n`
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to seal evidence');
+      }
+      setSealResult(data);
+    } catch (err: any) {
+      setProofStudioError(err.message);
+    } finally {
+      setSealLoading(false);
+    }
+  };
+
+  const handleGenerateWriteup = async () => {
+    setWriteupLoading(true);
+    setProofStudioError(null);
+    try {
+      const res = await fetch('/api/ctf/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'writeup',
+          challengeId: sealChalId,
+          challengeName: sealChalId,
+          teamName: sealTeam,
+          author: sealTeam,
+          vulnerabilityDescription: sealNotes,
+          exploitScript: `# Exploit script for ${sealChalId}`,
+          flag: sealFlag.trim() || 'VIGILANTE{captured_flag_placeholder}'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate writeup');
+      }
+      setWriteupResult(data);
+    } catch (err: any) {
+      setProofStudioError(err.message);
+    } finally {
+      setWriteupLoading(false);
     }
   };
 
@@ -135,6 +242,10 @@ export default function CTFEventGuidePage() {
         body = { tool: 'rsa_factor', n: rsaModulus.trim() };
       } else if (solverTool === 'xor') {
         body = { tool: 'xor_crib', ct1: xorCt1.trim(), ct2: xorCt2.trim(), crib: xorCrib.trim() };
+      } else if (solverTool === 'rop') {
+        body = { tool: 'rop', hexBytes: ropHex.trim() || undefined, filePath: ropFilePath.trim() || undefined };
+      } else if (solverTool === 'checksec') {
+        body = { tool: 'checksec', hexBytes: checksecHex.trim() || undefined, filePath: checksecFilePath.trim() || undefined };
       }
 
       const res = await fetch('/api/ctf/tools', {
@@ -158,6 +269,10 @@ export default function CTFEventGuidePage() {
         setRsaResult(data);
       } else if (solverTool === 'xor') {
         setXorResult(data);
+      } else if (solverTool === 'rop') {
+        setRopResult(data);
+      } else if (solverTool === 'checksec') {
+        setChecksecResult(data);
       }
     } catch (err: any) {
       setSolverError(err.message);
@@ -218,7 +333,7 @@ export default function CTFEventGuidePage() {
             }`}
           >
             <FolderPlus className="w-3.5 h-3.5" />
-            <span>1. Readiness & Workspace</span>
+            <span>1. Readiness & Preflight</span>
           </button>
           <button
             onClick={() => setActiveTab('playbook')}
@@ -301,102 +416,136 @@ export default function CTFEventGuidePage() {
                 <span>*.vigilante.local</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                {status?.certs?.valid ? 'mkcert CA trusted & /etc/hosts mapped' : 'Synchronize with `vigilante hostr`'}
+                mkcert wildcards active. Local Ingress routes resolve through /etc/hosts.
               </p>
             </div>
 
             <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
               <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                <Flag className="w-3.5 h-3.5 text-cyan-400" />
+                <Clock className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Active Ephemeral Sandboxes</span>
               </div>
-              <div className="text-sm font-bold text-cyan-300">
-                {sandboxes.length} Pods Allocated
+              <div className="text-sm font-bold text-white flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${sandboxes.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                <span>{sandboxes.length} / 3 Active Pods</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                Managed under 30-min team TTLs with nsjail containment
+                Isolated nsjail pods per team. Max concurrency: 3 per team.
               </p>
             </div>
           </div>
 
-          {/* Cyberpunk Operative Tactical Field Banner */}
-          <div className="relative rounded-2xl overflow-hidden border border-cyan-500/30 bg-slate-900 group shadow-lg">
-            <div className="flex flex-col md:flex-row items-center">
-              <div className="w-full md:w-2/5 h-48 md:h-52 relative overflow-hidden">
-                <img
-                  src="/images/vigilante-rogue-operative.jpg"
-                  alt="Vigilante Operative"
-                  className="w-full h-full object-cover object-top group-hover:scale-105 transition duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent to-slate-900" />
-              </div>
-              <div className="w-full md:w-3/5 p-5 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase font-mono">
-                    Tactical Operative Rig
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">PROMISCUOUS: ACTIVE</span>
-                </div>
-                <h3 className="text-base font-bold text-white">
-                  Equipped for Reconnaissance, Exploitation & Containment
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Your local workspace is loaded with offensive and defensive toolchains: RF/SDR sniffing scripts,
-                  eBPF socket listeners, De Bruijn cyclic buffers, and automated RSA factorizers.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 1-Click Workspace Scaffold Card */}
+          {/* Live 4-Point Tournament Preflight Verification Panel */}
           <div className="p-6 bg-slate-900/90 border border-slate-800 rounded-xl space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <FolderPlus className="w-4 h-4 text-cyan-400" />
-                  <span>Scaffold Local Participant Workspace</span>
+                  <Shield className="w-4 h-4 text-cyan-400" />
+                  <span>Tournament 4-Point Preflight Verification</span>
                 </h3>
                 <p className="text-xs text-slate-400 pt-1">
-                  Generates categorized challenge directories (<code>web/</code>, <code>pwn/</code>, <code>crypto/</code>, <code>rev/</code>, <code>forensics/</code>, <code>writeups/</code>)
-                  with per-challenge briefings, README files, and starter Python exploit templates (<code>pwntools</code>, <code>requests</code>).
+                  Automated checks verifying HMAC secret configuration, Kubernetes cluster API reachability, sandbox limits, and local workspace tree.
                 </p>
               </div>
+              <button
+                onClick={handleRunPreflight}
+                disabled={preflightLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${preflightLoading ? 'animate-spin' : ''}`} />
+                <span>{preflightLoading ? 'Verifying...' : 'Re-Run Preflight'}</span>
+              </button>
+            </div>
+
+            {preflightData && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {preflightData.checks?.map((chk: any) => (
+                    <div
+                      key={chk.id}
+                      className="p-3.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-2 text-xs font-mono"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white">{chk.name}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          chk.status === 'READY'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : chk.status === 'STANDBY'
+                            ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                            : 'bg-amber-950 text-amber-300 border border-amber-800'
+                        }`}>
+                          {chk.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">{chk.detail}</p>
+                      {chk.remediation && (
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-900 text-[10px]">
+                          <code className="text-slate-500 truncate max-w-[85%]">{chk.remediation}</code>
+                          <button
+                            onClick={() => handleCopy(chk.remediation, `rem-${chk.id}`)}
+                            className="text-cyan-400 hover:text-cyan-300"
+                            title="Copy remediation command"
+                          >
+                            {copiedKey === `rem-${chk.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 1-Click Workspace Scaffolder */}
+          <div className="p-6 bg-slate-900/90 border border-slate-800 rounded-xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <FolderPlus className="w-4 h-4 text-cyan-400" />
+                <span>1-Click CTF Participant Workspace Scaffolder</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Initialize an organized local project tree with dedicated exploit templates, solve scripts, writeup skeletons, and GPG signing stubs.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="space-y-1">
-                <span className="text-[11px] text-slate-400">Target Workspace Directory</span>
+                <span className="text-xs text-slate-400">Target Directory</span>
                 <input
                   value={targetDir}
                   onChange={(e) => setTargetDir(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                  placeholder="./ctf-workspace"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:border-cyan-500 outline-none"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] text-slate-400">Team / Handle Name</span>
+                <span className="text-xs text-slate-400">Team Handle</span>
                 <input
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                  placeholder="CyberTeam-1"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:border-cyan-500 outline-none"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] text-slate-400">Tournament Endpoint</span>
+                <span className="text-xs text-slate-400">Tournament Endpoint</span>
                 <input
                   value={tournamentUrl}
                   onChange={(e) => setTournamentUrl(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                  placeholder="https://ctf.vigilante.local"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:border-cyan-500 outline-none"
                 />
               </label>
             </div>
 
-            <div className="flex justify-end pt-1">
+            <div className="flex items-center gap-3 pt-2">
               <button
                 onClick={handleScaffoldWorkspace}
                 disabled={scaffoldLoading}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors disabled:opacity-50"
+                className="px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white font-bold text-xs flex items-center gap-2 transition-colors"
               >
-                <FolderPlus className="w-3.5 h-3.5" />
+                <FolderPlus className="w-4 h-4" />
                 <span>{scaffoldLoading ? 'Scaffolding Workspace…' : 'Initialize Workspace'}</span>
               </button>
             </div>
@@ -514,16 +663,121 @@ export default function CTFEventGuidePage() {
               </div>
 
               {/* Step 5 */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2">
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-4">
                 <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs uppercase">
                   <span className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center text-[10px] border border-cyan-500/40">5</span>
-                  <span>Flag Submission, Replay Recording & Merkle Seals</span>
+                  <span>Flag Submission, Cryptographic Merkle Seals & Signed Writeups</span>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed pl-7">
                   Submit your captured flag in the format <code className="text-cyan-300">VIGILANTE&#123;...&#125;</code> on the CTF Arena.
                   After solving, generate an RFC 4880 GPG-signed writeup or seal your solve evidence into the cryptographic Merkle ledger
                   for prize qualification and verifiable chain-of-custody.
                 </p>
+
+                {/* Interactive Proof Sealer & Writeup Studio Panel */}
+                <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-cyan-400" />
+                      Cryptographic Solve Sealer & Writeup Studio
+                    </span>
+                    <span className="text-[10px] text-slate-400">Merkle Proof & GPG Export</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label className="space-y-1">
+                      <span className="text-[11px] text-slate-400">Challenge ID</span>
+                      <input
+                        value={sealChalId}
+                        onChange={(e) => setSealChalId(e.target.value)}
+                        className="w-full rounded bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[11px] text-slate-400">Team Identifier</span>
+                      <input
+                        value={sealTeam}
+                        onChange={(e) => setSealTeam(e.target.value)}
+                        className="w-full rounded bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[11px] text-slate-400">Captured Flag</span>
+                      <input
+                        value={sealFlag}
+                        onChange={(e) => setSealFlag(e.target.value)}
+                        placeholder="VIGILANTE{...}"
+                        className="w-full rounded bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-400">Vulnerability Description / Exploit Methodology</span>
+                    <textarea
+                      value={sealNotes}
+                      onChange={(e) => setSealNotes(e.target.value)}
+                      rows={2}
+                      className="w-full rounded bg-slate-950 border border-slate-700 p-2 text-xs text-slate-200 font-mono"
+                    />
+                  </label>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={handleSealSolve}
+                      disabled={sealLoading || !sealFlag.trim()}
+                      className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white text-xs rounded font-semibold transition-colors flex items-center gap-1.5"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{sealLoading ? 'Sealing...' : 'Seal Solve Proof (Merkle)'}</span>
+                    </button>
+                    <button
+                      onClick={handleGenerateWriteup}
+                      disabled={writeupLoading}
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white text-xs rounded font-semibold transition-colors flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>{writeupLoading ? 'Generating...' : 'Generate Signed Writeup'}</span>
+                    </button>
+                  </div>
+
+                  {proofStudioError && (
+                    <div className="p-2.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-mono">
+                      {proofStudioError}
+                    </div>
+                  )}
+
+                  {sealResult && (
+                    <div className="p-3 rounded-lg bg-slate-950 border border-cyan-800/60 space-y-1.5 text-xs font-mono">
+                      <div className="text-cyan-300 font-bold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Solve Proof Sealed Successfully!</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Merkle Seal Digest: <code className="text-white bg-slate-900 px-1 py-0.5 rounded">{sealResult.evidence?.proofHash || sealResult.proofHash || 'SHA256:Sealed'}</code>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Artifact stored at: <code>{sealResult.evidencePath || './ctf-workspace/evidence'}</code>
+                      </div>
+                    </div>
+                  )}
+
+                  {writeupResult && (
+                    <div className="p-3 rounded-lg bg-slate-950 border border-purple-800/60 space-y-1.5 text-xs font-mono">
+                      <div className="text-purple-300 font-bold flex items-center gap-1.5">
+                        <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Markdown Writeup Generated:</span>
+                      </div>
+                      <div className="text-[11px] text-slate-300 truncate">
+                        File: <code>{writeupResult.writeupPath || 'WRITEUP.md'}</code>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Contestants can sign this file using GPG: <code>gpg --armor --detach-sign WRITEUP.md</code>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="pl-7 text-[11px] text-slate-500">
                   CLI shortcut: <code className="text-slate-300">vigilante ctf submit &lt;chal-id&gt; &lt;flag&gt;</code>
                 </div>
@@ -544,38 +798,50 @@ export default function CTFEventGuidePage() {
                   <span>CTF Solver Workbench (ctf-tools)</span>
                 </h3>
                 <p className="text-xs text-slate-400 pt-1">
-                  Execute deterministic exploit math, pattern generation, token forensics, and cipher analysis powered by Vigilante's solver engine.
+                  Execute deterministic exploit math, pattern generation, token forensics, ROP gadget hunting, and cipher analysis.
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 <button
                   onClick={() => setSolverTool('cyclic')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'cyclic' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'cyclic' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   Cyclic Buffer
                 </button>
                 <button
+                  onClick={() => setSolverTool('rop')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'rop' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  ROP Finder
+                </button>
+                <button
+                  onClick={() => setSolverTool('checksec')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'checksec' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  checksec
+                </button>
+                <button
                   onClick={() => setSolverTool('cipher')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'cipher' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'cipher' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   Cipher Auto-ID
                 </button>
                 <button
                   onClick={() => setSolverTool('jwt')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'jwt' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'jwt' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   JWT Inspector
                 </button>
                 <button
                   onClick={() => setSolverTool('rsa')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'rsa' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'rsa' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   RSA Factorizer
                 </button>
                 <button
                   onClick={() => setSolverTool('xor')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'xor' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${solverTool === 'xor' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   XOR Crib Drag
                 </button>
@@ -654,136 +920,324 @@ export default function CTFEventGuidePage() {
               </div>
             )}
 
-            {/* Tool 2: Cipher Auto-ID */}
+            {/* Tool 2: ROP Gadget Finder */}
+            {solverTool === 'rop' && (
+              <div className="space-y-4 pt-2">
+                <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                      <Binary className="w-3.5 h-3.5" />
+                      <span>x86_64 ROP Gadget Finder (findRopGadgets)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500">Scans for System V AMD64 ABI pop chains</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="text-[11px] text-slate-400 py-1">Presets:</span>
+                    <button
+                      onClick={() => setRopHex('5fc35e5ac358c30f05c3')}
+                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-[11px]"
+                    >
+                      pop rdi; pop rsi; pop rdx; syscall
+                    </button>
+                    <button
+                      onClick={() => setRopHex('5fc3c3ffe4')}
+                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-[11px]"
+                    >
+                      pop rdi; ret; jmp rsp
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-400">Binary Hex Bytes:</span>
+                      <textarea
+                        value={ropHex}
+                        onChange={(e) => setRopHex(e.target.value)}
+                        placeholder="e.g. 5fc35e5ac3..."
+                        rows={2}
+                        className="w-full rounded bg-slate-900 border border-slate-700 p-2 text-xs text-white font-mono"
+                      />
+                    </label>
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-400">Or Relative File Path inside ./ctf-workspace:</span>
+                      <input
+                        value={ropFilePath}
+                        onChange={(e) => setRopFilePath(e.target.value)}
+                        placeholder="pwn/pwn-rop-bof/vuln"
+                        className="w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={handleRunSolver}
+                    disabled={solverLoading || (!ropHex.trim() && !ropFilePath.trim())}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold transition-colors"
+                  >
+                    Scan ROP Gadgets
+                  </button>
+
+                  {ropResult && (
+                    <div className="space-y-2 pt-2">
+                      <div className="text-xs text-slate-400">
+                        Discovered Gadgets: <span className="text-white font-bold">{ropResult.totalFound}</span>
+                      </div>
+                      <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                        <table className="w-full text-xs font-mono text-left">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-500">
+                              <th className="py-1 px-2">Offset</th>
+                              <th className="py-1 px-2">Mnemonic</th>
+                              <th className="py-1 px-2">Opcodes</th>
+                              <th className="py-1 px-2">Role</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ropResult.gadgets?.map((g: any, i: number) => (
+                              <tr key={i} className="border-b border-slate-900 hover:bg-slate-900/50">
+                                <td className="py-1.5 px-2 text-amber-400">{g.offsetHex}</td>
+                                <td className="py-1.5 px-2 text-cyan-300 font-bold">{g.mnemonic}</td>
+                                <td className="py-1.5 px-2 text-slate-400"><code>{g.opcodeHex}</code></td>
+                                <td className="py-1.5 px-2 text-slate-300">{g.description}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tool 3: checksec Inspector */}
+            {solverTool === 'checksec' && (
+              <div className="space-y-4 pt-2">
+                <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>ELF Binary Security Mitigations (checksec)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500">Inspects RELRO, Stack Canary, NX, & PIE headers</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-400">ELF Header / Binary Hex:</span>
+                      <textarea
+                        value={checksecHex}
+                        onChange={(e) => setChecksecHex(e.target.value)}
+                        placeholder="7f454c46..."
+                        rows={2}
+                        className="w-full rounded bg-slate-900 border border-slate-700 p-2 text-xs text-white font-mono"
+                      />
+                    </label>
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] text-slate-400">Or Relative File Path inside ./ctf-workspace:</span>
+                      <input
+                        value={checksecFilePath}
+                        onChange={(e) => setChecksecFilePath(e.target.value)}
+                        placeholder="pwn/pwn-rop-bof/vuln"
+                        className="w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={handleRunSolver}
+                    disabled={solverLoading || (!checksecHex.trim() && !checksecFilePath.trim())}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold transition-colors"
+                  >
+                    Analyze Mitigations
+                  </button>
+
+                  {checksecResult && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono">
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <div className="text-[10px] text-slate-500">ARCH</div>
+                          <div className="font-bold text-white">{checksecResult.arch || 'x86_64'}</div>
+                        </div>
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <div className="text-[10px] text-slate-500">RELRO</div>
+                          <div className={`font-bold ${checksecResult.relro?.includes('Full') ? 'text-emerald-400' : checksecResult.relro?.includes('Partial') ? 'text-amber-400' : 'text-rose-400'}`}>
+                            {checksecResult.relro || 'None'}
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <div className="text-[10px] text-slate-500">CANARY</div>
+                          <div className={`font-bold ${checksecResult.canary ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {checksecResult.canary ? 'Found' : 'No Canary'}
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <div className="text-[10px] text-slate-500">NX STACK</div>
+                          <div className={`font-bold ${checksecResult.nx ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {checksecResult.nx ? 'Enabled' : 'Disabled'}
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <div className="text-[10px] text-slate-500">PIE</div>
+                          <div className={`font-bold ${checksecResult.pie ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {checksecResult.pie ? 'Enabled' : 'No PIE'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {checksecResult.summary && (
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
+                          <code>{checksecResult.summary}</code>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tool 4: Cipher Auto-ID */}
             {solverTool === 'cipher' && (
               <div className="space-y-4 pt-2">
-                <label className="space-y-1 block">
-                  <span className="text-[11px] text-slate-400">Ciphertext / Encoded String</span>
+                <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold text-cyan-300">Cipher & Encoding Auto-Identifier</span>
                   <textarea
                     rows={3}
                     value={cipherInput}
                     onChange={(e) => setCipherInput(e.target.value)}
-                    placeholder="Paste Base64, Hex, ROT13, or URL-encoded payload..."
-                    className="w-full rounded bg-slate-950 border border-slate-700 p-3 text-xs text-white placeholder:text-slate-600 font-mono"
+                    placeholder="Paste ciphertext, Base64, Hex, or Hash string here..."
+                    className="w-full rounded bg-slate-900 border border-slate-700 p-2.5 text-xs text-white font-mono"
                   />
-                </label>
-                <button
-                  onClick={handleRunSolver}
-                  disabled={solverLoading || !cipherInput.trim()}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold disabled:opacity-50"
-                >
-                  Analyze & Decode
-                </button>
+                  <button
+                    onClick={handleRunSolver}
+                    disabled={solverLoading || !cipherInput.trim()}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold"
+                  >
+                    Identify & Decode
+                  </button>
 
-                {cipherCandidates.length > 0 && (
-                  <div className="space-y-2 pt-2">
-                    <span className="text-xs font-bold text-slate-300">Identified Encodings & Decoded Text:</span>
-                    <div className="space-y-2">
-                      {cipherCandidates.map((c, i) => (
-                        <div key={i} className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-cyan-300">{c.type}</span>
-                            <span className="text-[10px] text-slate-500">Confidence: {c.confidence}</span>
+                  {cipherCandidates.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      <span className="text-xs text-slate-400">Classified Format Candidates:</span>
+                      <div className="space-y-2">
+                        {cipherCandidates.map((c, i) => (
+                          <div key={i} className="p-3 bg-slate-900 rounded border border-slate-800 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-cyan-300">{c.type}</span>
+                              <span className="text-[10px] text-slate-400">Confidence: {c.confidence}</span>
+                            </div>
+                            {c.decoded && (
+                              <div className="text-slate-300 bg-slate-950 p-2 rounded border border-slate-800 font-mono text-[11px] break-all">
+                                {c.decoded}
+                              </div>
+                            )}
                           </div>
-                          <div className="bg-slate-900 p-2 rounded text-xs text-emerald-300 font-mono break-all">
-                            {c.decoded || JSON.stringify(c.header || c)}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Tool 3: JWT Inspector */}
+            {/* Tool 5: JWT Inspector */}
             {solverTool === 'jwt' && (
               <div className="space-y-4 pt-2">
-                <label className="space-y-1 block">
-                  <span className="text-[11px] text-slate-400">JSON Web Token (Bearer)</span>
+                <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold text-cyan-300">JSON Web Token (JWT) Security Inspector</span>
                   <textarea
                     rows={3}
                     value={jwtToken}
                     onChange={(e) => setJwtToken(e.target.value)}
-                    placeholder="eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0..."
-                    className="w-full rounded bg-slate-950 border border-slate-700 p-3 text-xs text-white font-mono"
+                    placeholder="eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VyIjoiYWRtaW4ifQ."
+                    className="w-full rounded bg-slate-900 border border-slate-700 p-2.5 text-xs text-white font-mono"
                   />
-                </label>
-                <button
-                  onClick={handleRunSolver}
-                  disabled={solverLoading || !jwtToken.trim()}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold disabled:opacity-50"
-                >
-                  Inspect JWT Header & Claims
-                </button>
+                  <button
+                    onClick={handleRunSolver}
+                    disabled={solverLoading || !jwtToken.trim()}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold"
+                  >
+                    Inspect Token
+                  </button>
 
-                {jwtAnalysis && (
-                  <div className="space-y-3 pt-2">
-                    {jwtAnalysis.vulnerabilities?.length > 0 && (
-                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-300 space-y-1">
-                        <span className="font-bold text-red-400">Vulnerabilities Detected:</span>
-                        {jwtAnalysis.vulnerabilities.map((v: string, i: number) => (
-                          <div key={i}>• {v}</div>
-                        ))}
+                  {jwtAnalysis && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3 bg-slate-900 rounded border border-slate-800 text-xs">
+                          <span className="text-slate-400 font-bold block mb-1">Header:</span>
+                          <pre className="text-[11px] text-cyan-300 overflow-x-auto">{JSON.stringify(jwtAnalysis.header, null, 2)}</pre>
+                        </div>
+                        <div className="p-3 bg-slate-900 rounded border border-slate-800 text-xs">
+                          <span className="text-slate-400 font-bold block mb-1">Payload:</span>
+                          <pre className="text-[11px] text-emerald-300 overflow-x-auto">{JSON.stringify(jwtAnalysis.payload, null, 2)}</pre>
+                        </div>
                       </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                      <div className="p-3 bg-slate-950 rounded border border-slate-800 space-y-1">
-                        <span className="text-slate-500 font-bold">Header</span>
-                        <pre className="text-cyan-300 text-[11px] overflow-x-auto">{JSON.stringify(jwtAnalysis.header, null, 2)}</pre>
-                      </div>
-                      <div className="p-3 bg-slate-950 rounded border border-slate-800 space-y-1">
-                        <span className="text-slate-500 font-bold">Payload Claims</span>
-                        <pre className="text-emerald-300 text-[11px] overflow-x-auto">{JSON.stringify(jwtAnalysis.payload, null, 2)}</pre>
-                      </div>
+
+                      {jwtAnalysis.vulnerabilities?.length > 0 && (
+                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-xs space-y-1">
+                          <span className="font-bold text-red-400">Security Findings:</span>
+                          {jwtAnalysis.vulnerabilities.map((v: string, i: number) => (
+                            <div key={i} className="text-red-300">• {v}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Tool 4: RSA Factorizer */}
+            {/* Tool 6: RSA Weak Primes */}
             {solverTool === 'rsa' && (
               <div className="space-y-4 pt-2">
-                <label className="space-y-1 block">
-                  <span className="text-[11px] text-slate-400">RSA Modulus N (Decimal)</span>
-                  <input
-                    value={rsaModulus}
-                    onChange={(e) => setRsaModulus(e.target.value)}
-                    placeholder="Enter large composite modulus N..."
-                    className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                  />
-                </label>
-                <button
-                  onClick={handleRunSolver}
-                  disabled={solverLoading || !rsaModulus.trim()}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold disabled:opacity-50"
-                >
-                  Factorize (Trial / Fermat / Wiener)
-                </button>
+                <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold text-cyan-300">RSA Weak Factorizer (Trial, Fermat & Wiener)</span>
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] text-slate-400">Modulus n (Decimal or Hex)</span>
+                    <textarea
+                      rows={2}
+                      value={rsaModulus}
+                      onChange={(e) => setRsaModulus(e.target.value)}
+                      placeholder="e.g. 10403 (small composite demo)"
+                      className="w-full rounded bg-slate-900 border border-slate-700 p-2.5 text-xs text-white font-mono"
+                    />
+                  </label>
+                  <button
+                    onClick={handleRunSolver}
+                    disabled={solverLoading || !rsaModulus.trim()}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded font-semibold"
+                  >
+                    Attempt Factorization
+                  </button>
 
-                {rsaResult && (
-                  <div className={`p-4 rounded-lg border text-xs space-y-2 ${
-                    rsaResult.factorized ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  }`}>
-                    <div className="font-bold">
-                      {rsaResult.factorized ? `Factorization Succeeded via ${rsaResult.method}!` : 'Factorization Resisted'}
-                    </div>
-                    {rsaResult.factorized && (
-                      <div className="space-y-1 text-[11px] text-slate-300 font-mono">
-                        <div>p = <span className="text-cyan-300">{rsaResult.p}</span></div>
-                        <div>q = <span className="text-cyan-300">{rsaResult.q}</span></div>
-                        {rsaResult.d && <div>d = <span className="text-white font-bold">{rsaResult.d}</span></div>}
+                  {rsaResult && (
+                    <div className="p-3 bg-slate-900 rounded border border-slate-800 text-xs space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${rsaResult.factorized ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                        <span className="font-bold text-white">Status: {rsaResult.factorized ? 'FACTORIZED' : 'FAILED'}</span>
+                        {rsaResult.method && <span className="text-cyan-400">({rsaResult.method})</span>}
                       </div>
-                    )}
-                  </div>
-                )}
+                      {rsaResult.factorized ? (
+                        <div className="space-y-1 font-mono text-[11px] text-slate-300">
+                          <div><strong>p:</strong> {rsaResult.p}</div>
+                          <div><strong>q:</strong> {rsaResult.q}</div>
+                          <div><strong>phi:</strong> {rsaResult.phi}</div>
+                          <div><strong>d:</strong> {rsaResult.d}</div>
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 text-xs">{rsaResult.message || 'Resisted attacks.'}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Tool 5: XOR Crib Drag */}
+            {/* Tool 7: XOR Crib Dragging */}
             {solverTool === 'xor' && (
-              <div className="space-y-4 pt-2">
+              <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <span className="text-xs font-bold text-cyan-300">Reused Keystream Many-Time-Pad XOR Crib Drag</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="space-y-1 block">
                     <span className="text-[11px] text-slate-400">Ciphertext 1 (Hex)</span>

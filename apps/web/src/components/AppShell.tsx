@@ -67,6 +67,7 @@ const NAV_SECTIONS = [
       { href: '/timeline', label: 'Attack Timeline', icon: Clock },
       { href: '/sniffer', label: 'Packet Sniffer', icon: Radio },
       { href: '/graph', label: 'Attack Graph', icon: Share2 },
+      { href: '/falco', label: 'Falco eBPF Sensor', icon: ShieldCheck, badge: 'eBPF' },
       { href: '/analyst', label: 'Socratic Analyst', icon: Cpu },
     ]
   },
