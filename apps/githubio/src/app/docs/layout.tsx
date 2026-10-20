@@ -26,6 +26,11 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
       <nav className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Link href="/" className="flex items-center space-x-2">
+            <img
+              src="/vigilante/images/vigilante-badge.jpg"
+              alt="Vigilante Emblem"
+              className="w-8 h-8 rounded-full border border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)] object-cover"
+            />
             <span className="text-2xl font-black tracking-wider text-emerald-400">VIGILANTE</span>
           </Link>
           <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">Docs</span>
