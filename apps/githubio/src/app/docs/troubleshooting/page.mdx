@@ -158,8 +158,10 @@ CTF submissions return `✖ Submission Failed: Incorrect flag` even when using t
 
 ### Cause
 Dynamic per-team flags are cryptographically derived via HMAC:
-$$\text{Flag} = \text{HMAC-SHA256}(\text{Secret}, \text{TeamId} \parallel \text{ChallengeId})$$
-If the tournament server and the submission CLI use different `VIGILANTE_CTF_SECRET` environment variables, the hashes will not match.
+```text
+Flag = HMAC-SHA256(Secret, TeamId || ChallengeId)
+```
+If the tournament server and the submission CLI use different `VIGILANTE_CTF_SECRET` environment variables, the derived hashes will not match.
 
 ### Solution
 Ensure `VIGILANTE_CTF_SECRET` is set identically in both the server runtime and the operator shell:
