@@ -170,6 +170,25 @@ async function runTests() {
     console.log('✔ Test 12 passed: completed-task details render.');
   }
 
+  // Test 13: with no --mock flag at all, ctf spawn takes the REAL
+  // provisioning path (B15 follow-up, decided 2026-10-19: mock is opt-in
+  // via --mock only). Same kubectl-stub harness as Test 11; the stub
+  // exits 1, so the spawn fails the apply - what matters is that kubectl
+  // was invoked at all.
+  if (process.platform !== 'win32') {
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vigilante-stub-bin-default-'));
+    const callsLog = path.join(stubDir, 'kubectl-calls.log');
+    fs.writeFileSync(path.join(stubDir, 'kubectl'), `#!/bin/sh\necho called >> ${callsLog}\nexit 1\n`, { mode: 0o755 });
+    const stubEnv = { PATH: `${stubDir}:${process.env.PATH}`, VIGILANTE_CTF_SECRET: 'cli-contract-test-secret' };
+
+    // Unique team per run: the sandbox registry persists across
+    // processes and dedupes an ACTIVE team+challenge pair, which would
+    // otherwise short-circuit provisioning on re-runs.
+    runCli(['ctf', 'spawn', 'web-auth-bypass', '--team', `cli-default-${process.pid}`], { extraEnv: stubEnv });
+    assert(fs.existsSync(callsLog), 'bare ctf spawn (no --mock) must invoke kubectl: real mode is the default');
+    console.log('✔ Test 13 passed: bare ctf spawn defaults to real provisioning (mock is opt-in).');
+  }
+
   console.log('🎉 ALL CLI CONTRACT TESTS PASSED SUCCESSFULLY!\n');
 }
 
