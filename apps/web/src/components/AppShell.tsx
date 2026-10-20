@@ -27,12 +27,20 @@ import {
   Key,
   LogOut,
   LogIn,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { useAbilityContext } from '@/lib/ability';
 
 const NAV_SECTIONS = [
+  {
+    title: 'CTF Cyber Range',
+    items: [
+      { href: '/event', label: 'Player Field Manual', icon: BookOpen, badge: 'Guide' },
+      { href: '/ctf', label: 'kCTF Arena', icon: Flag, pulse: true },
+    ]
+  },
   {
     title: 'Phase 1: Readiness',
     items: [

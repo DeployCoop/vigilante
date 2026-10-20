@@ -1,210 +1,153 @@
-# 🏗️ Vigilante: System Design & Architectural Blueprint
+export const metadata = {
+  title: "Getting Started & Installation | Vigilante Docs",
+  description: "Comprehensive installation, bootstrap, cluster setup, and first-run guide for Vigilante.",
+};
 
-This document details the production design, subsystem boundaries, data models, and architectural patterns of **Vigilante**, a modular, terminal-native Cyber Defense, Incident Response, and Modular SOC Operations Platform built with React, Ink, and Node.js.
+# 🚀 Getting Started with Vigilante
 
----
-
-## 1. Design Principles & Goals
-
-1. **Terminal-Native Ergonomics**: Complete cyber defense, triage, threat hunting, and incident remediation accessible entirely within a high-performance terminal UI without requiring a web browser.
-2. **Modular Micro-Package Architecture**: Every security service is an isolated module extending `BaseModule`, with decoupled Helm charts and custom values overrides.
-3. **Sub-Second Active Containment (SOAR)**: When a critical threat or honeypot trip is detected, programmatic zero-trust isolation policies are enforced within milliseconds.
-4. **Legal Chain-of-Custody**: All forensic captures, triage dumps, and post-mortems are persisted in an immutable evidence vault backed by GPG detached digital signatures.
-5. **Zero-Friction Zero-Dependency Baseline**: High-throughput embedded SQL data lakes and Wasm detectors run out-of-the-box using the Node.js standard library, while gracefully scaling to official enterprise tooling (such as DuckDB) when available.
-6. **AI & LLM Interoperability**: Every asset, scan, topology map, and containment action is exposed to AI agents via the Model Context Protocol (MCP).
+Welcome to **Vigilante**. This guide walks you through bootstrapping your system, configuring prerequisites, spinning up local Kubernetes clusters (using either **k3d** or native **k3s**), launching both the Web Portal and Terminal interfaces, and joining a CTF cyber range tournament.
 
 ---
 
-## 2. Global System Architecture
+## 1. Automated System Bootstrapper (Recommended for Debian/Ubuntu)
 
-```mermaid
-graph TB
-    subgraph UI["Presentation Layer (React 18 + Ink 4)"]
-        CLI["CLI Command Router (bin/vigilante.js)"]
-        APP["Terminal Controller (App.js)"]
-        HUB["NavHub ([Tab])"]
-        VIEWS["19 Terminal Subviews (BattleStation, Pods, Forensics, Lineage, etc.)"]
-        PALETTE["Command Palette ([:] Hotkey)"]
-    end
+Vigilante includes a self-contained Debian/Ubuntu host provisioning script located at the repository root ([`bootstrap.sh`](https://github.com/DeployCoop/vigilante/blob/main/bootstrap.sh)). It automatically installs and configures:
 
-    subgraph MCP_SERVER["Model Context Protocol (MCP) Server"]
-        MCP_CORE["MCP Server Core (stdio)"]
-        TOOLS["66 Callable Tools"]
-        RESOURCES["16 Static Resources & 5 Templates"]
-    end
+- **Node.js 22.x LTS & pnpm**
+- **Docker Engine & Containerd**
+- **k3d** (v5.7+) and **K3s** (v1.31+)
+- **kubectl**, **Helm 3**, and **mkcert** (with local CA root installation)
+- **Kernel sysctls**: `vm.max_map_count=262144` (required for OpenSearch/Elasticsearch) and inotify watchers
+- **Ollama AI Runtime** (optional local LLM provider for the AI Analyst)
 
-    subgraph ENGINE["Security & Orchestration Engines (32 Engines)"]
-        direction TB
-        SOAR_ENG["SOAR Containment (soar.js)"]
-        AGENT_SOC["Autonomous Agentic SOC (agent-soc.js)"]
-        DECEPTION["Deception Mesh & Honeytokens (deception.js)"]
-        SIGMA["SIGMA-to-SQL Transpiler (sigma.js)"]
-        ADVERSARY["Dynamic Red Team Agent (adversary.js)"]
-        MEMDUMP["In-Memory Forensics (memdump.js)"]
-        SUPPLYCHAIN["Supply Chain & SBOM (supplychain.js)"]
-        OBSERVABILITY["eBPF Ring Buffer & Matrix (observability.js)"]
-        FEDERATION["Defense Federation Mesh (federation.js)"]
-        CANVAS["Braille Canvas & Heatmaps (canvas.js)"]
-        PURPLE["Purple Team Arena (purpleteam.js)"]
-        REMEDIATION["Auto-Remediator (remediation.js)"]
-        FORENSICS["PCAP Forensics (forensics.js)"]
-        LINEAGE["Process Lineage Tree (lineage.js)"]
-        CLOUDSEC["Multi-Cloud CSPM (cloudsec.js)"]
-        DATALAKE["Security Data Lake (datalake.js)"]
-        WASM_ENG["WebAssembly Engine (wasm.js)"]
-        SCANNERS["Scanners (recon, nuclei, trivy, zap, netexec, oobscan)"]
-        GPG_VAULT["Evidence Vault & GPG (evidence.js, gpg.js)"]
-    end
+```bash
+# Clone the repository
+git clone https://github.com/DeployCoop/vigilante.git
+cd vigilante
 
-    subgraph MODULES["Modular Security Stack (12 Packages)"]
-        VIGIL_SOC["Vigil AI-Native SOC"]
-        OPEN_SEARCH["OpenSearch SIEM & Flamingo"]
-        WAZUH["Wazuh XDR/SIEM"]
-        FALCO["Falco eBPF"]
-        SURICATA["Suricata IDS/IPS"]
-        ZEEK["Zeek Network Metadata"]
-        BLOODHOUND["BloodHound CE + Neo4j"]
-        KCTF["Google kCTF"]
-        OPENVAS["Greenbone OpenVAS"]
-    end
-
-    subgraph INFRA["Host & Cluster Runtime"]
-        K3D["k3d Lightweight Kubernetes"]
-        DOCKER["Docker Engine"]
-        ETC_HOSTS["/etc/hosts (hostr)"]
-        STORAGE["$XDG_CONFIG_HOME/vigilante/"]
-    end
-
-    CLI --> APP
-    CLI --> MCP_CORE
-    APP --> HUB
-    HUB --> VIEWS
-    VIEWS --> PALETTE
-    APP --> ENGINE
-    MCP_CORE --> TOOLS
-    MCP_CORE --> RESOURCES
-    TOOLS --> ENGINE
-    RESOURCES --> ENGINE
-    ENGINE --> MODULES
-    MODULES --> K3D
-    ENGINE --> INFRA
+# Make bootstrapper executable and run with sudo
+chmod +x bootstrap.sh
+sudo ./bootstrap.sh
 ```
 
 ---
 
-## 3. Data Flow & Execution Pipelines
+## 2. Manual Prerequisites & Environment Verification
 
-### A. Autonomous Incident Response & Active Containment
+If you prefer to install dependencies manually on macOS or other Linux distributions, verify the following packages:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Sensor as Detection Sensor (Falco/Suricata/Canary)
-    participant SOC as Autonomous ReAct SOC (agent-soc.js)
-    participant SOAR as SOAR Engine (soar.js)
-    participant K8s as Kubernetes API
-    participant Vault as Evidence Vault (evidence.js)
-    participant GPG as GPG Non-Repudiation (gpg.js)
+| Tool | Minimum Version | Purpose | Installation Guide |
+| :--- | :--- | :--- | :--- |
+| **Node.js** | `>= 22.5.0` | Runtime Engine | [nodejs.org](https://nodejs.org/) or via `fnm` / `nvm` |
+| **pnpm** | `>= 9.0.0` | Monorepo Package Manager | `corepack enable pnpm` or `npm install -g pnpm` |
+| **Docker** | `>= 24.0.0` | Containerization Runtime | [docs.docker.com/engine](https://docs.docker.com/engine/install/) |
+| **k3d** | `>= 5.5.0` | Lightweight K3s in Docker | `curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh \| bash` |
+| **kubectl** | `>= 1.28.0` | Kubernetes CLI | `curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"` |
+| **Helm** | `>= 3.12.0` | Kubernetes Package Manager | `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \| bash` |
+| **mkcert** | `>= 1.4.0` | Local Trusted TLS Certificates | `apt install libnss3-tools && curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64"` |
 
-    Sensor->>SOC: Security Anomaly / Trip Alert Dispatched
-    Note over SOC: Analyze pod telemetry, open ports, process tree
-    SOC->>SOC: Classify Verdict: [CRITICAL] (CAT-3 Malicious Code)
-    SOC->>SOAR: Trigger Emergency Containment (isolatePod)
-    SOAR->>K8s: Apply Zero-Trust Deny-All NetworkPolicy
-    SOAR->>SOAR: Freeze Pod Processes (SIGSTOP / cgroup)
-    SOAR-->>SOC: Containment Active (cont-179049-rak16)
-    SOC->>Vault: Save NIST SP 800-61 Incident Manifest
-    Vault->>GPG: Compute Detached Cryptographic Signature (.asc)
-    GPG-->>Vault: Signed Incident Record Sealed
-    SOC-->>Sensor: Incident Fully Contained & Documented
+Install repository workspace packages:
+```bash
+pnpm install
+pnpm link --global
+```
+
+Verify your environment status at any time:
+```bash
+vigilante status
 ```
 
 ---
 
-### B. High-Throughput Security Data Lake Pipeline
+## 3. Cluster Providers: k3d vs. Host K3s
 
-```mermaid
-flowchart LR
-    subgraph Sources["Telemetry Ingestion"]
-        FALCO["Falco Alerts"]
-        ZEEK["Zeek Logs"]
-        SURICATA["Suricata EVE"]
-        AUDIT["K8s Audit"]
-        CANARY["Canary Trips"]
-    end
+Vigilante supports two Kubernetes cluster providers:
 
-    subgraph LakeEngine["Security Data Lake Engine (datalake.js)"]
-        NORMALIZER["Event Normalizer & ID Generator"]
-        ADAPTER{"Backend Adapter"}
-        SQLITE["node:sqlite (DatabaseSync)<br/>[Default / Free First]"]
-        DUCKDB["DuckDB Driver<br/>[Official Supported]"]
-        TABLE["Table: security_events<br/>(id, event_type, src_ip, dst_ip, severity, mitre, ts)"]
-    end
+### A. k3d (Default — Lightweight Docker Container)
+Ideal for standard workstations and macOS laptops where Docker Desktop is running:
+```bash
+# Provision default k3d cluster with kctf and vigil-soc
+vigilante up -m kctf,vigil-soc
+```
 
-    subgraph Consumers["Analytics & Threat Hunting"]
-        CLI_Q["CLI Query (vigilante query)"]
-        MCP_Q["MCP query_security_datalake"]
-        HUNT["Retrospective Threat Hunter (CTI Sync)"]
-    end
+### B. K3s (Native Host Systemd Service)
+Ideal for dedicated Linux hosts, lab servers, or bare-metal hypervisors where native kernel access is preferred:
+```bash
+# Provision directly into local K3s
+vigilante up --k3s -m kctf,vigil-soc
 
-    Sources --> NORMALIZER
-    NORMALIZER --> ADAPTER
-    ADAPTER -->|Default| SQLITE
-    ADAPTER -->|If Installed/Configured| DUCKDB
-    SQLITE --> TABLE
-    DUCKDB --> TABLE
-    TABLE --> CLI_Q
-    TABLE --> MCP_Q
-    TABLE --> HUNT
+# Or via explicit provider flag
+vigilante up --provider k3s
+```
+*Note: When using K3s, ensure your user has read access to `/etc/rancher/k3s/k3s.yaml` (the bootstrapper configures permissions automatically).*
+
+---
+
+## 4. Local TLS & Domain Resolution (`hostr`)
+
+Vigilante maps all ingress endpoints under `*.vigilante.local` (e.g. `ctf.vigilante.local`, `siem.vigilante.local`, `vigil.vigilante.local`) to local cluster ingress ports (`80` / `443`).
+
+```bash
+# Synchronize local domain mappings into /etc/hosts
+vigilante hostr
+
+# Check resolution status without modifying
+vigilante hostr --check
+
+# Remove managed entries when tearing down
+vigilante hostr --remove
 ```
 
 ---
 
-### C. Autonomous Purple Team Simulation Pipeline
+## 5. Launching Vigilante: Dual Interface Parity
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Arena as Purple Team Arena (purpleteam.js)
-    participant Red as Red Adversary Agent
-    participant Blue as Blue ReAct SOC Agent
-    participant Scorecard as Scorecard Evaluator
+Vigilante provides two frontends sharing the same 32 security engines and cluster state:
 
-    Arena->>Red: Launch Scenario (e.g. Lateral SMB & Privilege Escalation)
-    Red->>Red: Step 1: Reconnaissance (T1046)
-    Arena->>Blue: Ingest Telemetry
-    Blue-->>Arena: Step 1 Detection Logged (Time: +4s)
-    Red->>Red: Step 2: Credential Access (T1552)
-    Arena->>Blue: Ingest Telemetry
-    Blue-->>Arena: Step 2 Detection Logged
-    Red->>Red: Step 3: Lateral Movement Attempt (T1021.002)
-    Blue->>Blue: Detect Anomalous Lateral Link
-    Blue->>Arena: Trigger SOAR Active Isolation
-    Arena->>Red: Adversary Execution Blocked at Step 3
-    Arena->>Scorecard: Calculate MTTD (4s) & MTTR (24s)
-    Scorecard-->>Arena: Final Score: 98/100 (Grade: A+)
-    Arena->>Arena: Render Signed Post-Mortem Report
+### Option 1: Next.js Web Operations Portal (`apps/web`)
+Launch the rich browser portal at [http://localhost:3000](http://localhost:3000):
+```bash
+pnpm dev:web
 ```
+Features 25+ integrated operations views:
+- **CTF Player Field Manual & Live Arena** (`/event`, `/ctf`)
+- **NastyMap Network Recon & Topology** (`/nastymap`)
+- **BattleStation Live SOC (eBPF & IDS)** (`/battlestation`)
+- **PCAP Stream Forensics & Live Sniffer** (`/forensics`, `/sniffer`)
+- **Kernel Process Lineage Tree** (`/lineage`)
+- **Access Control & Audit Log** (`/settings/access`)
+
+### Option 2: React Ink Terminal TUI (`apps/ink`)
+Launch the high-performance terminal console:
+```bash
+pnpm cli
+# or directly
+vigilante
+```
+Use `[Tab]` to open the **Operations NavHub** and `[:]` or `[/]` to open the global **Command Palette**.
 
 ---
 
-## 4. Key Subsystem Specifications
+## 6. Initializing Security & Access Control (CASL RBAC)
 
-### 1. Storage & State Architecture
-Vigilante adopts the standard XDG Base Directory specification:
-- **`$XDG_CONFIG_HOME/vigilante/config.yaml`**: Configuration preferences, default domain, theme.
-- **`$XDG_CONFIG_HOME/vigilante/evidence/`**: Multi-tenant evidence tree partitioned by network CIDR and host IP.
-- **`$XDG_CONFIG_HOME/vigilante/datalake/`**: Persistent embedded database (`events.db` or `events.duckdb`).
-- **`$XDG_CONFIG_HOME/vigilante/canary/`**: Catalog of active canary honeytokens and decoy pods.
-- **`$XDG_CONFIG_HOME/vigilante/carved/`**: Extracted files and reconstructed stream payloads.
+Vigilante enforces a fail-closed authorization engine backed by **CASL**. When first installed, it operates in bootstrap loopback mode. Lock down all API routes and provision your initial Owner credentials:
 
-### 2. Multi-Cluster Isolation & Instance Tracking
-Multiple k3d cluster instances can coexist without port or state collisions:
-- Every instance records its metadata in [`src/engine/instances.js`](file:///mnt/unreal/git/DeployCoop/vigilante/src/engine/instances.js).
-- Cluster state, certificates, and DNS entries are tagged with the specific cluster name (default: `vigilante-dev`).
+```bash
+# Initialize via CLI (generates owner token)
+vigilante authz init --name "Admin Owner"
 
-### 3. Model Context Protocol Specification
-The MCP server in `src/mcp/server.js` exposes:
-- **54 Tools**: Spanning cluster management, vulnerability scanning, active containment, data lake querying, and posture auditing.
-- **16 Static Resources**: Directly addressing cluster configurations, pod tables, evidence vaults, and NastyMap graphs via `vigilante://` URIs.
-- **5 Parameterized Resource Templates**: For on-demand host profiles and evidence file inspection.
+# Or configure a password (>= 12 characters)
+vigilante authz init --name "Admin Owner" --password "super-secret-password-123"
+```
+Or open [http://localhost:3000/settings/access](http://localhost:3000/settings/access) in the Web Portal to initialize and manage principals, roles, scoped grants, and live audit logs.
+
+---
+
+## 7. Starting the CTF Cyber Range
+
+Ready to compete?
+
+1. Open the **CTF Player Field Manual** at [http://localhost:3000/event](http://localhost:3000/event) or launch via CLI (`vigilante ctf`).
+2. Click **Initialize Workspace** to generate `./ctf-workspace/` containing categorized challenge templates (`web/`, `pwn/`, `crypto/`, `rev/`, `forensics/`) with starter Python exploit scripts.
+3. Open the **CTF Arena** at [http://localhost:3000/ctf](http://localhost:3000/ctf) to spawn ephemeral `nsjail` challenge pods.
+4. Use the **Solver Workbench** (`/event`) and **Socratic AI Mentor** (`/ctf`) to analyze, exploit, and submit flags!

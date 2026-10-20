@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Flag,
   Play,
@@ -14,7 +15,8 @@ import {
   Check,
   CheckCircle2,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  BookOpen
 } from 'lucide-react';
 
 export default function CTFArenaPage() {
@@ -141,10 +143,19 @@ export default function CTFArenaPage() {
           </div>
         </div>
 
-        {/* Active Sandboxes Badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono">
-          <Clock className="w-4 h-4 text-cyan-400" />
-          <span>Active Sandboxes: <strong className="text-white">{sandboxes.length}/3</strong></span>
+        {/* Actions & Active Sandboxes Badge */}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/event"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 text-xs font-mono transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Player Guide & Tools</span>
+          </Link>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono">
+            <Clock className="w-4 h-4 text-cyan-400" />
+            <span>Active Sandboxes: <strong className="text-white">{sandboxes.length}/3</strong></span>
+          </div>
         </div>
       </div>
 

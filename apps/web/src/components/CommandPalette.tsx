@@ -22,10 +22,14 @@ import {
   Cloud,
   FileCheck2,
   X,
-  Key
+  Key,
+  BookOpen
 } from 'lucide-react';
 
 export const COMMAND_ITEMS = [
+  // CTF Cyber Range
+  { href: '/event', label: 'CTF Player Field Manual & Solver Workbench', section: 'CTF Cyber Range Platform', icon: BookOpen, key: 'e' },
+
   // Settings & Access
   { href: '/settings/access', label: 'Access Control & Security Audit (CASL RBAC)', section: 'Settings & Administration', icon: Key, key: 'a' },
 

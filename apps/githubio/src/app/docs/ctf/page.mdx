@@ -1,0 +1,120 @@
+export const metadata = {
+  title: "CTF Cyber Range & Tournament Guide | Vigilante Docs",
+  description: "Complete guide to the Vigilante CTF cyber range: Jeopardy/Attack-Defense modes, Socratic AI Mentor, Solver Workbench, and Merkle Evidence sealing.",
+};
+
+# 🚩 CTF Cyber Range & Tournament Platform
+
+**Vigilante** features an integrated, production-grade **Cyber Range & CTF Tournament Platform** built directly into the Kubernetes orchestration mesh. Whether running automated Jeopardy challenges, live Attack-Defense wargames, or King of the Hill (KotH) matches, Vigilante provides ephemeral container sandboxing, deterministic exploit solvers, a 3-tier Socratic AI Mentor, and cryptographic evidence sealing.
+
+---
+
+## 1. Supported Competition Modes
+
+Vigilante's tournament engine (`packages/vigilante_lib/src/engine/tournament.js`) supports three primary gameplay models:
+
+### A. Jeopardy Mode (Standard Flag Capture)
+- **Challenge Categories**: `web`, `pwn` (nsjail), `crypto`, `rev`, `forensics`, and `misc`.
+- **Dynamic Decay Scoring**: Challenges start at **500 points** and logarithmically decay down to **100 points** as more teams solve them ($decaySolves = 30$).
+- **First Blood Bonuses**:
+  - 🩸 **1st Blood**: +10% score multiplier
+  - 🥈 **2nd Blood**: +5% score multiplier
+  - 🥉 **3rd Blood**: +2% score multiplier
+- **HMAC Dynamic Anti-Cheat Flags**: Every flag is cryptographically derived per-team using HMAC-SHA256 (`VIGILANTE{chalId_teamId_digest}`) so flags cannot be shared or stolen between teams.
+
+### B. Attack-Defense Mode (AD)
+- **120-Second Tick Cycle**: Autonomous tick runner (`ad-runner.js`) executing:
+  1. `TICK_PREPARE` ➔ 2. `FLAG_INJECT` ➔ 3. `SLA_CHECK` ➔ 4. `POINT_CALCULATION`.
+- **Defense SLA**: Services that maintain uptime and pass health checks earn **+100 defense points** per tick.
+- **Attack Captures**: Exploiting vulnerabilities in opposing team services yields **+150 attack points** per capture.
+- **SLA Penalties**: Failing integrity or latency checks triggers SLA penalties: `FAULTY` (-25 pts) or `DOWN` (-50 pts).
+
+### C. King of the Hill (KotH)
+Contestants battle to compromise, patch, and maintain persistence over a shared target service or Kubernetes pod. Hill ownership is verified periodically, awarding tick points to the controlling team.
+
+---
+
+## 2. Ephemeral Pod Sandboxing (`nsjail`)
+
+In traditional CTF environments, challenges frequently crash or get modified by other contestants. Vigilante solves this with **Google kCTF Ephemeral Sandboxes**:
+
+- **Per-Team Isolation**: Contestants click **Spawn Sandbox** (in the Web UI at `/ctf` or CLI via `vigilante ctf`). Vigilante provisions a dedicated Kubernetes container in namespace `ctf-sandboxes`.
+- **Binary Hardening via `nsjail`**: Pwn and binary challenges run inside non-root network namespaces with seccomp-bpf filters, cgroup memory limits, and read-only root filesystems.
+- **Automatic Traefik Ingress**: Ingress routes are provisioned on-demand, assigning contestants direct hostnames (`pwn-echo-<team>.ctf.vigilante.local`) or dedicated TCP ports.
+- **Configurable TTL**: Sandboxes carry a default 30-minute lifecycle and are automatically reaped upon expiration to conserve cluster memory.
+
+---
+
+## 3. Socratic AI Mentor & Crash Analyzer
+
+Vigilante integrates an autonomous **Socratic AI Mentor** (`packages/vigilante_lib/src/engine/llm.js`) designed specifically for educational competitions.
+
+### The 3-Tier Guidance System
+Contestants choose the level of help they need, ensuring they learn the concept without having the flag spoiled:
+- **Tier 1 — Conceptual Nudge**: Points the contestant toward the theoretical vulnerability category without mentioning specific tools or payload formats.
+- **Tier 2 — Structural Guidance**: Suggests input boundaries, data structures to inspect (e.g., HTTP headers, return addresses, padding blocks), or recommended tools.
+- **Tier 3 — Technical Mechanics**: Explains the exact mathematical or mechanical vulnerability (e.g., offset distance, signature bypass flaw) while strictly withholding the actual flag string.
+
+### Crash Context Analyzer
+When binary payloads trigger segfaults or container exceptions, contestants can paste their raw GDB output, register dump (`$rip`, `$rsp`, `$rbp`), or `dmesg` backtrace. The analyzer diagnoses the exact crash mechanism (e.g. invalid pointer dereference, misaligned stack return, non-executable stack execution attempt).
+
+---
+
+## 4. Built-in CTF Solver Workbench (`ctf-tools`)
+
+Vigilante bundles an offline, zero-dependency CTF solver library exposed via CLI and interactive Web UI (`/event`):
+
+### 1. De Bruijn Cyclic Buffer Generator & Offset Calculator
+- Generate 4-byte De Bruijn permutations (`generateDeBruijnPattern`) to probe buffer boundaries.
+- Calculate exact EIP/RIP crash offsets from hex addresses (e.g. `0x61413961`) or string needles (`findDeBruijnOffset`).
+
+### 2. ELF Binary Mitigation Checker (`checksec`)
+Inspects ELF binary headers for modern Linux exploit mitigations:
+- **Stack Canaries**: Identifies `__stack_chk_fail` presence.
+- **NX (No-Execute)**: Checks `PT_GNU_STACK` executable permissions.
+- **PIE (Position Independent Executable)**: Identifies `ET_DYN` vs `ET_EXEC`.
+- **RELRO**: Differentiates `No RELRO`, `Partial RELRO`, and `Full RELRO` (`BIND_NOW`).
+
+### 3. Cipher Auto-Identification & JWT Inspector
+- Auto-detects Base64, Hex, URL-encoding, MD5/SHA-256 hashes, and ROT13/Caesar ciphers.
+- Decodes JSON Web Tokens (JWT) and automatically flags critical configuration vulnerabilities such as `alg: none` or weak HMAC signatures.
+
+### 4. RSA Weak Prime Factorizer
+Comprehensive algorithmic factorization engine:
+- **Trial Division**: Instant factorization for small primes ($p < 100,000$).
+- **Fermat Factorization**: Factorizes moduli with closely spaced primes ($|p - q| < 2^{32}$).
+- **Wiener's Continued Fraction Attack**: Recovers small private exponents ($d < \frac{1}{3} N^{0.25}$).
+
+### 5. XOR Keystream Crib Dragger
+Tests Many-Time-Pad keystream reuse by dragging known plaintext cribs (e.g. `VIGILANTE{`) across two ciphertexts ($C_1 \oplus C_2 = P_1 \oplus P_2$), isolating readable ASCII plaintext candidates.
+
+---
+
+## 5. Participant Workspace & Merkle Evidence Sealer
+
+Vigilante provides structured workspace scaffolding and cryptographic verification for competition organizers:
+
+### 1. 1-Click Workspace Scaffolding (`initCtfWorkspace`)
+```bash
+# Scaffold local participant workspace
+vigilante ctf init --dir ./ctf-workspace
+```
+Generates a structured workspace:
+```
+ctf-workspace/
+├── web/
+│   └── web-auth-bypass/ (README.md, exploit.py)
+├── pwn/
+│   └── pwn-rop-bof/     (README.md, solve.py with pwntools boilerplate)
+├── crypto/
+│   └── crypto-oracle/   (README.md, solve.py socket template)
+├── rev/
+├── forensics/
+└── writeups/
+```
+
+### 2. Asciinema Replay Recording (`recordSolveSession`)
+Automatically records solve executions into Asciinema v2 terminal cast format (`.cast`) for automated playback and solution review.
+
+### 3. Merkle Ledger Sealing & RFC 4880 GPG Writeups (`sealSolveEvidence`)
+When a contestant captures a flag, Vigilante can seal the solve script, writeup markdown, and terminal cast into an immutable **SHA-256 Merkle Evidence Ledger** (`~/.vigilante/ledger`) and attach a detached GPG signature (`.asc`), generating court-admissible, tamper-evident proof of solve.

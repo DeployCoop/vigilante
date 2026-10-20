@@ -1,67 +1,197 @@
-# Troubleshooting & FAQs
+# 🩺 Troubleshooting & Diagnostics Guide
 
-This guide covers common issues you might encounter when provisioning or running the Vigilante platform locally.
-
-## Local DNS Resolution Fails (`Name or service not known`)
-
-**Symptom**: You see errors in the TUI or logs like:
-`Bifrost unreachable: [Errno -2] Name or service not known`
-Or you receive a `404 page not found` when accessing `http://vigil.vigilante.local`.
-
-**Cause**: The local workstation's DNS is not routing `*.vigilante.local` to the k3d cluster ingress.
-
-**Solution**:
-Add the required hosts to your `/etc/hosts` file mapping to `127.0.0.1`.
-```bash
-sudo nano /etc/hosts
-```
-Add the following line:
-```
-127.0.0.1 vigil.vigilante.local opensearch.vigilante.local openvas.vigilante.local wazuh.vigilante.local bloodhound.vigilante.local
-```
-*Note: A future CLI update (`vigilante hosts sync`) will automate this.*
+This operational guide covers common issues encountered when provisioning, operating, or developing on the Vigilante platform across Kubernetes runtimes (`k3d` and native `k3s`), the Web Operations Portal, and the CTF Cyber Range.
 
 ---
 
-## Port Conflicts (80, 443)
+## 1. Quick Diagnostics: `vigilante doctor`
 
-**Symptom**: `vigilante start` or `vigilante up` fails during the cluster creation phase with a message indicating that `0.0.0.0:80` or `0.0.0.0:443` is already in use.
-
-**Cause**: Another local service (like Apache, Nginx, or another local Kubernetes cluster) is already bound to the standard web ports that Traefik requires.
-
-**Solution**:
-Find out what is using the port:
+Before manual debugging, run the automated diagnostic doctor to evaluate local prerequisites:
 ```bash
+vigilante doctor
+```
+This inspects Docker/Containerd socket availability, `k3d` and `k3s` binaries, `kubectl` connectivity, `helm` version, `mkcert` CA root trust, and host eBPF/BTF kernel support.
+
+---
+
+## 2. Local DNS Resolution Fails (`Name or service not known`)
+
+### Symptom
+Browser shows `ERR_NAME_NOT_RESOLVED` or TUI/CLI displays:
+```text
+Bifrost unreachable: [Errno -2] Name or service not known
+404 page not found when accessing https://vigil.vigilante.local
+```
+
+### Cause
+Your workstation's `/etc/hosts` file does not contain domain mappings routing `*.vigilante.local` to `127.0.0.1` (or your target cluster IP).
+
+### Solution
+Use the built-in host manager `vigilante hostr`:
+```bash
+# Verify current DNS status across all module endpoints
+vigilante hostr --check
+
+# Synchronize all active module domains into /etc/hosts (prompts for sudo if needed)
+vigilante hostr
+```
+If updating manually:
+```bash
+sudo tee -a /etc/hosts << 'EOF'
+127.0.0.1 vigilante.local vigil.vigilante.local ctf.vigilante.local opensearch.vigilante.local openvas.vigilante.local wazuh.vigilante.local bloodhound.vigilante.local falco.vigilante.local
+EOF
+```
+
+---
+
+## 3. Native K3s Permissions & Kubeconfig Access
+
+### Symptom
+When deploying with `--provider k3s` or `--k3s`:
+```text
+Error: EACCES: permission denied, open '/etc/rancher/k3s/k3s.yaml'
+```
+
+### Cause
+By default, K3s writes its cluster kubeconfig to `/etc/rancher/k3s/k3s.yaml` with file permissions `0600` owned by `root:root`. Standard non-root users cannot read this file.
+
+### Solution
+Export a user-accessible kubeconfig or adjust permissions:
+```bash
+# Option A: Copy to user ~/.kube/config and fix ownership (Recommended)
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER:$USER ~/.kube/config
+export KUBECONFIG=~/.kube/config
+
+# Option B: Allow read access to k3s group
+sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+```
+
+---
+
+## 4. Web App Cache & EACCES Permissions (`.next` Directory)
+
+### Symptom
+Running `pnpm --filter @vigilante/web dev` fails with:
+```text
+Error: EACCES: permission denied, unlink 'apps/web/.next/types/package.json'
+```
+
+### Cause
+The Next.js build cache in `apps/web/.next/` was created by a previous command executed under `sudo` or as `root`, causing regular user processes to be denied write access.
+
+### Solution
+Reclaim ownership of the repository workspace or purge the cache:
+```bash
+# Reclaim workspace file ownership
+sudo chown -R $USER:$USER /root/vigilante
+
+# Or remove the stale .next cache directory
+rm -rf apps/web/.next
+rm -rf apps/githubio/.next
+```
+
+---
+
+## 5. Port Conflicts (`80` or `443` Already in Use)
+
+### Symptom
+Cluster provisioning halts during Traefik / Ingress creation:
+```text
+Failed to start k3d cluster: port 0.0.0.0:80 is already in use
+```
+
+### Cause
+Another local web server (such as Apache, Nginx, Docker desktop proxies, or a previous k3d instance) is already bound to port 80 or 443.
+
+### Solution
+Identify and terminate the conflicting process:
+```bash
+# Find process holding port 80 or 443
 sudo lsof -i :80
 sudo lsof -i :443
-```
-Stop the conflicting service, or stop any existing local clusters, then run:
-```bash
-pnpm cli
-# Then select 'Destroy Cluster' and start over.
+
+# Stop conflicting system services if applicable
+sudo systemctl stop nginx
+sudo systemctl stop apache2
+
+# Tear down any orphaned k3d cluster instances
+vigilante instances
+vigilante down
 ```
 
 ---
 
-## Helm Timeout / OpenVAS PVC Hanging
+## 6. Token Loss & RBAC Account Recovery
 
-**Symptom**: You get an error like:
+### Symptom
+You forgot the owner password, lost the admin bearer token, or receive `403 Forbidden: Insufficient role permissions` in the Web Portal or CLI.
+
+### Cause
+The local authorization store (`~/.config/vigilante/authz.json`) enforces strict PBKDF2 credential verification.
+
+### Solution
+Use `vigilante authz rotate` to re-issue credentials directly from the host console:
+```bash
+# List registered principals to find your ID
+vigilante authz list
+
+# Rotate password for your principal
+vigilante authz rotate <principal-id> --password "NewSecurePassphrase!2026"
+
+# Or generate a new replacement API bearer token
+vigilante authz rotate <principal-id>
 ```
+If you need to reset the authorization store completely:
+```bash
+rm -f ~/.config/vigilante/authz.json
+vigilante authz init --name "Admin Operator"
+```
+
+---
+
+## 7. CTF Flag Verification & Secret Synchronization
+
+### Symptom
+CTF submissions return `✖ Submission Failed: Incorrect flag` even when using the flag retrieved from a dynamic challenge sandbox.
+
+### Cause
+Dynamic per-team flags are cryptographically derived via HMAC:
+$$\text{Flag} = \text{HMAC-SHA256}(\text{Secret}, \text{TeamId} \parallel \text{ChallengeId})$$
+If the tournament server and the submission CLI use different `VIGILANTE_CTF_SECRET` environment variables, the hashes will not match.
+
+### Solution
+Ensure `VIGILANTE_CTF_SECRET` is set identically in both the server runtime and the operator shell:
+```bash
+export VIGILANTE_CTF_SECRET="my-secure-ctf-tournament-secret-key-2026"
+```
+To clear orphaned or hung sandbox pods:
+```bash
+vigilante ctf reap
+```
+
+---
+
+## 8. Helm Timeout & Persistent Volume Claim (PVC) Binding
+
+### Symptom
+```text
 Command failed: helm upgrade --install openvas ...
-Error: failed post-install: 1 error occurred:
-* timed out waiting for the condition
+Error: failed post-install: timed out waiting for the condition
 ```
 
-**Cause**: This usually happens when the Persistent Volume Claim (PVC) for a module like OpenVAS or OpenSearch fails to bind due to storage class issues, or the pod takes too long to pull large container images (OpenVAS can take a long time on slower connections).
+### Cause
+Large enterprise container images (such as OpenVAS Greenbone feed sync or OpenSearch) can take longer to pull on slower internet links, or the storage class fails to bind the PVC immediately.
 
-**Solution**:
-1. Check the pod status inside the cluster:
+### Solution
+1. Inspect the pods and PVCs in the target namespace:
    ```bash
-   kubectl get pods -n default
-   kubectl describe pod <openvas-pod-name>
+   kubectl get pods,pvc -n default
+   kubectl describe pod <pod-name>
    ```
-2. Check PVC status:
+2. Check container image pull events in `Events`:
    ```bash
-   kubectl get pvc -n default
+   kubectl get events --sort-by='.metadata.creationTimestamp'
    ```
-3. If it's just a slow image pull, simply re-run `vigilante up` or select the module in the TUI to re-trigger the deployment. Helm is idempotent and will resume where it left off.
+3. Re-run `vigilante up -m <module>`. Helm upgrades are idempotent and will resume once the container images finish downloading.

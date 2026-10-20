@@ -6,6 +6,8 @@ import { Search } from "../components/Search";
 const navigation = [
   { name: "Introduction", href: "/docs" },
   { name: "Getting Started", href: "/docs/getting-started" },
+  { name: "CTF Cyber Range", href: "/docs/ctf" },
+  { name: "Web Portal & Authz", href: "/docs/web-authz" },
   { name: "Architecture", href: "/docs/architecture" },
   { name: "CLI Reference", href: "/docs/cli" },
   { name: "Modules Catalog", href: "/docs/modules" },

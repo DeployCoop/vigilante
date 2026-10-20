@@ -15,10 +15,14 @@ vigilante [command] [subcommand/target] [options]
 | Flag | Short | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `--domain` | `-d` | string | `vigilante.local` | Base local domain for TLS certificates and `/etc/hosts` mappings. |
-| `--cluster-name` | `-c` | string | `vigilante-dev` | Target k3d cluster instance name. |
+| `--cluster-name` | `-c` | string | `vigilante-dev` | Target cluster instance name (alias: `-i`, `--instance`). |
+| `--provider` | `-P` | string | `k3d` | Cluster engine provider: `k3d` (Docker-in-Docker) or `k3s` (native host systemd). |
+| `--k3s` | | boolean | `false` | Shorthand convenience flag to target bare-metal/VM K3s instead of K3d. |
+| `--namespace` | `-n` | string | `default` | Target Kubernetes namespace for module deployments or sandboxes. |
 | `--module` | `-m` | string | `vigil-soc` | Comma-separated list of modules to install (e.g. `wazuh,falco,zeek`). |
 | `--values` | `-f` | string | `""` | Path to custom Helm values YAML override file. |
 | `--values-dir` | | string | `./values` | Directory containing custom module values overrides. |
+| `--mock` | | boolean | `false` | Use simulation/mock drivers in air-gapped test or benchmark mode. |
 | `--ip` | | string | `127.0.0.1` | Target IP address for `/etc/hosts` domain mappings. |
 | `--non-interactive` | | boolean | `false` | Run in non-interactive batch mode without prompting for input. |
 | `--skip-prereqs` | | boolean | `false` | Bypass prerequisite validation checks (Docker, k3d, mkcert, kubectl, helm). |
@@ -32,10 +36,16 @@ vigilante [command] [subcommand/target] [options]
 ### Infrastructure & Cluster Operations
 
 #### `vigilante up`
-Provisions the local environment: checks prerequisites, issues local CA and TLS certificates via `mkcert`, spins up the k3d cluster with Ingress port bindings (`80:80`, `443:443`), synchronizes `/etc/hosts`, and deploys chosen security modules.
+Provisions the local environment: checks prerequisites, issues local CA and TLS certificates via `mkcert`, spins up or targets the Kubernetes cluster (`k3d` or native `k3s`), configures Ingress port bindings (`80:80`, `443:443`), synchronizes `/etc/hosts`, and deploys chosen security modules.
 ```bash
 # Interactive mode (select modules with spacebar)
 vigilante up
+
+# Deploy into native bare-metal / VM K3s instance instead of Docker k3d
+vigilante up --provider k3s -m vigil-soc
+
+# Deploy with --k3s shorthand
+vigilante up --k3s -m wazuh,falco
 
 # Deploy specific modules with custom domain
 vigilante up -m wazuh,falco -d lab.local
@@ -58,6 +68,12 @@ vigilante down -c staging-cluster
 Runs diagnostic checks across prerequisites, Docker daemon, k3d cluster nodes, active TLS certificates, and `/etc/hosts` domain synchronization.
 ```bash
 vigilante status
+```
+
+#### `vigilante doctor`
+Comprehensive system health and prerequisite check. Verifies container runtimes (Docker/Containerd), local Kubernetes utilities (`k3d`, `k3s`, `kubectl`, `helm`), certificate authorities (`mkcert`), and kernel eBPF BTF support.
+```bash
+vigilante doctor
 ```
 
 #### `vigilante instances`
@@ -156,10 +172,54 @@ Executes automated adversarial simulation playbooks against the active SIEM/SOC 
 vigilante threat-sim
 ```
 
-#### `vigilante kctf`
-Google kCTF cyber range manager. Deploys sandboxed CTF challenge archetypes (Web, Pwn/nsjail, Crypto, Rev, Forensics) for red/blue training.
+#### `vigilante ctf` / `vigilante kctf`
+Full-featured CTF cyber range platform, tournament engine, and participant exploit workbench. Supports both Host Orchestrators and Participant Solvers.
+
+##### Host Orchestrator Operations
 ```bash
-vigilante kctf
+# View CTF arena status, cluster namespace, and embedded portal URLs
+vigilante ctf host
+
+# Spawn an ephemeral isolated challenge sandbox for a team (default 30m TTL)
+vigilante ctf spawn web-auth-bypass --team team-alpha --ttl 45
+
+# List all active team sandboxes and remaining TTLs
+vigilante ctf sandboxes
+
+# Reap expired sandbox pods and ingress routes
+vigilante ctf reap
+
+# View embedded cluster scoreboard URL
+vigilante ctf scoreboard
+```
+
+##### Participant Solver Workbench
+```bash
+# 1-Click participant workspace scaffolding with boilerplate exploit templates
+vigilante ctf join https://ctf.vigilante.local team-token-xyz
+
+# Submit flag with dynamic decay scoring and First Blood verification
+vigilante ctf submit pwn-rop-bof "vigilante{d3b_bru1jn_0ff53t_r0p}" --team team-alpha
+
+# Extract x86_64 ROP gadgets from challenge binary
+vigilante ctf rop ./pwn/vuln
+
+# Factor weak RSA modulus (Trial Division, Fermat, Wiener continued fractions)
+vigilante ctf rsa 3195663717 65537 --method wiener
+
+# Static binary triage (checksec, strings, canary, PIE, NX)
+vigilante ctf triage ./pwn/vuln
+
+# Diagnose GDB/dmesg crash log and calculate exact cyclic instruction offset
+vigilante ctf crash "0x6161616a in ?? ()"
+
+# Query 3-tier Socratic CTF AI mentor (hints without flag leaks)
+vigilante ctf ask "How do I calculate stack alignment for system() in ROP?" --tier 2
+
+# Fast solve utilities (cyclic pattern, cipher identify, JWT inspect)
+vigilante ctf tools cyclic 128
+vigilante ctf tools offset 0x6161616a
+vigilante ctf tools cipher "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 #### `vigilante openvas`
@@ -176,6 +236,25 @@ vigilante openvas
 Launches the **Cyber Defense Operations BattleStation** (`src/ui/BattleStationView.js`), aggregating real-time alerts from Falco, Suricata, and Zeek alongside SOAR quick-containment controls.
 ```bash
 vigilante battle
+```
+
+#### `vigilante falco` / `vigilante ebpf`
+Controls and inspects the Falco eBPF runtime threat sensor, built-in detection rules, and simulated kernel alert telemetry.
+```bash
+# Check Falco sensor driver status, eBPF probe, and monitored syscalls
+vigilante falco status
+
+# List all built-in Falco rules with MITRE tags and conditions
+vigilante falco rules
+
+# Validate syntax of custom Falco rule YAML
+vigilante falco test-rule ./rules/my-custom-rule.yaml
+
+# Simulate eBPF runtime alerts (shell-spawn, c2-connection, k8s-token-theft)
+vigilante falco trigger shell-spawn
+
+# View aggregated runtime detection metrics and top triggered rules
+vigilante falco stats
 ```
 
 #### `vigilante audit`
@@ -352,11 +431,42 @@ vigilante mcp
 
 ---
 
+### Access Control, RBAC & Governance
+
+#### `vigilante authz`
+Manages the local zero-dependency PBKDF2/SHA-256 RBAC authorization store, principal credentials, tokens, and granular permission grants.
+```bash
+# Initialize auth store and generate initial owner credentials
+vigilante authz init --name "Lead SecOps"
+
+# Add an operator principal with specific role and module scope
+vigilante authz add "Alice Hunter" --role operator --scope-module wazuh
+
+# Add an automated CI/CD service principal with specific grants
+vigilante authz add "github-actions-deployer" --kind service --role auditor --grant audit:apply
+
+# List all registered principals and active roles (secrets are never displayed)
+vigilante authz list
+
+# Rotate an existing principal's bearer token or set custom password
+vigilante authz rotate usr_98a7bcd12 --password "StrongNewPassphrase!2026"
+
+# Dry-run test a permission check with reason explanation
+vigilante authz check $OPERATOR_TOKEN "containment:isolate" --module wazuh --namespace default
+
+# Revoke a principal's access immediately
+vigilante authz revoke usr_98a7bcd12
+```
+
+---
+
 ## 3. Environment Variables
 
 | Variable | Description |
 | :--- | :--- |
 | `XDG_CONFIG_HOME` | Base path for configuration, evidence, and data lake (Default: `~/.config`). |
+| `VIGILANTE_AUTHZ_FILE` | Custom path to local JSON authorization store (Default: `~/.config/vigilante/authz.json`). |
+| `VIGILANTE_CTF_SECRET` | HMAC secret key used to derive dynamic per-team CTF flags and verify submissions. |
 | `VIGILANTE_DATALAKE_BACKEND` | Preferred Data Lake SQL backend (`sqlite` or `duckdb`, Default: `auto`). |
 | `SSLKEYLOGFILE` | Path to TLS session secret keys for PCAP stream decryption. |
 | `OLLAMA_HOST` | Custom Ollama API server address (Default: `http://localhost:11434`). |

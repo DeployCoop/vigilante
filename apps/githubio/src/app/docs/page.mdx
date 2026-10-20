@@ -3,7 +3,7 @@
 **Vigilante** is a modern, modular terminal CLI application built with **React** and **Ink** designed to orchestrate local Kubernetes environments using **k3d**, automatically issue and trust local TLS certificates via **mkcert**, and dynamically deploy modular security and SOC packages like **OpenSearch SIEM** and **Wazuh XDR/SIEM** for network threat analysis.
 
 > 🚨 **UNDER ACTIVE BREACH? READ THE EMERGENCY PLAYBOOK FIRST**:
-> If you suspect or have confirmed an active network intrusion, go immediately to **[FIRSTRESPONSE.md](FIRSTRESPONSE.md)** for the step-by-step incident response checklist to contain the breach, preserve volatile evidence with GPG chain-of-custody, and document root-cause initial access.
+> If you suspect or have confirmed an active network intrusion, go immediately to **[Emergency First Response](/docs/first-response)** for the step-by-step incident response checklist to contain the breach, preserve volatile evidence with GPG chain-of-custody, and document root-cause initial access.
 
 ## History
 
@@ -19,7 +19,7 @@ This project is a reimagining of [vigilant-octo-waffle](https://github.com/Deplo
 
 ## 🌟 Features
 
-- **🚨 Emergency Breach First Response Playbook**: Built-in operational guide ([`FIRSTRESPONSE.md`](FIRSTRESPONSE.md)) for rapid triage, evidence collection, and root-cause determination.
+- **🚨 Emergency Breach First Response Playbook**: Built-in operational guide ([`/docs/first-response`](/docs/first-response)) for rapid triage, evidence collection, and root-cause determination.
 - **Ink Terminal UI & BattleStation**: Interactive React Ink dashboard, live streaming pod logs, interactive process trees, Braille sparklines, and half-block heatmaps.
 - **Global Command Palette (`[:]` / `[/]`) & NavHub (`[Tab]`)**: 30 indexed commands and 25 operational actions accessible from any view.
 - **Automated k3d Orchestration & Zero-Config TLS**: Spin up lightweight K3s clusters in Docker with Ingress port bindings (`80` / `443`), automated wildcard certificates (`*.vigilante.local`) via `mkcert`, and idempotent `/etc/hosts` synchronization (`hostr`).
@@ -51,18 +51,23 @@ This project is a reimagining of [vigilant-octo-waffle](https://github.com/Deplo
 
 ## 📚 Technical Documentation Library
 
-Complete technical manuals and architectural guides are available in the [`docs/`](docs/) directory:
+Complete technical manuals and architectural guides are available across the documentation site:
 
 | Document | Description |
 | :--- | :--- |
-| **[Architecture Manual](docs/ARCHITECTURE.md)** | Deep architectural breakdown: layers, data flows, evidence vault, reactive UI, and MCP server. |
-| **[CLI Reference Manual](docs/CLI_REFERENCE.md)** | Exhaustive reference for all 37 CLI subcommands, flags, environment variables, and exit codes. |
-| **[Security Modules Catalog](docs/MODULES_CATALOG.md)** | Full guide for all 12 security packages, ingress URLs, default credentials, and Helm values. |
-| **[Engines Technical Reference](docs/ENGINES_REFERENCE.md)** | Deep technical specifications for all 32 security, SOAR, deception, posture, and forensic engines. |
-| **[Model Context Protocol Catalog](docs/MCP_CATALOG.md)** | Complete reference for all 78 MCP tools, 16 resources, templates, and LLM configuration examples. |
-| **[Contributor & Developer Guide](docs/DEVELOPMENT_AND_TESTING.md)** | Guide to running all 70 test suites (`pnpm test`), authoring React Ink views, and adding modules. |
-| **[System Design Blueprint](design.md)** | High-level system design, sequence diagrams, and subsystem specifications. |
-| **[Emergency Playbook](FIRSTRESPONSE.md)** | Step-by-step incident response playbook for active breaches. |
+| **[Getting Started](/docs/getting-started)** | Quick start, installation, cluster runtime selection, and verification. |
+| **[CTF Cyber Range & Tournament Engine](/docs/ctf)** | Google kCTF sandboxing, dynamic HMAC flags, solver workbench, and scoring. |
+| **[Web Operations Portal & CASL Authz](/docs/web-authz)** | Next.js 14 operations portal, 28 views, PBKDF2/SHA-256 RBAC, and CASL permissions. |
+| **[Architecture Manual](/docs/architecture)** | Deep architectural breakdown: layers, data flows, evidence vault, reactive UI, and MCP server. |
+| **[CLI Reference Manual](/docs/cli)** | Exhaustive reference for all 37 CLI subcommands, flags, environment variables, and exit codes. |
+| **[Security Modules Catalog](/docs/modules)** | Full guide for all 12 security packages, ingress URLs, default credentials, and Helm values. |
+| **[Engines Technical Reference](/docs/engines)** | Deep technical specifications for all 32 security, SOAR, deception, posture, and forensic engines. |
+| **[Autonomous AI & ReAct SOC Agents](/docs/agents)** | Multi-agent autonomous incident investigation, red/blue duel simulation, and war rooms. |
+| **[Model Context Protocol Catalog](/docs/mcp)** | Complete reference for all 78 MCP tools, 16 resources, templates, and LLM configuration examples. |
+| **[Threat Scenarios & Playbooks](/docs/scenarios)** | Built-in and custom adversary attack scenarios and simulation playbooks. |
+| **[Emergency Incident Playbook](/docs/first-response)** | Step-by-step incident response playbook for active breaches. |
+| **[Contributor & Developer Guide](/docs/development)** | Guide to running all 70 test suites (`pnpm test`), authoring React Ink views, and adding modules. |
+| **[Troubleshooting & Diagnostics](/docs/troubleshooting)** | Resolving DNS, ports, K3s permissions, Next.js cache, and token recovery. |
 
 
 ## 📋 Prerequisites
@@ -789,7 +794,7 @@ AI models can directly inspect real-time state and historical scan reports using
 
 The MCP server provides **54 callable tools** and **16 resources** allowing AI assistants to actively inspect infrastructure, run vulnerability scans, execute active SOAR containment, query the security data lake, and deploy deception tokens.
 
-> 📖 **Full Catalog & Schemas**: For complete argument schemas, types, and parameter tables, see **[`docs/MCP_CATALOG.md`](docs/MCP_CATALOG.md)**.
+> 📖 **Full Catalog & Schemas**: For complete argument schemas, types, and parameter tables, see **[Model Context Protocol Catalog](/docs/mcp)**.
 
 | Category | Tools Included | Capabilities |
 | :--- | :--- | :--- |
