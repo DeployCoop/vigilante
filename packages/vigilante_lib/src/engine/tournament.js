@@ -783,7 +783,13 @@ export class TournamentEngine {
       const lastPt = s.points[s.points.length - 1];
       const lastX = margin.left + Math.round((lastPt.elapsedMinutes / maxTime) * chartW) + 6;
       const lastY = margin.top + chartH - Math.round((lastPt.score / maxScore) * chartH) + 4;
-      const label = `<text x="${lastX}" y="${lastY}" fill="${color}" font-family="monospace" font-size="10" font-weight="bold">${s.teamName} (${lastPt.score})</text>`;
+      const safeTeamName = String(s.teamName || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+      const label = `<text x="${lastX}" y="${lastY}" fill="${color}" font-family="monospace" font-size="10" font-weight="bold">${safeTeamName} (${lastPt.score})</text>`;
 
       linesSvg.push(polyline);
       linesSvg.push(label);

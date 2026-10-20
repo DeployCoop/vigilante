@@ -5,7 +5,7 @@ import { authorizeRequest } from '@/lib/authz';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const denied = await authorizeRequest(req, 'ctf:manage');
+  const denied = await authorizeRequest(req, 'ctf:read');
   if (denied) return denied;
 
   try {

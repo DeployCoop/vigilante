@@ -12,10 +12,13 @@ function getTournamentStateFile(): string {
 }
 
 export async function getTournamentEngine(): Promise<TournamentEngine> {
-  if (cachedEngine) return cachedEngine;
+  const secretKey = resolveCtfFlagSecret();
+  if (cachedEngine) {
+    cachedEngine.secretKey = secretKey;
+    return cachedEngine;
+  }
 
-  const secretKey = resolveCtfFlagSecret() || process.env.VIGILANTE_CTF_SECRET || 'dev-ctf-secret';
-  const engine = new TournamentEngine({
+  const engine = new (TournamentEngine as any)({
     id: 'vigilante-kctf-arena',
     title: 'Vigilante kCTF Cyber Range Tournament',
     secretKey

@@ -122,26 +122,10 @@ export default function FalcoDashboardPage() {
     setValidationLoading(true);
     setValidationResult(null);
     try {
-      // Parse YAML or JSON for basic properties
-      const body: any = { raw: ruleYaml };
-      const lines = ruleYaml.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('- rule:') || trimmed.startsWith('rule:')) {
-          body.rule = trimmed.replace(/^-\s*rule:\s*|^rule:\s*/, '').trim();
-        } else if (trimmed.startsWith('condition:')) {
-          body.condition = trimmed.replace(/^condition:\s*/, '').trim();
-        } else if (trimmed.startsWith('output:')) {
-          body.output = trimmed.replace(/^output:\s*/, '').trim();
-        } else if (trimmed.startsWith('priority:')) {
-          body.priority = trimmed.replace(/^priority:\s*/, '').trim();
-        }
-      }
-
       const res = await fetch('/api/falco/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ raw: ruleYaml })
       });
       const data = await res.json();
       setValidationResult(data);
@@ -425,11 +409,12 @@ export default function FalcoDashboardPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {[
-                { id: 'shell-spawn', name: 'Interactive Shell Spawn', desc: 'execve(/bin/sh) spawned inside web container' },
-                { id: 'sensitive-mount', name: 'Sensitive Host Mount Read', desc: 'Access to /etc/shadow or /var/run/docker.sock' },
-                { id: 'shadow-read', name: 'Shadow Password Hash Access', desc: 'Read event on host credential database' },
-                { id: 'crypto-miner', name: 'Outbound Stratum Miner Traffic', desc: 'Connection to mining pool TCP port 3333' },
-                { id: 'nsjail-escape-attempt', name: 'nsjail Sandbox Escape Attempt', desc: 'Disallowed ptrace or mount syscall invocation' }
+                { id: 'shell-spawn', name: 'Interactive Shell Spawn', desc: 'execve(/bin/bash -i) spawned inside web container' },
+                { id: 'sensitive-file-read', name: 'Sensitive Host File Read', desc: 'cat /etc/shadow credential database access' },
+                { id: 'c2-connection', name: 'Outbound C2 Socket Connection', desc: 'Suspicious curl connection to adversary C2 IP' },
+                { id: 'k8s-token-theft', name: 'Kubernetes SA Token Theft', desc: 'Access to mounted serviceaccount token secret' },
+                { id: 'container-escape', name: 'Container Escape via nsenter', desc: 'Privilege escalation into host PID/mount namespaces' },
+                { id: 'ransomware-encryption', name: 'Ransomware Mass Encryption', desc: 'High-rate openssl AES-256 file encryption activity' }
               ].map((sc) => (
                 <button
                   key={sc.id}
@@ -489,29 +474,16 @@ export default function FalcoDashboardPage() {
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 text-xs">
-                    <div><strong className="text-slate-400">Playbook:</strong> <span className="text-white">{simResult.soarAction?.playbook || 'Autonomous Container Isolation'}</span></div>
-                    <div><strong className="text-slate-400">Target Resource:</strong> <code className="text-cyan-400">{simResult.soarAction?.target || 'pod/web-operative'}</code></div>
-                    <div><strong className="text-slate-400">Containment Verdict:</strong> <span className="text-emerald-400">{simResult.soarAction?.verdict || 'CONTAINED'}</span></div>
-                  </div>
-
-                  {simResult.soarAction?.remediationCommand && (
-                    <div className="space-y-1 pt-1">
-                      <div className="flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Remediation CLI Command:</span>
-                        <button
-                          onClick={() => handleCopy(simResult.soarAction.remediationCommand, 'soar-cmd')}
-                          className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
-                        >
-                          {copiedKey === 'soar-cmd' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                          <span>Copy</span>
-                        </button>
+                  <div className="space-y-2 text-xs">
+                    <div><strong className="text-slate-400">SOAR Playbook Action:</strong> <span className="text-white font-bold">{simResult.soarAction?.action || 'LOG_AND_ENRICH'}</span></div>
+                    <div><strong className="text-slate-400">Target Resource:</strong> <code className="text-cyan-400">{simResult.soarAction?.target || 'default/unknown'}</code></div>
+                    <div><strong className="text-slate-400">Recommended Response SLA:</strong> <span className="text-emerald-400 font-bold">{simResult.soarAction?.recommendedSlaMinutes ?? 15} min</span></div>
+                    {simResult.soarAction?.description && (
+                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-300 leading-relaxed">
+                        {simResult.soarAction.description}
                       </div>
-                      <code className="block p-2 rounded bg-slate-900 border border-slate-800 text-[11px] text-purple-300 overflow-x-auto">
-                        {simResult.soarAction.remediationCommand}
-                      </code>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             )}

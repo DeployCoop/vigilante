@@ -60,8 +60,10 @@ export default function CTFArenaPage() {
   // Team identity
   const [teamName, setTeamName] = useState<string>('Vigilante Operative');
 
-  const fetchChallenges = () => {
-    return fetch('/api/ctf/challenges')
+  const fetchChallenges = (overrideTeamName?: string) => {
+    const activeTeam = overrideTeamName ?? teamName;
+    const tid = encodeURIComponent(activeTeam.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'web-operative');
+    return fetch(`/api/ctf/challenges?teamId=${tid}`)
       .then((res) => res.json())
       .then((data) => {
         setCategories(data.categories || []);
@@ -759,35 +761,50 @@ export default function CTFArenaPage() {
             {crashDiagnosis && (
               <div className="p-4 rounded-xl bg-slate-900/90 border border-purple-800/60 space-y-3 text-xs font-mono">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="font-bold text-purple-300">Exploitability Rating:</span>
+                  <span className="font-bold text-purple-300">Crash Classification:</span>
                   <span className={`px-2 py-0.5 rounded font-bold ${
-                    crashDiagnosis.exploitability === 'EXPLOITABLE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                    crashDiagnosis.exploitability === 'PROBABLY_EXPLOITABLE' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                    'bg-slate-800 text-slate-300'
+                    crashDiagnosis.crashType?.includes('HIJACK') || crashDiagnosis.crashType?.includes('OVERFLOW')
+                      ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                      : crashDiagnosis.crashType === 'NULL_POINTER_DEREFERENCE'
+                      ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                      : 'bg-slate-800 text-slate-300'
                   }`}>
-                    {crashDiagnosis.exploitability || 'UNKNOWN'}
+                    {crashDiagnosis.crashType || 'UNSPECIFIED_CRASH'}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                   <div><strong className="text-slate-400">Signal:</strong> <span className="text-white">{crashDiagnosis.signal || 'SIGSEGV'}</span></div>
                   <div><strong className="text-slate-400">Faulting Address:</strong> <span className="text-amber-400">{crashDiagnosis.faultAddress || 'N/A'}</span></div>
+                  {crashDiagnosis.deBruijnOffset !== null && crashDiagnosis.deBruijnOffset !== undefined && (
+                    <div><strong className="text-slate-400">Cyclic Offset:</strong> <span className="text-emerald-400 font-bold">{crashDiagnosis.deBruijnOffset} bytes</span></div>
+                  )}
                 </div>
 
-                {crashDiagnosis.analysis && (
+                {crashDiagnosis.registers && Object.keys(crashDiagnosis.registers).length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {Object.entries(crashDiagnosis.registers).map(([reg, val]: [string, any]) => (
+                      <span key={reg} className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-cyan-300">
+                        {reg.toUpperCase()}: <strong className="text-white">{val}</strong>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {crashDiagnosis.diagnosisExplanation && (
                   <div className="space-y-1">
                     <strong className="text-slate-400 text-[11px]">Diagnosis & Offset Findings:</strong>
                     <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-slate-300 whitespace-pre-wrap text-[11px] leading-relaxed">
-                      {crashDiagnosis.analysis}
+                      {crashDiagnosis.diagnosisExplanation}
                     </div>
                   </div>
                 )}
 
-                {crashDiagnosis.suggestedSteps && (
+                {crashDiagnosis.socraticQuestions && crashDiagnosis.socraticQuestions.length > 0 && (
                   <div className="space-y-1">
-                    <strong className="text-slate-400 text-[11px]">Recommended Next Exploitation Steps:</strong>
+                    <strong className="text-slate-400 text-[11px]">Socratic Exploitation Prompts:</strong>
                     <ul className="list-disc pl-4 space-y-0.5 text-slate-300 text-[11px]">
-                      {crashDiagnosis.suggestedSteps.map((step: string, i: number) => (
+                      {crashDiagnosis.socraticQuestions.map((step: string, i: number) => (
                         <li key={i}>{step}</li>
                       ))}
                     </ul>

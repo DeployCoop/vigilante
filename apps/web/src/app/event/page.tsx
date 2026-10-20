@@ -749,15 +749,23 @@ export default function CTFEventGuidePage() {
 
                   {sealResult && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-cyan-800/60 space-y-1.5 text-xs font-mono">
-                      <div className="text-cyan-300 font-bold flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Solve Proof Sealed Successfully!</span>
+                      <div className="text-cyan-300 font-bold flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Solve Proof Sealed Successfully!</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">Receipt: {sealResult.receiptId}</span>
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Merkle Seal Digest: <code className="text-white bg-slate-900 px-1 py-0.5 rounded">{sealResult.evidence?.proofHash || sealResult.proofHash || 'SHA256:Sealed'}</code>
+                        Merkle Entry Hash: <code className="text-white bg-slate-900 px-1 py-0.5 rounded">{sealResult.merkleEntryHash || sealResult.flagHash || 'SHA256:Sealed'}</code>
                       </div>
+                      {sealResult.merkleRoot && (
+                        <div className="text-[11px] text-slate-400">
+                          Ledger Merkle Root: <code className="text-emerald-300 bg-slate-900 px-1 py-0.5 rounded">{sealResult.merkleRoot}</code>
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-500">
-                        Artifact stored at: <code>{sealResult.evidencePath || './ctf-workspace/evidence'}</code>
+                        Manifest stored at: <code>{sealResult.manifestFile || './ctf-workspace/evidence'}</code>
                       </div>
                     </div>
                   )}
@@ -769,10 +777,10 @@ export default function CTFEventGuidePage() {
                         <span>Markdown Writeup Generated:</span>
                       </div>
                       <div className="text-[11px] text-slate-300 truncate">
-                        File: <code>{writeupResult.writeupPath || 'WRITEUP.md'}</code>
+                        File: <code>{writeupResult.filePath || writeupResult.filename || 'WRITEUP.md'}</code>
                       </div>
                       <p className="text-[10px] text-slate-400">
-                        Contestants can sign this file using GPG: <code>gpg --armor --detach-sign WRITEUP.md</code>
+                        Contestants can sign this file using GPG: <code>gpg --armor --detach-sign {writeupResult.filename || 'WRITEUP.md'}</code>
                       </p>
                     </div>
                   )}

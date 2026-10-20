@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CHALLENGE_TEMPLATES, CHALLENGE_CATEGORIES } from 'vigilante_lib/engine/kctf.js';
+import { requireCtfFlagSecret } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest, resolveAuthzContext } from '@/lib/authz';
 import { getTournamentEngine, persistTournamentState } from '@/lib/ctf-tournament-server';
 
@@ -75,6 +76,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let ctfSecret: string;
+    try {
+      ctfSecret = requireCtfFlagSecret();
+    } catch (secretErr: any) {
+      return NextResponse.json(
+        { success: false, error: secretErr.message },
+        { status: 503 }
+      );
+    }
+
     // Default team identity to auth principal if available, or fallback
     if (!teamId && authContext.principal) {
       teamId = authContext.principal.id;
@@ -86,6 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     const engine = await getTournamentEngine();
+    engine.secretKey = ctfSecret;
 
     // Ensure team exists
     let team = engine.teams.get(teamId);

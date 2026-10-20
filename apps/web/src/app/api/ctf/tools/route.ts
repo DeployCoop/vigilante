@@ -11,6 +11,7 @@ import {
   findRopGadgets,
   checksec
 } from 'vigilante_lib/engine/ctf-tools.js';
+import { resolvePathInside } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
 
 export const dynamic = 'force-dynamic';
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = rsaWeakPrimes({ n, e, method });
+      const result = (rsaWeakPrimes as any)({ n, e, method });
       return NextResponse.json({ success: true, tool, ...result });
     }
 
@@ -97,8 +98,10 @@ export async function POST(req: NextRequest) {
         buf = Buffer.from(body.base64Bytes, 'base64');
       } else if (body.filePath) {
         const allowedBase = path.resolve(process.cwd(), 'ctf-workspace');
-        const targetPath = path.resolve(allowedBase, body.filePath);
-        if (!targetPath.startsWith(allowedBase)) {
+        let targetPath: string;
+        try {
+          targetPath = resolvePathInside(allowedBase, String(body.filePath));
+        } catch {
           return NextResponse.json(
             { success: false, error: 'Path traversal: filePath must reside within ctf-workspace' },
             { status: 400 }
@@ -114,7 +117,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const ropResult = findRopGadgets({ binaryBuffer: buf });
+      const ropResult = (findRopGadgets as any)({ binaryBuffer: buf });
       return NextResponse.json({ success: true, tool, ...ropResult });
     }
 
@@ -126,8 +129,10 @@ export async function POST(req: NextRequest) {
         buf = Buffer.from(body.base64Bytes, 'base64');
       } else if (body.filePath) {
         const allowedBase = path.resolve(process.cwd(), 'ctf-workspace');
-        const targetPath = path.resolve(allowedBase, body.filePath);
-        if (!targetPath.startsWith(allowedBase)) {
+        let targetPath: string;
+        try {
+          targetPath = resolvePathInside(allowedBase, String(body.filePath));
+        } catch {
           return NextResponse.json(
             { success: false, error: 'Path traversal: filePath must reside within ctf-workspace' },
             { status: 400 }
