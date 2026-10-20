@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  vigilante: 'link:'
-
 importers:
 
   .:
@@ -44,9 +41,6 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
-      vigilante:
-        specifier: 'link:'
-        version: 'link:'
 
   apps/githubio:
     dependencies:
