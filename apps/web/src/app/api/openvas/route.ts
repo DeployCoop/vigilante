@@ -98,7 +98,7 @@ export async function POST(request: Request) {
 
     const result = await runHostVulnerabilityScan({
       host: hostObj,
-      profileId: profile,
+      profile,
       namespace,
       clusterName
     });

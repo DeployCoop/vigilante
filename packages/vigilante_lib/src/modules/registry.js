@@ -106,6 +106,32 @@ export class ModuleRegistry {
   /**
    * Uninstall a specific module from a cluster namespace
    */
+  /**
+   * Collect the live status of every registered module. One module's
+   * failure is reported as that module's error status instead of
+   * failing the whole collection.
+   * @param {string} [clusterName='vigilante-dev']
+   * @param {string} [domain='vigilante.local']
+   * @returns {Promise<Array<{ id: string, name: string, installed: boolean, status: string, details?: any }>>}
+   */
+  async getModuleStatuses(clusterName = 'vigilante-dev', domain = 'vigilante.local') {
+    const statuses = [];
+    for (const mod of this.getAll()) {
+      try {
+        statuses.push(await mod.status({ clusterName, domain }));
+      } catch (err) {
+        statuses.push({
+          id: mod.id,
+          name: mod.name,
+          installed: false,
+          status: 'error',
+          details: err.message
+        });
+      }
+    }
+    return statuses;
+  }
+
   async uninstallModule({
     moduleId,
     namespace = 'default',

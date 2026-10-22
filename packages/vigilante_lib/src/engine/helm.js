@@ -200,6 +200,7 @@ export async function resolveChartValuesArgs({
  * @param {Object} options
  * @param {string} [options.moduleId] - Optional specific module to export
  * @param {string} [options.targetDir='./values'] - Destination directory
+ * @param {boolean} [options.useXdg=false] - Export into the XDG values directory instead of targetDir
  * @param {string} [options.domain='vigilante.local']
  * @param {string} [options.clusterName='vigilante-dev']
  * @param {Function} [options.onLog]
