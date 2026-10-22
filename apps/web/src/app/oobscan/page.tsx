@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Cpu,
   Play,
@@ -9,41 +9,68 @@ import {
   Hash,
   Copy,
   Check,
-  Trash2,
-  AlertTriangle,
-  CheckCircle2,
-  Download,
-  Terminal,
-  ShieldAlert
 } from 'lucide-react';
 
+interface OobTarget {
+  value: string;
+  label: string;
+}
+
+interface OobProfile {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface Bmc {
+  ip: string;
+  vendor?: string;
+  firmware?: string;
+  ipmiVersion?: string;
+  hasRedfish?: boolean;
+  cipherZero?: boolean;
+}
+
+interface OobScan {
+  target?: string;
+  timestamp?: string;
+  bmcs?: Bmc[];
+  parsed?: { bmcs?: Bmc[]; totalBmcs?: number; totalRakpHashes?: number };
+  rakpHashes?: string[];
+}
+
+interface OobData {
+  targets: OobTarget[];
+  profiles: OobProfile[];
+  scans: OobScan[];
+}
+
 export default function OobscanPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<OobData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [scanning, setScanning] = useState<boolean>(false);
   const [selectedTarget, setSelectedTarget] = useState<string>('127.0.0.1');
   const [customTarget, setCustomTarget] = useState<string>('');
   const [selectedProfile, setSelectedProfile] = useState<string>('standard');
-  const [activeScan, setActiveScan] = useState<any>(null);
+  const [activeScan, setActiveScan] = useState<OobScan | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const fetchOobData = () => {
-    setLoading(true);
+  const fetchOobData = useCallback(() => {
     fetch('/api/oobscan')
       .then((res) => res.json())
       .then((d) => {
         setData(d);
-        if (d.scans?.length > 0 && !activeScan) {
-          setActiveScan(d.scans[0]);
+        if (d.scans?.length > 0) {
+          setActiveScan((prev) => prev ?? d.scans[0]);
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchOobData();
-  }, []);
+  }, [fetchOobData]);
 
   const handleStartScan = async () => {
     const target = customTarget.trim() || selectedTarget;
@@ -91,7 +118,10 @@ export default function OobscanPage() {
         </div>
 
         <button
-          onClick={fetchOobData}
+          onClick={() => {
+              setLoading(true);
+              fetchOobData();
+            }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-800"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -118,7 +148,7 @@ export default function OobscanPage() {
                   onChange={(e) => setSelectedTarget(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs font-mono text-slate-200 focus:outline-none"
                 >
-                  {targets.map((t: any, i: number) => (
+                  {targets.map((t, i: number) => (
                     <option key={i} value={t.value}>
                       {t.label} ({t.value})
                     </option>
@@ -138,7 +168,7 @@ export default function OobscanPage() {
             <div className="space-y-2">
               <label className="text-xs font-mono text-slate-400">Audit Profile:</label>
               <div className="space-y-2">
-                {profiles.map((p: any) => (
+                {profiles.map((p) => (
                   <label
                     key={p.id}
                     onClick={() => setSelectedProfile(p.id)}
@@ -180,7 +210,7 @@ export default function OobscanPage() {
             <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 space-y-3">
               <h3 className="text-xs font-mono font-bold text-slate-400 uppercase">Captured OOB Scans</h3>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {scans.map((s: any, idx: number) => (
+                {scans.map((s, idx: number) => (
                   <div
                     key={idx}
                     onClick={() => setActiveScan(s)}
@@ -238,7 +268,7 @@ export default function OobscanPage() {
                       No BMC devices detected on the specified subnet.
                     </div>
                   ) : (
-                    (activeScan.bmcs || activeScan.parsed?.bmcs || []).map((bmc: any, idx: number) => (
+                    (activeScan.bmcs || activeScan.parsed?.bmcs || []).map((bmc, idx: number) => (
                       <div key={idx} className="p-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-white font-bold text-sm">{bmc.ip}</span>

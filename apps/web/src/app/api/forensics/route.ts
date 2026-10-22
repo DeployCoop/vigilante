@@ -6,6 +6,7 @@ import {
   generateFlowLadder
 } from 'vigilante_lib/engine/forensics.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,11 +37,11 @@ export async function GET(req: Request) {
       streams,
       ladder
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         files: []
       },
       { status: 500 }
@@ -66,11 +67,11 @@ export async function POST(request: Request) {
       success: true,
       carved
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message
+        error: errorMessage(err)
       },
       { status: 500 }
     );

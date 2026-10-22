@@ -73,9 +73,13 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
     item.section.toLowerCase().includes(query.toLowerCase())
   );
 
-  useEffect(() => {
+  // Reset the selection when the query changes (render-adjust pattern:
+  // storing the previous query avoids an effect round-trip).
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
     setSelectedIndex(0);
-  }, [query]);
+  }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

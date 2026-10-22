@@ -1,40 +1,133 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Radar,
   Globe,
   Table,
   GitCompare,
-  Upload,
   Download,
   Search,
-  Filter,
   RefreshCw,
-  ExternalLink,
-  ShieldAlert,
   Server,
-  Terminal,
-  Activity,
-  ChevronRight,
   X,
-  AlertTriangle,
-  CheckCircle2
 } from 'lucide-react';
+import { errorMessage } from '@/lib/envelope';
+
+interface PortInfo {
+  port: number;
+  service?: string;
+  protocol?: string;
+  product?: string;
+  version?: string;
+}
+
+interface GeoInfo {
+  city?: string;
+  country?: string;
+  countryCode?: string;
+  isp?: string;
+  latitude?: number;
+  longitude?: number;
+  isPrivate?: boolean;
+}
+
+interface Host {
+  ip: string;
+  isUp?: boolean;
+  openPorts?: PortInfo[];
+  openPortsCount?: number;
+  osFamily?: string;
+  primaryHostname?: string;
+  primaryOs?: string;
+  riskScore?: number;
+  riskTier?: string;
+  vulnerabilitiesCount?: number;
+  geo?: GeoInfo | null;
+}
+
+interface TopoNode {
+  id: string;
+  ip?: string;
+  label?: string;
+  nodeType?: string;
+  color?: string;
+  radius?: number;
+  riskScore?: number;
+  riskTier?: string;
+  status?: string;
+  x?: number;
+  y?: number;
+  openPorts?: PortInfo[];
+  osFamily?: string;
+  primaryHostname?: string;
+  primaryOs?: string;
+  geo?: GeoInfo | null;
+}
+
+interface SelectedNode {
+  id?: string;
+  ip?: string;
+  label?: string;
+  nodeType?: string;
+  color?: string;
+  radius?: number;
+  riskScore?: number;
+  riskTier?: string;
+  status?: string;
+  x?: number;
+  y?: number;
+  openPorts?: PortInfo[];
+  osFamily?: string;
+  primaryHostname?: string;
+  primaryOs?: string;
+  geo?: GeoInfo | null;
+  isUp?: boolean;
+  openPortsCount?: number;
+  vulnerabilitiesCount?: number;
+}
+
+interface TopoLink {
+  source: string | { id: string };
+  target: string | { id: string };
+  label?: string;
+  type?: string;
+}
+
+interface TopologyData {
+  topology?: { nodes: TopoNode[]; links: TopoLink[] };
+  geocodedHosts?: Host[];
+  scanTarget?: string;
+  totalHosts?: number;
+  totalOpenPorts?: number;
+}
+
+interface Scan {
+  id?: string;
+  filename?: string;
+  hostsCount?: number;
+  target?: string;
+}
+
+interface DiffResult {
+  newHosts: Host[];
+  removedHosts: Host[];
+  modifiedHosts?: Host[];
+}
 
 export default function NastyMapPage() {
   const [activeTab, setActiveTab] = useState<'topology' | 'geoip' | 'ports' | 'diff'>('topology');
-  const [scans, setScans] = useState<any[]>([]);
+  const [scans, setScans] = useState<Scan[]>([]);
   const [selectedScanId, setSelectedScanId] = useState<string>('');
-  const [topologyData, setTopologyData] = useState<any>(null);
+  const [topologyData, setTopologyData] = useState<TopologyData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [filterMode, setFilterMode] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [diffBase, setDiffBase] = useState<string>('');
   const [diffTarget, setDiffTarget] = useState<string>('');
-  const [diffResult, setDiffResult] = useState<any>(null);
+  const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [diffLoading, setDiffLoading] = useState<boolean>(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
 
@@ -57,20 +150,24 @@ export default function NastyMapPage() {
       .catch(() => {});
   }, []);
 
-  // Load topology whenever selectedScanId changes
+  // Load topology whenever selectedScanId changes. The async IIFE keeps
+  // the synchronous setLoading(true) out of the effect body itself.
   useEffect(() => {
-    setLoading(true);
-    const url = selectedScanId
-      ? `/api/nastymap/topology?scanId=${encodeURIComponent(selectedScanId)}&layout=force2d`
-      : `/api/nastymap/topology?layout=force2d`;
-
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
+    (async () => {
+      setLoading(true);
+      const url = selectedScanId
+        ? `/api/nastymap/topology?scanId=${encodeURIComponent(selectedScanId)}&layout=force2d`
+        : `/api/nastymap/topology?layout=force2d`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
         setTopologyData(data);
+      } catch {
+        // keep prior topology on failure
+      } finally {
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      }
+    })();
   }, [selectedScanId]);
 
   // Run Scan Diff
@@ -113,15 +210,15 @@ export default function NastyMapPage() {
           setScans(scansData.scans || []);
           setSelectedScanId(data.filename);
         }
-      } catch (err: any) {
-        setUploadFeedback(`✖ Upload failed: ${err.message}`);
+      } catch (err: unknown) {
+        setUploadFeedback(`✖ Upload failed: ${errorMessage(err)}`);
       }
       setTimeout(() => setUploadFeedback(null), 4000);
     }
   };
 
   const hosts = topologyData?.geocodedHosts || [];
-  const filteredHosts = hosts.filter((h: any) => {
+  const filteredHosts = hosts.filter((h) => {
     const matchesSearch =
       h.ip.includes(searchQuery) ||
       (h.primaryHostname && h.primaryHostname.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -335,9 +432,9 @@ export default function NastyMapPage() {
                   <circle cx="500" cy="300" r="280" fill="url(#netGlow)" />
 
                   {/* Links / Edges */}
-                  {(topologyData?.topology?.links || []).map((link: any, i: number) => {
-                    const sourceNode = topologyData.topology.nodes.find((n: any) => n.id === (link.source?.id || link.source));
-                    const targetNode = topologyData.topology.nodes.find((n: any) => n.id === (link.target?.id || link.target));
+                  {(topologyData?.topology?.links || []).map((link, i: number) => {
+                    const sourceNode = topologyData.topology.nodes.find((n) => n.id === (typeof link.source === 'object' ? link.source.id : link.source));
+                    const targetNode = topologyData.topology.nodes.find((n) => n.id === (typeof link.target === 'object' ? link.target.id : link.target));
                     if (!sourceNode || !targetNode) return null;
 
                     const isLateral = link.type === 'lateral-attack-path';
@@ -372,7 +469,7 @@ export default function NastyMapPage() {
                   })}
 
                   {/* Nodes */}
-                  {(topologyData?.topology?.nodes || []).map((node: any) => {
+                  {(topologyData?.topology?.nodes || []).map((node) => {
                     const isSelected = selectedNode?.id === node.id || selectedNode?.ip === node.ip;
                     const isScanner = node.nodeType === 'scanner';
                     const isCrit = node.riskTier === 'CRITICAL';
@@ -386,7 +483,7 @@ export default function NastyMapPage() {
                         key={node.id}
                         transform={`translate(${node.x}, ${node.y})`}
                         onClick={() => {
-                          const matchedHost = hosts.find((h: any) => h.ip === node.ip) || node;
+                          const matchedHost = hosts.find((h) => h.ip === node.ip) || node;
                           setSelectedNode(matchedHost);
                         }}
                         className="cursor-pointer transition-all hover:opacity-100"
@@ -496,7 +593,7 @@ export default function NastyMapPage() {
                   <span>Open Ports ({selectedNode.openPorts?.length || 0})</span>
                 </div>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {(selectedNode.openPorts || []).map((p: any, i: number) => (
+                  {(selectedNode.openPorts || []).map((p, i: number) => (
                     <div key={i} className="p-2 rounded bg-slate-900 border border-slate-800/80 text-[11px] font-mono">
                       <div className="flex items-center justify-between text-cyan-400">
                         <span>{p.port}/{p.protocol}</span>
@@ -571,7 +668,7 @@ export default function NastyMapPage() {
               />
 
               {/* Host Markers */}
-              {hosts.map((h: any, i: number) => {
+              {hosts.map((h, i: number) => {
                 const isPrivate = h.geo?.isPrivate || !h.geo?.latitude;
                 // Place private LAN hosts in a clustered datacenter representation
                 const cx = isPrivate ? 200 + (i * 35) % 150 : 500 + ((h.geo.longitude || 0) * 2.5);
@@ -609,7 +706,7 @@ export default function NastyMapPage() {
 
             {/* GeoIP Host Table Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-4 border-t border-slate-900">
-              {hosts.slice(0, 4).map((h: any, i: number) => (
+              {hosts.slice(0, 4).map((h, i: number) => (
                 <div key={i} className="p-3 rounded-lg bg-slate-900/60 border border-slate-800 text-xs font-mono">
                   <div className="flex items-center justify-between text-white font-semibold">
                     <span>{h.ip}</span>
@@ -656,7 +753,7 @@ export default function NastyMapPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 bg-slate-950/40 text-slate-300">
-                {filteredHosts.map((h: any, idx: number) => (
+                {filteredHosts.map((h, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
                     <td className="py-3 px-4 font-bold text-white flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full ${h.isUp ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -666,7 +763,7 @@ export default function NastyMapPage() {
                     <td className="py-3 px-4">{h.primaryOs || h.osFamily || 'Unknown'}</td>
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {(h.openPorts || []).map((p: any, pIdx: number) => (
+                        {(h.openPorts || []).map((p, pIdx: number) => (
                           <span
                             key={pIdx}
                             className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-cyan-300"
@@ -776,13 +873,13 @@ export default function NastyMapPage() {
 
               {/* Detailed Host Diff List */}
               <div className="space-y-2">
-                {(diffResult.newHosts || []).map((h: any, i: number) => (
+                {(diffResult.newHosts || []).map((h, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/60 flex items-center justify-between text-xs font-mono">
                     <span className="text-emerald-300 font-bold">+ NEW HOST: {h.ip} ({h.primaryHostname || 'No hostname'})</span>
                     <span className="text-emerald-400">{h.openPortsCount} open ports</span>
                   </div>
                 ))}
-                {(diffResult.removedHosts || []).map((h: any, i: number) => (
+                {(diffResult.removedHosts || []).map((h, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-rose-950/20 border border-rose-800/60 flex items-center justify-between text-xs font-mono">
                     <span className="text-rose-300 font-bold">- REMOVED HOST: {h.ip}</span>
                     <span className="text-rose-400">Offline / Filtered</span>

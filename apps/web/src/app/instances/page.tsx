@@ -6,13 +6,9 @@ import {
   RefreshCw,
   Plus,
   Trash2,
-  CheckCircle2,
-  Clock,
-  Layers,
-  ShieldCheck,
-  ExternalLink,
   X
 } from 'lucide-react';
+import { errorMessage } from '@/lib/envelope';
 
 interface InstanceItem {
   instanceName: string;
@@ -35,7 +31,6 @@ export default function InstancesPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchInstances = () => {
-    setLoading(true);
     fetch('/api/instances')
       .then((res) => res.json())
       .then((d) => {
@@ -73,8 +68,8 @@ export default function InstancesPage() {
         fetchInstances();
         setTimeout(() => setStatusMessage(null), 4000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error: ${errorMessage(err)}`);
     }
   };
 
@@ -90,8 +85,8 @@ export default function InstancesPage() {
         fetchInstances();
         setTimeout(() => setStatusMessage(null), 4000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error deleting: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error deleting: ${errorMessage(err)}`);
     }
   };
 
@@ -126,7 +121,10 @@ export default function InstancesPage() {
           </button>
 
           <button
-            onClick={fetchInstances}
+            onClick={() => {
+              setLoading(true);
+              fetchInstances();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

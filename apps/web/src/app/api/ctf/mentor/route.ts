@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSocraticHintTier, parseCrashContext } from 'vigilante_lib/engine/llm.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
       if (!crashLog) {
         return NextResponse.json({ success: false, error: 'crashLog is required for crash analysis' }, { status: 400 });
       }
-      const diagnosis = (parseCrashContext as any)({
+      const diagnosis = parseCrashContext({
         crashLog,
         challenge: challengeId ? { id: challengeId, name: challengeId } : null
       });
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       success: true,
       hint
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

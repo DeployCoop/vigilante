@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, generateTopology, geocodeIp } from 'vigilante_lib/engine/nmap-xml.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,7 +112,7 @@ export async function GET(req: NextRequest) {
     const topology = generateTopology(targetScan, { layout });
 
     // Enrich hosts with GeoIP coordinates
-    const geocodedHosts = (targetScan.hosts || []).map((h: any) => {
+    const geocodedHosts = (targetScan.hosts || []).map((h) => {
       const geo = geocodeIp(h.ip);
       return {
         ...h,
@@ -130,7 +131,7 @@ export async function GET(req: NextRequest) {
       totalHosts: targetScan.hosts?.length || 0,
       totalOpenPorts: targetScan.totalOpenPorts || 0
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

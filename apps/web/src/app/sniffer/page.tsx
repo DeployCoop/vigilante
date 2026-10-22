@@ -1,20 +1,50 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
   Radio,
   Play,
   Pause,
-  RefreshCw,
-  Filter,
   Download,
-  Terminal,
-  Activity,
-  ChevronRight,
   ChevronDown,
-  Layers,
-  FileText
 } from 'lucide-react';
+
+interface EthernetInfo {
+  srcMac?: string;
+  dstMac?: string;
+  typeName?: string;
+}
+
+interface IpInfo {
+  srcIp: string;
+  dstIp: string;
+  protocolName: string;
+  ttl: number;
+}
+
+interface TcpInfo {
+  srcPort: number;
+  dstPort: number;
+  flags?: string[];
+  seqNumber: number;
+}
+
+interface UdpInfo {
+  srcPort: number;
+  dstPort: number;
+  length: number;
+}
+
+interface DnsInfo {
+  isResponse: boolean;
+  queryName: string;
+  queryType: string;
+}
+
+interface TlsInfo {
+  sni?: string;
+}
 
 interface Packet {
   id: number;
@@ -25,12 +55,12 @@ interface Packet {
   protocol: string;
   length: number;
   info: string;
-  ethernet: any;
-  ip: any;
-  tcp: any;
-  udp: any;
-  dns: any;
-  tls: any;
+  ethernet: EthernetInfo | null;
+  ip: IpInfo | null;
+  tcp: TcpInfo | null;
+  udp: UdpInfo | null;
+  dns: DnsInfo | null;
+  tls: TlsInfo | null;
   hexDump: string;
 }
 
@@ -39,23 +69,21 @@ export default function SnifferPage() {
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [filter, setFilter] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
   const [exportedStatus, setExportedStatus] = useState<string | null>(null);
 
-  const fetchPackets = () => {
+  const fetchPackets = useCallback(() => {
     fetch(`/api/sniffer?filter=${filter}`)
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
           setPackets(d.packets || []);
-          if (!selectedPacket && d.packets?.length > 0) {
-            setSelectedPacket(d.packets[0]);
+          if (d.packets?.length > 0) {
+            setSelectedPacket((prev) => prev ?? d.packets[0]);
           }
         }
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
-  };
+      .catch(() => {});
+  }, [filter]);
 
   useEffect(() => {
     fetchPackets();
@@ -65,7 +93,7 @@ export default function SnifferPage() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [isPaused, filter]);
+  }, [isPaused, filter, fetchPackets]);
 
   const handleExportPcap = async () => {
     try {
@@ -79,8 +107,8 @@ export default function SnifferPage() {
         setExportedStatus(`Saved ${data.packetCount} packets (${data.bytesWritten} bytes) to ${data.pcapPath}`);
         setTimeout(() => setExportedStatus(null), 4000);
       }
-    } catch (err: any) {
-      setExportedStatus(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setExportedStatus(`Error: ${errorMessage(err)}`);
     }
   };
 

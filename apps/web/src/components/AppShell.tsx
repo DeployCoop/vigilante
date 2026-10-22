@@ -23,7 +23,6 @@ import {
   FileCheck2,
   Terminal,
   Search,
-  Command,
   Key,
   LogOut,
   LogIn,

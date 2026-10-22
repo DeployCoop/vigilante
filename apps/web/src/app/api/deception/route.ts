@@ -7,6 +7,7 @@ import {
   generateCanaryServiceAccount
 } from 'vigilante_lib/engine/deception.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +21,11 @@ export async function GET(req: Request) {
       success: true,
       canaries
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         canaries: []
       },
       { status: 500 }
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     // Deploy or generate canary manifests
-    let result: any = null;
+    let result: string | null = null;
     if (type === 'sa' || type === 'serviceaccount') {
       result = generateCanaryServiceAccount(name || 'cluster-admin-backup', namespace);
     } else if (type === 'secret' || type === 'token') {
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
       success: true,
       manifest: result
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

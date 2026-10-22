@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode
 } from 'react';
 import {
@@ -69,37 +70,61 @@ export function Can({
 
 const PROMPT_DISMISSED_KEY = 'vigilante_token_prompt_dismissed';
 
+// promptDismissed lives in sessionStorage (an external store): read it via
+// useSyncExternalStore so the server render and client hydration agree on
+// `false`, then pick up the stored value on subscribe. Same-tab writes do
+// not fire `storage` events, so dismissal notifies listeners manually.
+const promptDismissedListeners = new Set<() => void>();
+
+function subscribePromptDismissed(onStoreChange: () => void): () => void {
+  promptDismissedListeners.add(onStoreChange);
+  return () => {
+    promptDismissedListeners.delete(onStoreChange);
+  };
+}
+
+function readPromptDismissed(): boolean {
+  try {
+    return window.sessionStorage.getItem(PROMPT_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function notifyPromptDismissed(): void {
+  promptDismissedListeners.forEach((cb) => cb());
+}
+
 export function AbilityProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AbilityStatus>('loading');
   const [principal, setPrincipal] = useState<MePrincipal | null>(null);
   const [ability, setAbility] = useState<ClientAbility>(() => emptyAbility());
-  const [promptDismissed, setPromptDismissed] = useState(false);
+  const promptDismissed = useSyncExternalStore(subscribePromptDismissed, readPromptDismissed, () => false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/authz/me');
-      const body = (await res.json().catch(() => null)) as MeResponse | null;
-      const derived = abilityFromMe(body, res.status);
-      setStatus(derived.status);
-      setAbility(derived.ability);
-      setPrincipal(body?.principal ?? null);
-    } catch {
-      setStatus('unauthenticated');
-      setAbility(emptyAbility());
-      setPrincipal(null);
-    }
+  // Promise-chain style (not async/await): every setState sits inside a
+  // .then/.catch callback, so calling refresh() from an effect does not
+  // synchronously set state during the effect body.
+  const refresh = useCallback((): Promise<void> => {
+    return fetch('/api/authz/me')
+      .then(async (res) => {
+        const body = (await res.json().catch(() => null)) as MeResponse | null;
+        const derived = abilityFromMe(body, res.status);
+        setStatus(derived.status);
+        setAbility(derived.ability);
+        setPrincipal(body?.principal ?? null);
+      })
+      .catch(() => {
+        setStatus('unauthenticated');
+        setAbility(emptyAbility());
+        setPrincipal(null);
+      });
   }, []);
 
   useEffect(() => {
-    try {
-      setPromptDismissed(window.sessionStorage.getItem(PROMPT_DISMISSED_KEY) === '1');
-    } catch {
-      // ignore
-    }
     void refresh();
   }, [refresh]);
 
@@ -123,8 +148,8 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
           setSignInError('Invalid token or password');
           return false;
         }
-      } catch (err: any) {
-        setSignInError(err?.message || 'Login failed');
+      } catch (err: unknown) {
+        setSignInError(err instanceof Error && err.message ? err.message : 'Login failed');
         return false;
       } finally {
         setSigningIn(false);
@@ -143,7 +168,7 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
     (permission: string, target?: AuthzTarget) => {
       const [, action] = permission.split(':');
       if (!action) return false;
-      return ability.can(action, subjectFor(permission, target) as any);
+      return ability.can(action, subjectFor(permission, target));
     },
     [ability]
   );
@@ -154,13 +179,13 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
   );
 
   const dismissPrompt = () => {
-    setPromptDismissed(true);
     setPromptOpen(false);
     try {
       window.sessionStorage.setItem(PROMPT_DISMISSED_KEY, '1');
     } catch {
       // ignore
     }
+    notifyPromptDismissed();
   };
 
   const showPrompt =

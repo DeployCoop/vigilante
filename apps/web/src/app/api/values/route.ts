@@ -5,6 +5,7 @@ import path from 'node:path';
 import { listChartValues, exportStarterValues } from 'vigilante_lib/engine/helm.js';
 import { getVigilanteConfigFile, getVigilanteValuesDir, ensureVigilanteConfig } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
 
     // Map chart items with their content/status
     const chartItems = await Promise.all(
-      charts.map(async (c: any) => {
+      charts.map(async (c) => {
         let content = '';
         let hasOverride = false;
         const targetPath = c.userOverridePath || c.defaultPath;
@@ -65,11 +66,11 @@ export async function GET(request: Request) {
       xdgValuesDir,
       charts: chartItems
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         charts: []
       },
       { status: 500 }
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

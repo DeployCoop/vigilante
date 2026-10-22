@@ -4,13 +4,8 @@ import React, { useState, useEffect } from 'react';
 import {
   FileSearch,
   RefreshCw,
-  Download,
   FileCode,
   Package,
-  Layers,
-  ArrowRight,
-  Terminal,
-  Activity
 } from 'lucide-react';
 
 interface CarvedFile {
@@ -23,18 +18,15 @@ interface CarvedFile {
 export default function ForensicsPage() {
   const [files, setFiles] = useState<CarvedFile[]>([]);
   const [ladder, setLadder] = useState<string>('');
-  const [streams, setStreams] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'files' | 'ladder'>('files');
 
   const fetchForensics = () => {
-    setLoading(true);
     fetch('/api/forensics')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
           setFiles(data.files || []);
-          setStreams(data.streams || []);
           setLadder(data.ladder || '');
         }
         setLoading(false);
@@ -88,7 +80,10 @@ export default function ForensicsPage() {
           </div>
 
           <button
-            onClick={fetchForensics}
+            onClick={() => {
+              setLoading(true);
+              fetchForensics();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-800"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

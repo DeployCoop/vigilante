@@ -289,7 +289,7 @@ async function getAvailableModuleIds(modulesDir) {
  * List all configurable chart values across modules and check for active user overrides
  * @param {Object} options
  * @param {string} [options.customValuesDir]
- * @returns {Promise<Array<{ moduleId: string, chartName: string, defaultPath: string, userOverridePath: string|null }>>}
+ * @returns {Promise<Array<{ moduleId: string, chartName: string, defaultPath: string, userOverridePath: string|null, xdgPath: string }>>}
  */
 export async function listChartValues({ customValuesDir } = {}) {
   const cwd = process.cwd();

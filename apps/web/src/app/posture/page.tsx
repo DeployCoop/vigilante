@@ -3,12 +3,6 @@
 import React, { useState } from 'react';
 import {
   ShieldAlert,
-  CheckCircle2,
-  AlertTriangle,
-  Layers,
-  FileCode,
-  Sparkles,
-  ExternalLink
 } from 'lucide-react';
 
 export default function PosturePage() {

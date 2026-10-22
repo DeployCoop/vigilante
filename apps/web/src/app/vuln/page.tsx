@@ -1,46 +1,52 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
   Brain,
   RefreshCw,
-  ShieldAlert,
-  Server,
-  Network,
   Play,
   Share2,
-  Lock,
-  ChevronRight,
-  ExternalLink,
-  Cpu
 } from 'lucide-react';
 
+interface DossierSummary {
+  target: string;
+  riskTier?: string;
+  riskScore?: number;
+  openPortsCount?: number;
+  cvesCount?: number;
+  isBmc?: boolean;
+}
+
+interface TrafficPcap {
+  fileName: string;
+  filePath: string;
+}
+
+interface Cve {
+  id: string;
+  title?: string;
+  description?: string;
+}
+
+interface DossierDetail {
+  target: string;
+  riskScore?: number;
+  riskTier?: string;
+  updatedAt?: string;
+  network?: { openPorts?: { port: number; service: string }[] };
+  outOfBand?: { detected?: boolean; vendor?: string };
+  vulnerabilities: { cves: Cve[] };
+}
+
 export default function VulnPage() {
-  const [dossiers, setDossiers] = useState<any[]>([]);
-  const [trafficPcaps, setTrafficPcaps] = useState<any[]>([]);
-  const [bhIngests, setBhIngests] = useState<any[]>([]);
-  const [selectedDossier, setSelectedDossier] = useState<any>(null);
+  const [dossiers, setDossiers] = useState<DossierSummary[]>([]);
+  const [trafficPcaps, setTrafficPcaps] = useState<TrafficPcap[]>([]);
+  const [bhIngests, setBhIngests] = useState<unknown[]>([]);
+  const [selectedDossier, setSelectedDossier] = useState<DossierDetail | null>(null);
   const [activeTab, setActiveTab] = useState<'dossiers' | 'pcaps' | 'identity'>('dossiers');
   const [loading, setLoading] = useState<boolean>(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  const fetchVulnData = () => {
-    setLoading(true);
-    fetch('/api/dossier')
-      .then((res) => res.json())
-      .then((d) => {
-        if (d.success) {
-          setDossiers(d.dossiers || []);
-          setTrafficPcaps(d.trafficPcaps || []);
-          setBhIngests(d.bhIngests || []);
-          if (d.dossiers?.length > 0 && !selectedDossier) {
-            fetchDossierDetails(d.dossiers[0].target);
-          }
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
 
   const fetchDossierDetails = (target: string) => {
     fetch(`/api/dossier?target=${encodeURIComponent(target)}`)
@@ -52,9 +58,31 @@ export default function VulnPage() {
       });
   };
 
+  // Auto-load the first dossier's details once, on first load only (a ref
+  // flag, so the loader does not need to read selectedDossier from state).
+  const autoDetailRef = useRef(false);
+  const fetchVulnData = useCallback(() => {
+    fetch('/api/dossier')
+      .then((res) => res.json())
+      .then((d) => {
+        if (d.success) {
+          setDossiers(d.dossiers || []);
+          setTrafficPcaps(d.trafficPcaps || []);
+          setBhIngests(d.bhIngests || []);
+          if (d.dossiers?.length > 0 && !autoDetailRef.current) {
+            autoDetailRef.current = true;
+            fetchDossierDetails(d.dossiers[0].target);
+          }
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+
   useEffect(() => {
     fetchVulnData();
-  }, []);
+  }, [fetchVulnData]);
 
   const handleReplayPcap = async (pcapFile: string) => {
     try {
@@ -68,8 +96,8 @@ export default function VulnPage() {
         setStatusMessage(`✔ PCAP replay executed!`);
         setTimeout(() => setStatusMessage(null), 3000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error replaying: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error replaying: ${errorMessage(err)}`);
     }
   };
 
@@ -203,7 +231,7 @@ export default function VulnPage() {
                       </span>
                     </h3>
                     <p className="text-[11px] text-slate-500 pt-0.5">
-                      Last Updated: {new Date(selectedDossier.updatedAt || Date.now()).toLocaleString()}
+                      Last Updated: {selectedDossier.updatedAt ? new Date(selectedDossier.updatedAt).toLocaleString() : 'Unknown'}
                     </p>
                   </div>
                 </div>
@@ -216,7 +244,7 @@ export default function VulnPage() {
                       {selectedDossier.network?.openPorts?.length || 0} Open
                     </div>
                     <div className="text-[10px] text-slate-400 truncate">
-                      {selectedDossier.network?.openPorts?.map((p: any) => `${p.port}/${p.service}`).join(', ') || 'None'}
+                      {selectedDossier.network?.openPorts?.map((p) => `${p.port}/${p.service}`).join(', ') || 'None'}
                     </div>
                   </div>
 
@@ -238,7 +266,7 @@ export default function VulnPage() {
                     {(selectedDossier.vulnerabilities?.cves || []).length === 0 ? (
                       <div className="text-slate-500">No active critical CVEs pinned to this dossier.</div>
                     ) : (
-                      selectedDossier.vulnerabilities.cves.map((cve: any, idx: number) => (
+                      selectedDossier.vulnerabilities.cves.map((cve, idx: number) => (
                         <div key={idx} className="flex items-center justify-between">
                           <span className="text-rose-400 font-bold">{cve.id}</span>
                           <span className="text-slate-400">{cve.title || cve.description}</span>
