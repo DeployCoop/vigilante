@@ -1,25 +1,39 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Share2,
-  AlertTriangle,
-  Shield,
-  Layers,
   Server,
   Key,
-  CheckCircle2,
   RefreshCw,
-  Zap
 } from 'lucide-react';
 
+interface GraphNode {
+  id: string;
+  label?: string;
+  type: string;
+  zone?: string;
+}
+
+interface BlastRadius {
+  riskLevel: string;
+  impactScore: number;
+  reachableCount: number;
+  compromisedBreakdown?: { workloads?: string[]; identities?: string[] };
+}
+
+interface GraphData {
+  blast?: BlastRadius;
+  graph?: { nodes: GraphNode[]; edges: unknown[] };
+  shortestPath?: string[];
+}
+
 export default function AttackGraphPage() {
-  const [graphData, setGraphData] = useState<any>(null);
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [selectedNode, setSelectedNode] = useState<string>('sa-cluster-admin');
   const [loading, setLoading] = useState<boolean>(true);
 
-  const fetchGraph = (target: string) => {
-    setLoading(true);
+  const fetchGraph = useCallback((target: string) => {
     fetch(`/api/graph?target=${encodeURIComponent(target)}`)
       .then((res) => res.json())
       .then((data) => {
@@ -27,20 +41,19 @@ export default function AttackGraphPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchGraph(selectedNode);
-  }, []);
+  }, [selectedNode, fetchGraph]);
 
   const handleSelectNode = (nodeId: string) => {
+    setLoading(true);
     setSelectedNode(nodeId);
-    fetchGraph(nodeId);
   };
 
   const blast = graphData?.blast;
   const nodes = graphData?.graph?.nodes || [];
-  const edges = graphData?.graph?.edges || [];
 
   return (
     <div className="space-y-6">
@@ -89,9 +102,8 @@ export default function AttackGraphPage() {
               <RefreshCw className="w-6 h-6 animate-spin text-purple-400" />
             ) : (
               <div className="flex flex-wrap items-center justify-center gap-4 py-8">
-                {nodes.map((n: any, idx: number) => {
+                {nodes.map((n) => {
                   const isSelected = n.id === selectedNode;
-                  const isCrit = n.type === 'identity' || n.id === 'sa-cluster-admin';
 
                   return (
                     <div

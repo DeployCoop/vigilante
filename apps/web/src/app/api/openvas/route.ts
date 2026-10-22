@@ -9,6 +9,7 @@ import {
 import { listSavedXmlScans } from 'vigilante_lib/engine/nmap-xml.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +32,11 @@ export async function GET(request: Request) {
       const credentials = await getOpenVasCredentials({ namespace: status.namespace, clusterName });
       
       // Also get discovered hosts from Nmap scans to populate target picker
-      let discoveredHosts: any[] = [];
+      const discoveredHosts: { ip: string }[] = [];
       try {
-        const xmlScans = await listSavedXmlScans();
-        xmlScans.forEach((s: any) => {
-          (s.hosts || []).forEach((h: any) => {
+        const xmlScans = (await listSavedXmlScans()) as { hosts?: { ip: string }[] }[];
+        xmlScans.forEach((s) => {
+          (s.hosts || []).forEach((h) => {
             if (!discoveredHosts.some((existing) => existing.ip === h.ip)) {
               discoveredHosts.push(h);
             }
@@ -66,11 +67,11 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         profiles: SCAN_PROFILES
       },
       { status: 500 }
@@ -107,11 +108,11 @@ export async function POST(request: Request) {
       success: true,
       report: result
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message
+        error: errorMessage(err)
       },
       { status: 500 }
     );

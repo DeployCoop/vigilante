@@ -6,6 +6,7 @@ import {
   renderAsciiTimeline
 } from 'vigilante_lib/engine/timeline.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,11 +104,11 @@ export async function GET(req: Request) {
       dwell,
       ascii
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message
+        error: errorMessage(err)
       },
       { status: 500 }
     );
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
       dwell,
       ascii
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

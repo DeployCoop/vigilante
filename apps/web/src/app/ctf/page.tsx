@@ -8,37 +8,57 @@ import {
   Terminal,
   Clock,
   ExternalLink,
-  Shield,
   HelpCircle,
-  AlertOctagon,
-  Copy,
-  Check,
-  CheckCircle2,
-  RefreshCw,
   Sparkles,
   BookOpen
 } from 'lucide-react';
 
+interface Category {
+  id: string;
+  name: string;
+  icon: string;
+}
+
+interface Challenge {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: string;
+  category: string;
+  port?: number;
+  protocol?: string;
+}
+
+interface Sandbox {
+  challengeId: string;
+  connectionUrl?: string;
+  remainingMinutes?: number;
+}
+
+interface MentorResult {
+  penaltyPercent: number;
+  tierName: string;
+  guidance: string;
+}
+
 export default function CTFArenaPage() {
-  const [categories, setCategories] = useState<any[]>([]);
-  const [challenges, setChallenges] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [sandboxes, setSandboxes] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [selectedChallenge, setSelectedChallenge] = useState<any>(null);
-  const [flagInput, setFlagInput] = useState<string>('');
-  const [submitFeedback, setSubmitFeedback] = useState<any>(null);
+  const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
+  const [, setLoading] = useState<boolean>(true);
+  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
 
   // Socratic Mentor modal state
   const [mentorOpen, setMentorOpen] = useState<boolean>(false);
   const [mentorTier, setMentorTier] = useState<number>(1);
   const [mentorQuestion, setMentorQuestion] = useState<string>('');
-  const [mentorResult, setMentorResult] = useState<any>(null);
+  const [mentorResult, setMentorResult] = useState<MentorResult | null>(null);
+  // Write-only: the Crash Triage button clears any prior diagnosis; the
+  // value itself is not rendered (the triage flow lives in the modal).
+  const [, setCrashDiagnosis] = useState<unknown>(null);
   const [mentorLoading, setMentorLoading] = useState<boolean>(false);
 
-  // Crash analyzer modal state
-  const [crashLog, setCrashLog] = useState<string>('');
-  const [crashDiagnosis, setCrashDiagnosis] = useState<any>(null);
 
   // Fetch challenges and active sandboxes
   useEffect(() => {
@@ -98,24 +118,6 @@ export default function CTFArenaPage() {
     }
   };
 
-  const handleAnalyzeCrash = async () => {
-    if (!crashLog) return;
-    try {
-      const res = await fetch('/api/ctf/mentor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'crash',
-          crashLog,
-          challengeId: selectedChallenge?.id
-        })
-      });
-      const data = await res.json();
-      setCrashDiagnosis(data.diagnosis);
-    } catch {
-      // Ignore
-    }
-  };
 
   const filteredChals = challenges.filter((c) => {
     if (activeCategory === 'all') return true;

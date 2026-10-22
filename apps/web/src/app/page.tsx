@@ -26,6 +26,7 @@ import {
   ArrowRight,
   BookOpen
 } from 'lucide-react';
+import Image from 'next/image';
 
 const OPERATIONS_SECTIONS = [
   {
@@ -243,8 +244,12 @@ const OPERATIONS_SECTIONS = [
   }
 ];
 
+interface SystemStatus {
+  modulesCount?: number;
+}
+
 export default function DashboardPage() {
-  const [status, setStatus] = useState<any>(null);
+  const [status, setStatus] = useState<SystemStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -263,9 +268,11 @@ export default function DashboardPage() {
       <div className="rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-slate-950 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl shadow-cyan-950/20 font-mono">
         <div className="flex items-start sm:items-center gap-4">
           <div className="relative shrink-0">
-            <img
+            <Image
               src="/images/vigilante-badge.jpg"
               alt="Vigilante Emblem"
+              width={56}
+              height={56}
               className="w-14 h-14 rounded-xl border border-cyan-400/60 shadow-[0_0_15px_rgba(6,182,212,0.35)] object-cover"
             />
             <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse"></span>

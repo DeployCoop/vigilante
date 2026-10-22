@@ -5,6 +5,7 @@ import {
   calculatePurpleScorecard
 } from 'vigilante_lib/engine/purpleteam.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    const scenarios = Object.entries(WARGAME_SCENARIOS).map(([key, s]: [string, any]) => ({
+    const scenarios = Object.entries(WARGAME_SCENARIOS).map(([key, s]) => ({
       id: key,
       name: s.name,
       adversaryGroup: s.adversaryGroup,
@@ -27,11 +28,11 @@ export async function GET(req: Request) {
       success: true,
       scenarios
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         scenarios: []
       },
       { status: 500 }
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
       simulation,
       scorecard
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

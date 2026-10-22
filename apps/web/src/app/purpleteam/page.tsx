@@ -6,26 +6,49 @@ import {
   Play,
   RefreshCw,
   Trophy,
-  ShieldAlert,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowRight,
   Target,
-  Zap,
-  Layers
 } from 'lucide-react';
 
+interface Scenario {
+  id: string;
+  name: string;
+  adversaryGroup: string;
+  targetWorkload: string;
+  targetNamespace: string;
+  stepsCount: number;
+}
+
+interface SimRound {
+  action: string;
+  techniqueName?: string;
+  techniqueId?: string;
+  detectedBy?: string[];
+  blocked?: boolean;
+}
+
+interface Simulation {
+  rounds: SimRound[];
+  scenarioName?: string;
+}
+
+interface Scorecard {
+  grade: string;
+  score: number;
+  contained: boolean;
+  mttdSec: number;
+  containmentStep: number;
+  recommendations?: string[];
+}
+
 export default function PurpleTeamPage() {
-  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('lateral-smb-exfil');
   const [loading, setLoading] = useState<boolean>(true);
   const [simulating, setSimulating] = useState<boolean>(false);
-  const [lastSimulation, setLastSimulation] = useState<any>(null);
-  const [scorecard, setScorecard] = useState<any>(null);
+  const [lastSimulation, setLastSimulation] = useState<Simulation | null>(null);
+  const [scorecard, setScorecard] = useState<Scorecard | null>(null);
 
   const fetchScenarios = () => {
-    setLoading(true);
     fetch('/api/purpleteam')
       .then((res) => res.json())
       .then((d) => {
@@ -216,7 +239,7 @@ export default function PurpleTeamPage() {
                     Kill Chain Execution Steps
                   </div>
                   <div className="divide-y divide-slate-800/60">
-                    {lastSimulation.rounds.map((r: any, idx: number) => (
+                    {lastSimulation.rounds.map((r, idx: number) => (
                       <div key={idx} className="p-3.5 flex items-start justify-between gap-4">
                         <div className="space-y-1">
                           <div className="font-bold text-white flex items-center gap-2">

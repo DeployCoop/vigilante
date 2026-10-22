@@ -7,35 +7,61 @@ import {
   Shield,
   Terminal,
   Play,
-  Cpu,
-  Radar,
-  Radio,
-  Clock,
-  Sparkles,
   Key,
   FolderPlus,
   CheckCircle2,
   AlertCircle,
   Copy,
   Check,
-  ArrowRight,
-  ExternalLink,
-  HelpCircle,
   Wrench,
   BookOpen,
-  FileSearch,
-  GitFork,
-  Flame,
   Award,
   RefreshCw
 } from 'lucide-react';
+import Image from 'next/image';
+import { errorMessage } from '@/lib/envelope';
+
+interface StatusData {
+  cluster?: { connected?: boolean; provider?: string; name?: string };
+  certs?: { valid?: boolean };
+}
+
+interface ScaffoldResult {
+  scaffoldedCount: number;
+  workspacePath: string;
+}
+
+interface CipherCandidate {
+  type: string;
+  decoded: string;
+  confidence: number;
+  header?: string;
+}
+
+interface JwtAnalysis {
+  header: unknown;
+  payload: unknown;
+  vulnerabilities?: string[];
+}
+
+interface RsaResult {
+  factorized: boolean;
+  method?: string;
+  p?: string;
+  q?: string;
+  d?: string;
+}
+
+interface XorResult {
+  matches: { offset: number; revealedPlaintext: string }[];
+}
 
 export default function CTFEventGuidePage() {
   const [activeTab, setActiveTab] = useState<'onboarding' | 'playbook' | 'workbench' | 'scoring' | 'cheatsheet'>('onboarding');
   
   // Readiness status
-  const [status, setStatus] = useState<any>(null);
-  const [sandboxes, setSandboxes] = useState<any[]>([]);
+  const [status, setStatus] = useState<StatusData | null>(null);
+  const [sandboxes, setSandboxes] = useState<unknown[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
   // Workspace Scaffolder state
@@ -43,7 +69,7 @@ export default function CTFEventGuidePage() {
   const [teamName, setTeamName] = useState('CyberTeam-1');
   const [tournamentUrl, setTournamentUrl] = useState('https://ctf.vigilante.local');
   const [scaffoldLoading, setScaffoldLoading] = useState(false);
-  const [scaffoldResult, setScaffoldResult] = useState<any>(null);
+  const [scaffoldResult, setScaffoldResult] = useState<ScaffoldResult | null>(null);
   const [scaffoldError, setScaffoldError] = useState<string | null>(null);
 
   // Solver Workbench state
@@ -53,15 +79,15 @@ export default function CTFEventGuidePage() {
   const [cyclicNeedle, setCyclicNeedle] = useState('');
   const [cyclicOffset, setCyclicOffset] = useState<number | null>(null);
   const [cipherInput, setCipherInput] = useState('');
-  const [cipherCandidates, setCipherCandidates] = useState<any[]>([]);
+  const [cipherCandidates, setCipherCandidates] = useState<CipherCandidate[]>([]);
   const [jwtToken, setJwtToken] = useState('');
-  const [jwtAnalysis, setJwtAnalysis] = useState<any>(null);
+  const [jwtAnalysis, setJwtAnalysis] = useState<JwtAnalysis | null>(null);
   const [rsaModulus, setRsaModulus] = useState('');
-  const [rsaResult, setRsaResult] = useState<any>(null);
+  const [rsaResult, setRsaResult] = useState<RsaResult | null>(null);
   const [xorCt1, setXorCt1] = useState('');
   const [xorCt2, setXorCt2] = useState('');
   const [xorCrib, setXorCrib] = useState('VIGILANTE{');
-  const [xorResult, setXorResult] = useState<any>(null);
+  const [xorResult, setXorResult] = useState<XorResult | null>(null);
   const [solverLoading, setSolverLoading] = useState(false);
   const [solverError, setSolverError] = useState<string | null>(null);
 
@@ -69,7 +95,6 @@ export default function CTFEventGuidePage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const fetchStatus = () => {
-    setLoadingStatus(true);
     Promise.all([
       fetch('/api/status').then(r => r.json()).catch(() => ({})),
       fetch('/api/ctf/sandboxes').then(r => r.json()).catch(() => ({}))
@@ -109,8 +134,8 @@ export default function CTFEventGuidePage() {
         throw new Error(data.error || 'Failed to initialize workspace');
       }
       setScaffoldResult(data);
-    } catch (err: any) {
-      setScaffoldError(err.message);
+    } catch (err: unknown) {
+      setScaffoldError(errorMessage(err));
     } finally {
       setScaffoldLoading(false);
     }
@@ -120,7 +145,7 @@ export default function CTFEventGuidePage() {
     setSolverLoading(true);
     setSolverError(null);
     try {
-      let body: any = {};
+      let body: Record<string, unknown> = {};
       if (solverTool === 'cyclic') {
         if (cyclicNeedle.trim()) {
           body = { tool: 'cyclic_offset', pattern: cyclicPattern || undefined, needle: cyclicNeedle.trim() };
@@ -159,8 +184,8 @@ export default function CTFEventGuidePage() {
       } else if (solverTool === 'xor') {
         setXorResult(data);
       }
-    } catch (err: any) {
-      setSolverError(err.message);
+    } catch (err: unknown) {
+      setSolverError(errorMessage(err));
     } finally {
       setSolverLoading(false);
     }
@@ -172,9 +197,11 @@ export default function CTFEventGuidePage() {
       <div className="relative overflow-hidden rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-slate-950 p-6 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-start gap-4">
-            <img
+            <Image
               src="/images/vigilante-badge.jpg"
               alt="Vigilante Emblem"
+              width={64}
+              height={64}
               className="w-16 h-16 rounded-xl border-2 border-cyan-400/60 shadow-[0_0_20px_rgba(6,182,212,0.4)] object-cover shrink-0 hidden sm:block"
             />
             <div className="space-y-2">
@@ -192,7 +219,7 @@ export default function CTFEventGuidePage() {
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 max-w-3xl leading-relaxed">
                 Welcome to the Vigilante Cyber Range. Use this manual to initialize your participant workspace, master
-                Vigilante's multi-vector investigation tools, and harness the built-in Solver Workbench and Socratic AI Mentor.
+                Vigilante&apos;s multi-vector investigation tools, and harness the built-in Solver Workbench and Socratic AI Mentor.
               </p>
             </div>
           </div>
@@ -278,7 +305,7 @@ export default function CTFEventGuidePage() {
                   <Shield className="w-3.5 h-3.5 text-cyan-400" />
                   Cluster Runtime
                 </span>
-                <button onClick={fetchStatus} title="Refresh status" className="text-slate-500 hover:text-cyan-400">
+                <button onClick={() => { setLoadingStatus(true); fetchStatus(); }} title="Refresh status" className="text-slate-500 hover:text-cyan-400">
                   <RefreshCw className={`w-3 h-3 ${loadingStatus ? 'animate-spin' : ''}`} />
                 </button>
               </div>
@@ -323,10 +350,12 @@ export default function CTFEventGuidePage() {
           <div className="relative rounded-2xl overflow-hidden border border-cyan-500/30 bg-slate-900 group shadow-lg">
             <div className="flex flex-col md:flex-row items-center">
               <div className="w-full md:w-2/5 h-48 md:h-52 relative overflow-hidden">
-                <img
+                <Image
                   src="/images/vigilante-rogue-operative.jpg"
                   alt="Vigilante Operative"
-                  className="w-full h-full object-cover object-top group-hover:scale-105 transition duration-500"
+                  fill
+                  sizes="(min-width: 768px) 40vw, 100vw"
+                  className="object-cover object-top group-hover:scale-105 transition duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent to-slate-900" />
               </div>
@@ -544,7 +573,7 @@ export default function CTFEventGuidePage() {
                   <span>CTF Solver Workbench (ctf-tools)</span>
                 </h3>
                 <p className="text-xs text-slate-400 pt-1">
-                  Execute deterministic exploit math, pattern generation, token forensics, and cipher analysis powered by Vigilante's solver engine.
+                  Execute deterministic exploit math, pattern generation, token forensics, and cipher analysis powered by Vigilante&apos;s solver engine.
                 </p>
               </div>
 
@@ -828,7 +857,7 @@ export default function CTFEventGuidePage() {
                       <p className="text-xs text-slate-500">No printable ASCII matches found for this crib.</p>
                     ) : (
                       <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                        {xorResult.matches.map((m: any, i: number) => (
+                        {xorResult.matches.map((m, i: number) => (
                           <div key={i} className="p-2 bg-slate-950 rounded border border-slate-800 text-xs flex justify-between">
                             <span className="text-slate-500">Offset {m.offset}:</span>
                             <span className="text-cyan-300 font-bold font-mono">{m.revealedPlaintext}</span>

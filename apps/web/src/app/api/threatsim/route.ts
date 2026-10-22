@@ -6,6 +6,7 @@ import {
 } from 'vigilante_lib/engine/threats.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,11 @@ export async function GET(req: Request) {
       domain,
       playbooks
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         playbooks: []
       },
       { status: 500 }
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
       execution,
       logs
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

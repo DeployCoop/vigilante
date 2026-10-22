@@ -1,31 +1,41 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
   Layers,
-  Server,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
   ExternalLink,
-  Shield,
-  Activity,
   Download,
   Trash2,
   Terminal,
-  ChevronRight
 } from 'lucide-react';
 
+interface ModuleEndpoint {
+  name?: string;
+  url: string;
+}
+
+interface ModuleItem {
+  id: string;
+  name?: string;
+  installed: boolean;
+  description?: string;
+  endpoints: ModuleEndpoint[];
+  dependencies?: string[];
+}
+
 export default function ModulesPage() {
-  const [modules, setModules] = useState<any[]>([]);
+  const [modules, setModules] = useState<ModuleItem[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState<string>('default');
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const fetchModules = (ns = selectedNamespace) => {
-    setLoading(true);
+  const fetchModules = useCallback((ns: string) => {
     fetch(`/api/modules?namespace=${encodeURIComponent(ns)}`)
       .then((res) => res.json())
       .then((data) => {
@@ -35,11 +45,11 @@ export default function ModulesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchModules(selectedNamespace);
-  }, [selectedNamespace]);
+  }, [selectedNamespace, fetchModules]);
 
   const handleModuleAction = async (moduleId: string, action: 'install' | 'uninstall') => {
     setActionLoading(`${action}-${moduleId}`);
@@ -63,8 +73,8 @@ export default function ModulesPage() {
       } else {
         setActionLogs((prev) => [...prev, `Error: ${data.error}`]);
       }
-    } catch (err: any) {
-      setActionLogs((prev) => [...prev, `Error: ${err.message}`]);
+    } catch (err: unknown) {
+      setActionLogs((prev) => [...prev, `Error: ${errorMessage(err)}`]);
     } finally {
       setActionLoading(null);
     }
@@ -96,7 +106,10 @@ export default function ModulesPage() {
             <span className="text-slate-400">Target NS:</span>
             <select
               value={selectedNamespace}
-              onChange={(e) => setSelectedNamespace(e.target.value)}
+              onChange={(e) => {
+              setLoading(true);
+              setSelectedNamespace(e.target.value);
+            }}
               className="bg-slate-900 border border-slate-800 text-xs rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none"
             >
               <option value="default">default</option>
@@ -108,7 +121,10 @@ export default function ModulesPage() {
           </div>
 
           <button
-            onClick={() => fetchModules(selectedNamespace)}
+            onClick={() => {
+            setLoading(true);
+            fetchModules(selectedNamespace);
+          }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -125,7 +141,7 @@ export default function ModulesPage() {
 
       {/* Module Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {modules.map((m: any) => {
+        {modules.map((m) => {
           const isBusy = actionLoading === `install-${m.id}` || actionLoading === `uninstall-${m.id}`;
 
           return (
@@ -160,7 +176,7 @@ export default function ModulesPage() {
                 <div className="pt-2 border-t border-slate-800/80 space-y-1">
                   <div className="text-[10px] text-slate-500 uppercase">Ingress Endpoints:</div>
                   <div className="flex flex-wrap gap-2">
-                    {m.endpoints.map((ep: any, i: number) => (
+                    {m.endpoints.map((ep, i: number) => (
                       <a
                         key={i}
                         href={ep.url}

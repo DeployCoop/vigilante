@@ -17,6 +17,10 @@ export interface ApiErrorBody {
   details?: ApiError;
 }
 
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function errorBody(
   code: string,
   message: string,

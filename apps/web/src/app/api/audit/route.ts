@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runPipelineAudit, generateSarifReport } from 'vigilante_lib/engine/audit.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +25,11 @@ export async function GET(request: Request) {
       success: true,
       result
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         findings: []
       },
       { status: 500 }
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       result,
       sarif
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

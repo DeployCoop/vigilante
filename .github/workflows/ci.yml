@@ -87,5 +87,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint apps/web
+        run: pnpm --filter @vigilante/web lint
+
       - name: Build apps/web
         run: pnpm --filter @vigilante/web build
