@@ -495,6 +495,10 @@ export function modInverseBigInt(a, m) {
 
 /**
  * Comprehensive RSA Weak Prime Analyzer: Trial Division, Fermat Factorization & Wiener Attack
+ * @param {Object} options
+ * @param {bigint|string|number} options.n - RSA modulus to analyze
+ * @param {bigint|string|number} [options.e=65537] - Public exponent
+ * @param {string} [options.method='all'] - 'all', 'trial_division', 'fermat', or 'wiener'
  */
 export function rsaWeakPrimes({
   n,

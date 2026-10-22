@@ -395,6 +395,10 @@ export function toPublicPrincipal(p) {
 
 /**
  * Initialize owner principal (first bootstrap)
+ * @param {Object} options
+ * @param {string} [options.name='Owner']
+ * @param {string} [options.password] - Custom password; takes precedence over token
+ * @param {string} [options.token] - Custom API token; a random one is generated when neither is given
  */
 export async function initOwner({ name = 'Owner', password, token }, filePath = getVigilanteAuthzFile()) {
   const loaded = loadAuthzStore(filePath);

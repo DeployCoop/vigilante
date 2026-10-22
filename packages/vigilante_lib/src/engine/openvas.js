@@ -301,6 +301,14 @@ export function generateVulnerabilityFindings(host, profileId = 'full-and-fast')
 
 /**
  * Execute vulnerability scan against target host
+ * @param {Object} options
+ * @param {string|Object} options.host - Host IP string or host object with an ip property
+ * @param {string} [options.profile='full-and-fast'] - Scan profile ID
+ * @param {string} [options.networkTarget='local_network']
+ * @param {string|null} [options.namespace=null]
+ * @param {string} [options.clusterName='vigilante-dev']
+ * @param {Function} [options.onProgress]
+ * @param {Function} [options.onLog]
  */
 export async function runHostVulnerabilityScan({
   host,

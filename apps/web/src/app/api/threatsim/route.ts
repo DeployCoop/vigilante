@@ -53,13 +53,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: `Playbook ${playbookId} not found` }, { status: 404 });
     }
 
-    const config = loadConfig();
-    const domain = config.defaults?.domain || 'vigilante.local';
-
     const logs: string[] = [];
-    const execution = await executeThreatPlaybook(playbook, {
+    const execution = await executeThreatPlaybook({
+      playbook,
       namespace,
-      domain,
       onLog: (line: string) => {
         logs.push(line);
       }
