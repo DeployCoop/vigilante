@@ -6,7 +6,7 @@ import {
   PERMISSIONS,
   ROLES
 } from 'vigilante_lib/engine/authz.js';
-import { authorizeRequest } from '@/lib/authz';
+import { authorizeRequest, resolveVigilanteLdapConfig } from '@/lib/authz';
 import { apiError, routeError } from '@/lib/route-error';
 
 export const dynamic = 'force-dynamic';
@@ -36,13 +36,29 @@ export async function GET(req: Request) {
   }
 
   const store = loaded.store || { principals: [] };
+  const ldapCfg = resolveVigilanteLdapConfig();
 
   return NextResponse.json({
     success: true,
     authzEnabled: store.principals.length > 0,
     principals: store.principals.map(toPublicPrincipal),
     permissions: [...PERMISSIONS],
-    roles: [...ROLES]
+    roles: [...ROLES],
+    ...(ldapCfg.enabled
+      ? {
+          ldap: {
+            enabled: ldapCfg.enabled,
+            uri: ldapCfg.uri,
+            baseDN: ldapCfg.baseDN,
+            source: ldapCfg.source,
+            discoveredPath: ldapCfg.discoveredPath,
+            autoProvisionPrincipals: ldapCfg.autoProvisionPrincipals,
+            allowLocalBreakGlass: ldapCfg.allowLocalBreakGlass,
+            defaultRole: ldapCfg.defaultRole,
+            roleMapping: ldapCfg.roleMapping
+          }
+        }
+      : {})
   });
 }
 
@@ -67,6 +83,10 @@ export async function POST(req: Request) {
     typeof body.oidcSubject === 'string' && body.oidcSubject.trim()
       ? body.oidcSubject.trim()
       : undefined;
+  const ldapUid =
+    typeof body.ldapUid === 'string' && body.ldapUid.trim()
+      ? body.ldapUid.trim()
+      : undefined;
 
   if (!name) {
     return apiError(400, 'A non-empty name is required');
@@ -81,6 +101,8 @@ export async function POST(req: Request) {
       role,
       kind,
       oidcSubject,
+      ldapUid,
+      ldapGroups: Array.isArray(body.ldapGroups) ? body.ldapGroups : undefined,
       grants: Array.isArray(body.grants) ? body.grants : [],
       revocations: Array.isArray(body.revocations) ? body.revocations : []
     });

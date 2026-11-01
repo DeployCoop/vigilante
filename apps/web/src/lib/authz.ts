@@ -6,14 +6,31 @@ import {
   loadAuthzStore,
   decide,
   resolvePrincipalByToken,
-  resolvePrincipalBySession
+  resolvePrincipalBySession,
+  findPrincipalByLdapUid,
+  syncLdapPrincipal
 } from 'vigilante_lib/engine/authz.js';
 import {
   getOidcConfig,
   verifyOidcToken
 } from 'vigilante_lib/engine/authz-oidc.js';
+import {
+  resolveVigilanteLdapConfig,
+  getVigilanteLdapStatus,
+  authenticateLdapUser,
+  mapLdapGroupsToRole
+} from 'vigilante_lib/engine/authz-ldap.js';
 import { getVigilanteAuditLogFile } from 'vigilante_lib/engine/config.js';
 import { errorBody } from './envelope';
+
+export {
+  resolveVigilanteLdapConfig,
+  getVigilanteLdapStatus,
+  authenticateLdapUser,
+  mapLdapGroupsToRole,
+  findPrincipalByLdapUid,
+  syncLdapPrincipal
+};
 
 export const SESSION_COOKIE_NAME = 'vigilante_session';
 export const AUDIT_GENERATIONS = 3;
@@ -56,7 +73,7 @@ export interface GrantContext {
   notBefore?: string;
   notAfter?: string;
   source?: 'loopback' | 'any';
-  authMethod?: 'session' | 'token' | 'oidc' | 'any';
+  authMethod?: 'session' | 'token' | 'oidc' | 'ldap' | 'any';
 }
 
 export interface Grant {
@@ -72,6 +89,8 @@ export interface PrincipalRecord {
   kind: string;
   role: string;
   oidcSubject?: string;
+  ldapUid?: string;
+  ldapGroups?: string[];
   disabled: boolean;
   grants: Grant[];
   revocations: string[];
@@ -95,6 +114,8 @@ export interface PublicPrincipal {
   kind: string;
   role: string;
   oidcSubject?: string;
+  ldapUid?: string;
+  ldapGroups?: string[];
   disabled: boolean;
   grants: Grant[];
   revocations: string[];

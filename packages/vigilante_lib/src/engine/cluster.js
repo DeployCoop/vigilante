@@ -2,10 +2,10 @@ import { execa } from 'execa';
 import fsSync from 'node:fs';
 import { execStream, commandExists } from '../utils/exec.js';
 import { logger } from '../utils/logger.js';
-import { waitForApiServerReady, getClusterContextArgs } from './k8s.js';
+import { waitForApiServerReady, getClusterContextArgs, getKubeExecutionEnv } from './k8s.js';
 import { assertCliTarget } from './config.js';
 
-export { getClusterContextArgs };
+export { getClusterContextArgs, getKubeExecutionEnv };
 
 /**
  * List all k3d clusters
@@ -48,7 +48,9 @@ export async function detectK3sAvailability() {
 
   let kubectlK3sConnected = false;
   try {
-    const { stdout } = await execa('kubectl', ['get', 'nodes', '-o', 'json', '--request-timeout=2s']);
+    const { stdout } = await execa('kubectl', ['get', 'nodes', '-o', 'json', '--request-timeout=2s'], {
+      env: getKubeExecutionEnv()
+    });
     const parsed = JSON.parse(stdout || '{"items":[]}');
     kubectlK3sConnected = (parsed.items || []).some(n =>
       n.status?.nodeInfo?.kubeletVersion?.includes('+k3s')
@@ -78,7 +80,7 @@ export async function listK3sClusters() {
 
   const isRunning = detection.serviceActive || detection.kubectlK3sConnected;
   return [{
-    name: 'k3s-default',
+    name: process.env.VIGILANTE_CLUSTER_NAME || 'axonwall-k3s',
     provider: 'k3s',
     serversRunning: isRunning ? 1 : 0,
     serversCount: 1,
@@ -89,20 +91,21 @@ export async function listK3sClusters() {
 
 /**
  * Resolve the appropriate kubectl context for a cluster and provider
- * @param {string} [clusterName='vigilante-dev']
- * @param {string} [provider=null] - 'k3d' | 'k3s' | null
+ * @param {string} [clusterName='axonwall-k3s']
+ * @param {string} [provider=null] - 'k3s' | 'k3d' | null
  * @returns {Promise<string|null>}
  */
-export async function resolveKubeContext(clusterName = 'vigilante-dev', provider = null) {
+export async function resolveKubeContext(clusterName = 'axonwall-k3s', provider = null) {
   try {
-    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name']);
+    const kubeEnv = getKubeExecutionEnv();
+    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name'], { env: kubeEnv });
     const contexts = stdout.split('\n').map(c => c.trim()).filter(Boolean);
 
     if (provider === 'k3s') {
       if (contexts.includes(`k3s-${clusterName}`)) return `k3s-${clusterName}`;
       if (contexts.includes('k3s')) return 'k3s';
       if (contexts.includes('default')) return 'default';
-      const { stdout: cur } = await execa('kubectl', ['config', 'current-context']);
+      const { stdout: cur } = await execa('kubectl', ['config', 'current-context'], { env: kubeEnv });
       return cur.trim() || null;
     }
 
@@ -115,20 +118,20 @@ export async function resolveKubeContext(clusterName = 'vigilante-dev', provider
     if (contexts.includes(`k3s-${clusterName}`)) return `k3s-${clusterName}`;
     if (contexts.includes('k3s')) return 'k3s';
     if (contexts.includes('default')) return 'default';
-    const { stdout: cur } = await execa('kubectl', ['config', 'current-context']);
-    return cur.trim() || `k3d-${clusterName}`;
+    const { stdout: cur } = await execa('kubectl', ['config', 'current-context'], { env: kubeEnv });
+    return cur.trim() || 'default';
   } catch {
-    return provider === 'k3s' ? 'default' : `k3d-${clusterName}`;
+    return provider === 'k3d' ? `k3d-${clusterName}` : 'default';
   }
 }
 
 /**
  * Synchronous fallback to get expected cluster context string
- * @param {string} [clusterName='vigilante-dev']
- * @param {string} [provider='k3d']
+ * @param {string} [clusterName='axonwall-k3s']
+ * @param {string} [provider='k3s']
  * @returns {string}
  */
-export function getClusterContext(clusterName = 'vigilante-dev', provider = 'k3d') {
+export function getClusterContext(clusterName = 'axonwall-k3s', provider = 'k3s') {
   if (provider === 'k3s') {
     return `k3s-${clusterName}`;
   }
@@ -137,10 +140,10 @@ export function getClusterContext(clusterName = 'vigilante-dev', provider = 'k3d
 
 /**
  * Create or reuse a k3s Kubernetes cluster on host
- * @param {string} [clusterName='vigilante-dev']
+ * @param {string} [clusterName='axonwall-k3s']
  * @param {Object} [options]
  */
-export async function createK3sCluster(clusterName = 'vigilante-dev', options = {}) {
+export async function createK3sCluster(clusterName = 'axonwall-k3s', options = {}) {
   const { onLog = null } = options;
 
   if (onLog) onLog(`[k3s] Initializing K3s cluster target '${clusterName}'...`);
@@ -234,8 +237,8 @@ export async function deleteK3sCluster(clusterName = 'vigilante-dev', options = 
  * @param {Object} [options]
  * @param {string} [options.provider='k3d'] - 'k3d' | 'k3s'
  */
-export async function createCluster(clusterName = 'vigilante-dev', options = {}) {
-  const provider = options.provider || 'k3d';
+export async function createCluster(clusterName = 'axonwall-k3s', options = {}) {
+  const provider = options.provider || 'k3s';
   if (provider === 'k3s') {
     return createK3sCluster(clusterName, options);
   }
@@ -243,13 +246,13 @@ export async function createCluster(clusterName = 'vigilante-dev', options = {})
 }
 
 /**
- * Unified cluster deleter: supports both k3d and k3s
- * @param {string} [clusterName='vigilante-dev']
+ * Unified cluster deleter: supports both k3s and k3d (defaults to k3s)
+ * @param {string} [clusterName='axonwall-k3s']
  * @param {Object} [options]
- * @param {string} [options.provider='k3d'] - 'k3d' | 'k3s'
+ * @param {string} [options.provider='k3s'] - 'k3s' | 'k3d'
  */
-export async function deleteCluster(clusterName = 'vigilante-dev', options = {}) {
-  const provider = options.provider || 'k3d';
+export async function deleteCluster(clusterName = 'axonwall-k3s', options = {}) {
+  const provider = options.provider || 'k3s';
   if (provider === 'k3s') {
     return deleteK3sCluster(clusterName, options);
   }

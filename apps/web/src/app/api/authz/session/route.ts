@@ -4,8 +4,13 @@ import {
   resolvePrincipalByToken,
   createSession,
   revokeSession,
+  syncLdapPrincipal,
   SESSION_TTL_MS
 } from 'vigilante_lib/engine/authz.js';
+import {
+  resolveVigilanteLdapConfig,
+  authenticateLdapUser
+} from 'vigilante_lib/engine/authz-ldap.js';
 import {
   SESSION_COOKIE_NAME,
   extractSessionId,
@@ -26,37 +31,90 @@ const SESSION_COOKIE_OPTIONS = {
 };
 
 /**
- * Token/Password -> session exchange
+ * OpenLDAP { username, password } or Token/Password -> session exchange
  */
 export async function POST(req: Request) {
   const loaded = loadAuthzStore();
-  if (loaded.state !== 'ready' || !loaded.store || loaded.store.principals.length === 0) {
+  if (loaded.state !== 'ready' || !loaded.store) {
     return apiError(409, 'Authorization is not initialized yet.', { reason: 'authz_not_enabled' });
   }
   const store = loaded.store;
+  const ldapCfg = resolveVigilanteLdapConfig();
 
   const ctx = await resolveAuthzContext(req);
   let who = ctx.principal && !ctx.principal.disabled ? ctx.principal : null;
+  let eventType = 'session_created';
 
   if (!who) {
     const body = await req.json().catch(() => ({}));
-    const secret =
-      typeof body?.token === 'string' && body.token.trim()
-        ? body.token.trim()
-        : typeof body?.password === 'string' && body.password.trim()
-          ? body.password.trim()
-          : null;
+    const username =
+      typeof body?.username === 'string' && body.username.trim()
+        ? body.username.trim()
+        : null;
+    const password =
+      typeof body?.password === 'string' && body.password.trim()
+        ? body.password.trim()
+        : null;
 
-    if (secret) {
-      const principal = resolvePrincipalByToken(store, secret);
-      if (principal) {
-        if (principal.disabled) return apiError(403, 'Principal is disabled', { reason: 'deny_disabled_principal' });
-        who = principal;
+    // 1. OpenLDAP { username, password } flow
+    if (username && password && (ldapCfg.enabled || body?.authMethod === 'ldap')) {
+      const ldapRes = await authenticateLdapUser(username, password);
+      if (ldapRes.ok) {
+        try {
+          const synced = await syncLdapPrincipal(ldapRes, {
+            autoProvision: ldapCfg.autoProvisionPrincipals
+          });
+          if (!synced) {
+            return apiError(403, 'OpenLDAP user is not provisioned in Vigilante.', {
+              reason: 'deny_unknown_principal'
+            });
+          }
+          who = synced;
+          eventType = 'ldap_session_created';
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Principal is disabled';
+          return apiError(403, msg, { reason: 'deny_disabled_principal' });
+        }
+      } else if (ldapRes.code === 'ACCOUNT_LOCKED') {
+        return apiError(403, ldapRes.error || 'Directory account is locked', {
+          reason: 'deny_disabled_principal'
+        });
       } else if (
-        process.env.VIGILANTE_API_TOKEN &&
-        secret === process.env.VIGILANTE_API_TOKEN
+        !ldapCfg.allowLocalBreakGlass ||
+        (ldapRes.code !== 'USER_NOT_FOUND' && ldapRes.code !== 'LDAP_UNAVAILABLE')
       ) {
-        who = BOOTSTRAP_OWNER_PRINCIPAL;
+        return apiError(401, ldapRes.error || 'Invalid OpenLDAP credentials', {
+          reason: 'deny_unauthenticated'
+        });
+      }
+    }
+
+    // 2. Local token or break-glass password flow
+    if (!who) {
+      if (store.principals.length === 0) {
+        return apiError(409, 'Authorization is not initialized yet.', { reason: 'authz_not_enabled' });
+      }
+
+      const secret =
+        typeof body?.token === 'string' && body.token.trim()
+          ? body.token.trim()
+          : password;
+
+      if (secret) {
+        const principal = resolvePrincipalByToken(store, secret);
+        if (principal) {
+          if (principal.disabled) {
+            return apiError(403, 'Principal is disabled', { reason: 'deny_disabled_principal' });
+          }
+          if (!username || principal.name.toLowerCase() === username.toLowerCase()) {
+            who = principal;
+          }
+        } else if (
+          process.env.VIGILANTE_API_TOKEN &&
+          secret === process.env.VIGILANTE_API_TOKEN
+        ) {
+          who = BOOTSTRAP_OWNER_PRINCIPAL;
+        }
       }
     }
   }
@@ -66,11 +124,18 @@ export async function POST(req: Request) {
   }
 
   const { sessionToken } = await createSession(who.id);
-  recordAuthEvent(req, 'session_created', who.id);
+  recordAuthEvent(req, eventType, who.id);
 
   const res = NextResponse.json({
     success: true,
-    principal: { id: who.id, name: who.name, kind: who.kind, role: who.role }
+    principal: {
+      id: who.id,
+      name: who.name,
+      kind: who.kind,
+      role: who.role,
+      ...(who.ldapUid ? { ldapUid: who.ldapUid } : {}),
+      ...(Array.isArray(who.ldapGroups) ? { ldapGroups: who.ldapGroups } : {})
+    }
   });
   res.cookies.set(SESSION_COOKIE_NAME, sessionToken, SESSION_COOKIE_OPTIONS);
   return res;

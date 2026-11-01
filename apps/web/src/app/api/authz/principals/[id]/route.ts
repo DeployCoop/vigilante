@@ -29,6 +29,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       role: body.role,
       disabled: typeof body.disabled === 'boolean' ? body.disabled : undefined,
       oidcSubject: body.oidcSubject !== undefined ? body.oidcSubject : undefined,
+      ldapUid: body.ldapUid !== undefined ? body.ldapUid : undefined,
       grants: Array.isArray(body.grants) ? body.grants : undefined,
       revocations: Array.isArray(body.revocations) ? body.revocations : undefined
     });

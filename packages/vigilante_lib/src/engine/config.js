@@ -19,6 +19,9 @@ export function getXdgConfigHome() {
  * @returns {string}
  */
 export function getVigilanteConfigDir() {
+  if (process.env.VIGILANTE_CONFIG_DIR) {
+    return process.env.VIGILANTE_CONFIG_DIR;
+  }
   const xdg = getXdgConfigHome();
   const dotVigilante = path.join(xdg, '.vigilante');
   const vigilante = path.join(xdg, 'vigilante');
@@ -40,7 +43,45 @@ export function getVigilanteConfigDir() {
   if (plainExists) {
     return vigilante;
   }
+  // When running on an Axonwall appliance without an explicit XDG override,
+  // use the managed /var/lib/axonwall/vigilante runtime directory if present.
+  if (!process.env.XDG_CONFIG_HOME && fsSync.existsSync('/var/lib/axonwall/vigilante/config.yaml')) {
+    return '/var/lib/axonwall/vigilante';
+  }
   return vigilante;
+}
+
+/**
+ * Detect whether the current host is running Axonwall's in-house K3s cluster.
+ * @returns {boolean}
+ */
+export function isInHouseK3sHost() {
+  if (process.env.VIGILANTE_CLUSTER_PROVIDER) {
+    return process.env.VIGILANTE_CLUSTER_PROVIDER.toLowerCase() === 'k3s';
+  }
+  try {
+    return (
+      fsSync.existsSync('/etc/rancher/k3s/k3s.yaml') ||
+      fsSync.existsSync('/etc/axonwall/managed/k3s_config.json') ||
+      fsSync.existsSync('/var/lib/axonwall/vigilante/config.yaml')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve default cluster target configuration (defaults to Axonwall in-house K3s).
+ */
+export function resolveDefaultClusterSettings() {
+  const provider = (process.env.VIGILANTE_CLUSTER_PROVIDER || 'k3s').toLowerCase();
+  const isK3s = provider === 'k3s' || isInHouseK3sHost();
+  return {
+    clusterProvider: isK3s ? 'k3s' : provider,
+    clusterName: process.env.VIGILANTE_CLUSTER_NAME || (isK3s ? 'axonwall-k3s' : 'vigilante-dev'),
+    kubeconfig: process.env.KUBECONFIG || '/etc/rancher/k3s/k3s.yaml',
+    storageClass: process.env.VIGILANTE_STORAGE_CLASS || 'axonwall-zfs-local',
+  };
 }
 
 /**
@@ -524,8 +565,10 @@ export const DEFAULT_CONFIG = {
   },
   defaults: {
     domain: 'vigilante.local',
-    clusterName: 'vigilante-dev',
-    clusterProvider: 'k3d',
+    clusterName: 'axonwall-k3s',
+    clusterProvider: 'k3s',
+    kubeconfig: '/etc/rancher/k3s/k3s.yaml',
+    storageClass: 'axonwall-zfs-local',
     ip: '127.0.0.1',
     httpPort: 80,
     httpsPort: 443,
@@ -644,12 +687,14 @@ theme:
     selectedText: "yellow"
     banner: "magenta"
 
-# Default CLI & Cluster Settings
+# Default CLI & Cluster Settings (Utilizes Axonwall In-House K3s Cluster by Default)
 defaults:
   domain: "vigilante.local"
-  clusterName: "vigilante-dev"
-  # Cluster provider engine: 'k3d' (Docker containerized) or 'k3s' (native systemd/host)
-  clusterProvider: "k3d"
+  clusterName: "axonwall-k3s"
+  # Cluster provider engine: 'k3s' (in-house Axonwall K3s cluster) or 'k3d' (Docker containerized)
+  clusterProvider: "k3s"
+  kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+  storageClass: "axonwall-zfs-local"
   ip: "127.0.0.1"
   # Host ports bound to the cluster ingress (per instance; change these
   # to run multiple instances side by side without port collisions)

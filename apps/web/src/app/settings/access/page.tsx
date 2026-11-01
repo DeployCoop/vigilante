@@ -29,10 +29,29 @@ interface PublicPrincipal {
   kind: string;
   role: string;
   oidcSubject?: string;
+  ldapUid?: string;
+  ldapGroups?: string[];
   disabled: boolean;
   grants: Grant[];
   revocations: string[];
   hasToken: boolean;
+}
+
+interface LdapDirectoryConfig {
+  enabled: boolean;
+  uri: string;
+  baseDN: string;
+  source: string;
+  discoveredPath?: string | null;
+  autoProvisionPrincipals: boolean;
+  allowLocalBreakGlass: boolean;
+  defaultRole: string;
+  roleMapping: {
+    ownerGroups: string[];
+    adminGroups: string[];
+    operatorGroups: string[];
+    viewerGroups: string[];
+  };
 }
 
 interface AuditEntry {
@@ -65,6 +84,7 @@ export default function AccessPage() {
   const [principals, setPrincipals] = useState<PublicPrincipal[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
+  const [ldapConfig, setLdapConfig] = useState<LdapDirectoryConfig | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +100,7 @@ export default function AccessPage() {
   const [createKind, setCreateKind] = useState('human');
   const [createRole, setCreateRole] = useState('operator');
   const [createOidc, setCreateOidc] = useState('');
+  const [createLdapUid, setCreateLdapUid] = useState('');
 
   // Editor state (per principal id)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -106,6 +127,7 @@ export default function AccessPage() {
         setPrincipals(data.principals ?? []);
         setPermissions(data.permissions ?? []);
         setRoles(data.roles ?? []);
+        setLdapConfig(data.ldap ?? null);
         if (data.authzEnabled) {
           const auditRes = await fetch('/api/authz/audit?limit=50');
           if (auditRes.ok) {
@@ -172,6 +194,7 @@ export default function AccessPage() {
         kind: createKind,
         role: createRole,
         ...(createOidc.trim() ? { oidcSubject: createOidc.trim() } : {}),
+        ...(createLdapUid.trim() ? { ldapUid: createLdapUid.trim() } : {}),
       }),
     });
     if (!res.ok) return await fail(res);
@@ -182,6 +205,7 @@ export default function AccessPage() {
     setMessage(`Principal ${data.principal.name} created.`);
     setCreateName('');
     setCreateOidc('');
+    setCreateLdapUid('');
     await load();
   };
 
@@ -449,6 +473,42 @@ export default function AccessPage() {
       {/* Principal Management */}
       {!loading && authzEnabled && !forbidden && (
         <>
+          {ldapConfig?.enabled && (
+            <div className="p-5 bg-slate-900/90 border border-cyan-500/30 rounded-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                  <Lock className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-xs font-bold text-cyan-300 uppercase tracking-wider">
+                    Axonwall Local OpenLDAP Directory Integration
+                  </h3>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 uppercase">
+                  Active ({ldapConfig.source})
+                </span>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2 text-[11px] text-slate-300">
+                <div>
+                  <span className="text-slate-500">URI: </span>
+                  <span className="text-cyan-300">{ldapConfig.uri}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Base DN: </span>
+                  <span className="text-cyan-300">{ldapConfig.baseDN}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">JIT Auto-Provision: </span>
+                  <span>{ldapConfig.autoProvisionPrincipals ? 'Enabled' : 'Disabled'}</span>
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                POSIX Role Mapping: <code className="text-amber-300">{ldapConfig.roleMapping.ownerGroups.join(', ')} → owner</code> ·{' '}
+                <code className="text-cyan-300">{ldapConfig.roleMapping.adminGroups.join(', ')} → admin</code> ·{' '}
+                <code className="text-emerald-300">{ldapConfig.roleMapping.operatorGroups.join(', ')} → operator</code> ·{' '}
+                <code className="text-slate-300">{ldapConfig.roleMapping.viewerGroups.join(', ')} → viewer</code>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white tracking-wider uppercase">Active Principals</h3>
@@ -493,6 +553,8 @@ export default function AccessPage() {
                   <p>
                     Authentication: {p.hasToken ? 'API Token / Password' : '—'}
                     {p.oidcSubject ? ` · OIDC Subject: ${p.oidcSubject}` : ''}
+                    {p.ldapUid ? ` · OpenLDAP UID: ${p.ldapUid}` : ''}
+                    {p.ldapGroups && p.ldapGroups.length > 0 ? ` (${p.ldapGroups.join(', ')})` : ''}
                   </p>
                   {p.grants.length > 0 && (
                     <p>
@@ -667,6 +729,15 @@ export default function AccessPage() {
                   onChange={(e) => setCreateOidc(e.target.value)}
                   className={inputCls}
                   placeholder="sub or email from identity provider"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[11px] text-slate-400">OpenLDAP UID (Optional — Axonwall Directory)</span>
+                <input
+                  value={createLdapUid}
+                  onChange={(e) => setCreateLdapUid(e.target.value)}
+                  className={inputCls}
+                  placeholder="uid from ou=users,dc=axonwall,dc=local"
                 />
               </label>
               <label className="space-y-1">

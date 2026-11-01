@@ -509,6 +509,8 @@ export {
   resolvePrincipalBySession,
   revokeSession,
   toPublicPrincipal,
+  findPrincipalByLdapUid,
+  syncLdapPrincipal,
   initOwner,
   addPrincipal,
   updatePrincipal,
@@ -524,3 +526,14 @@ export {
   resetOidcCache,
   verifyOidcToken
 } from './engine/authz-oidc.js';
+
+export {
+  DEFAULT_AXONWALL_PLUGIN_PATHS,
+  DEFAULT_ROLE_MAPPING,
+  escapeLdapFilter,
+  escapeLdapDnValue,
+  resolveVigilanteLdapConfig,
+  mapLdapGroupsToRole,
+  authenticateLdapUser,
+  getVigilanteLdapStatus
+} from './engine/authz-ldap.js';

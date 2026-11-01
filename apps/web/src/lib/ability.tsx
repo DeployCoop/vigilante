@@ -14,21 +14,25 @@ import {
   abilityFromMe,
   emptyAbility,
   endSession,
+  exchangeLdapCredentialsForSession,
   exchangeTokenForSession,
   subjectFor,
   type AbilityStatus,
   type AuthzTarget,
   type ClientAbility,
+  type MeLdapInfo,
   type MePrincipal,
   type MeResponse
 } from './ability-core';
-import { ShieldCheck, Key, AlertCircle, X, Lock } from 'lucide-react';
+import { ShieldCheck, Key, AlertCircle, X, Lock, User } from 'lucide-react';
 
 interface AbilityContextValue {
   status: AbilityStatus;
   principal: MePrincipal | null;
+  ldapInfo: MeLdapInfo | null;
   can: (permission: string, target?: AuthzTarget) => boolean;
   signIn: (token: string) => Promise<boolean>;
+  signInWithLdap: (username: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   openSignInPrompt: () => void;
@@ -37,8 +41,10 @@ interface AbilityContextValue {
 const AbilityContext = createContext<AbilityContextValue>({
   status: 'loading',
   principal: null,
+  ldapInfo: null,
   can: () => false,
   signIn: async () => false,
+  signInWithLdap: async () => false,
   signOut: async () => {},
   refresh: async () => {},
   openSignInPrompt: () => {}
@@ -98,9 +104,13 @@ function notifyPromptDismissed(): void {
 export function AbilityProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AbilityStatus>('loading');
   const [principal, setPrincipal] = useState<MePrincipal | null>(null);
+  const [ldapInfo, setLdapInfo] = useState<MeLdapInfo | null>(null);
   const [ability, setAbility] = useState<ClientAbility>(() => emptyAbility());
   const promptDismissed = useSyncExternalStore(subscribePromptDismissed, readPromptDismissed, () => false);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<'ldap' | 'token'>('ldap');
+  const [ldapUsername, setLdapUsername] = useState('');
+  const [ldapPassword, setLdapPassword] = useState('');
   const [tokenDraft, setTokenDraft] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
@@ -116,6 +126,12 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
         setStatus(derived.status);
         setAbility(derived.ability);
         setPrincipal(body?.principal ?? null);
+        if (body?.ldap) {
+          setLdapInfo(body.ldap);
+        } else {
+          setLdapInfo(null);
+          setAuthTab('token');
+        }
       })
       .catch(() => {
         setStatus('unauthenticated');
@@ -158,6 +174,32 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const signInWithLdap = useCallback(
+    async (username: string, password: string): Promise<boolean> => {
+      setSigningIn(true);
+      setSignInError(null);
+      try {
+        const res = await exchangeLdapCredentialsForSession(username.trim(), password);
+        if (res.ok) {
+          setPromptOpen(false);
+          setLdapUsername('');
+          setLdapPassword('');
+          await refresh();
+          return true;
+        } else {
+          setSignInError(res.error || 'Invalid OpenLDAP credentials');
+          return false;
+        }
+      } catch (err: unknown) {
+        setSignInError(err instanceof Error && err.message ? err.message : 'OpenLDAP login failed');
+        return false;
+      } finally {
+        setSigningIn(false);
+      }
+    },
+    [refresh]
+  );
+
   const signOut = useCallback(async () => {
     await endSession();
     setSignInError(null);
@@ -174,8 +216,18 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<AbilityContextValue>(
-    () => ({ status, principal, can, signIn, signOut, refresh, openSignInPrompt }),
-    [status, principal, can, signIn, signOut, refresh, openSignInPrompt]
+    () => ({
+      status,
+      principal,
+      ldapInfo,
+      can,
+      signIn,
+      signInWithLdap,
+      signOut,
+      refresh,
+      openSignInPrompt
+    }),
+    [status, principal, ldapInfo, can, signIn, signInWithLdap, signOut, refresh, openSignInPrompt]
   );
 
   const dismissPrompt = () => {
@@ -220,6 +272,39 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
               </button>
             </div>
 
+            {ldapInfo?.enabled && (
+              <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-950 p-1 border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthTab('ldap');
+                    setSignInError(null);
+                  }}
+                  className={`py-1.5 text-xs font-mono rounded-md transition-colors ${
+                    authTab === 'ldap'
+                      ? 'bg-cyan-600 text-slate-950 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  OpenLDAP Directory
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthTab('token');
+                    setSignInError(null);
+                  }}
+                  className={`py-1.5 text-xs font-mono rounded-md transition-colors ${
+                    authTab === 'token'
+                      ? 'bg-cyan-600 text-slate-950 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Token / Break-Glass
+                </button>
+              </div>
+            )}
+
             {signInError && (
               <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -227,50 +312,113 @@ export function AbilityProvider({ children }: { children: ReactNode }) {
               </div>
             )}
 
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (tokenDraft.trim()) {
-                  await signIn(tokenDraft);
-                }
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5 font-mono">
-                  Token or Password
-                </label>
-                <div className="relative">
-                  <Key className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
-                  <input
-                    type="password"
-                    value={tokenDraft}
-                    onChange={(e) => setTokenDraft(e.target.value)}
-                    placeholder="vig_... or admin password"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none font-mono"
-                    autoFocus
-                  />
+            {ldapInfo?.enabled && authTab === 'ldap' ? (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (ldapUsername.trim() && ldapPassword) {
+                    await signInWithLdap(ldapUsername, ldapPassword);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5 font-mono">
+                    OpenLDAP Username (UID)
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                    <input
+                      type="text"
+                      value={ldapUsername}
+                      onChange={(e) => setLdapUsername(e.target.value)}
+                      placeholder="admin or soc-analyst"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none font-mono"
+                      autoFocus
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={dismissPrompt}
-                  className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  Browse as Guest
-                </button>
-                <button
-                  type="submit"
-                  disabled={signingIn || !tokenDraft.trim()}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>{signingIn ? 'Signing In...' : 'Authenticate'}</span>
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5 font-mono">
+                    Directory Password
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                    <input
+                      type="password"
+                      value={ldapPassword}
+                      onChange={(e) => setLdapPassword(e.target.value)}
+                      placeholder="OpenLDAP password"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={dismissPrompt}
+                    className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    Browse as Guest
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={signingIn || !ldapUsername.trim() || !ldapPassword}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>{signingIn ? 'Signing In...' : 'Sign In via OpenLDAP'}</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (tokenDraft.trim()) {
+                    await signIn(tokenDraft);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5 font-mono">
+                    Token or Password
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                    <input
+                      type="password"
+                      value={tokenDraft}
+                      onChange={(e) => setTokenDraft(e.target.value)}
+                      placeholder="vig_... or admin password"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none font-mono"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={dismissPrompt}
+                    className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    Browse as Guest
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={signingIn || !tokenDraft.trim()}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-900 font-bold text-xs rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>{signingIn ? 'Signing In...' : 'Authenticate'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

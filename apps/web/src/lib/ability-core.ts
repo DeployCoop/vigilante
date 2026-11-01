@@ -9,6 +9,16 @@ export interface MePrincipal {
   name: string;
   kind: string;
   role: string;
+  ldapUid?: string;
+  ldapGroups?: string[];
+}
+
+export interface MeLdapInfo {
+  enabled: boolean;
+  uri?: string;
+  baseDN?: string;
+  source?: string;
+  allowLocalBreakGlass?: boolean;
 }
 
 export interface MeResponse {
@@ -18,6 +28,7 @@ export interface MeResponse {
   localBoard?: boolean;
   rules: Array<Record<string, unknown>>;
   reason?: string;
+  ldap?: MeLdapInfo;
 }
 
 export type AbilityStatus =
@@ -107,6 +118,30 @@ export async function exchangeTokenForSession(secret: string): Promise<boolean> 
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Exchange OpenLDAP username + password for httpOnly session cookie
+ */
+export async function exchangeLdapCredentialsForSession(
+  username: string,
+  password: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/authz/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password, authMethod: 'ldap' })
+    });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: false,
+      error: data?.error?.message || data?.message || 'Invalid OpenLDAP credentials'
+    };
+  } catch {
+    return { ok: false, error: 'Failed to reach authentication server' };
   }
 }
 

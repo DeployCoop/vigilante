@@ -3,6 +3,7 @@ import { buildAbilityFor } from 'vigilante_lib/engine/authz.js';
 import {
   recordAuthEvent,
   resolveAuthzContext,
+  resolveVigilanteLdapConfig,
   SESSION_COOKIE_NAME
 } from '@/lib/authz';
 import { apiError } from '@/lib/route-error';
@@ -16,6 +17,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: Request) {
   const ctx = await resolveAuthzContext(req);
+  const ldapCfg = resolveVigilanteLdapConfig();
+  const ldapSummary = ldapCfg.enabled
+    ? {
+        enabled: true,
+        uri: ldapCfg.uri,
+        baseDN: ldapCfg.baseDN,
+        source: ldapCfg.source,
+        allowLocalBreakGlass: ldapCfg.allowLocalBreakGlass
+      }
+    : undefined;
 
   if (ctx.expiredSession) {
     recordAuthEvent(req, 'session_expired', null);
@@ -26,7 +37,8 @@ export async function GET(req: Request) {
       authzEnabled: false,
       principal: null,
       localBoard: false,
-      rules: []
+      rules: [],
+      ...(ldapSummary ? { ldap: ldapSummary } : {})
     });
   }
 
@@ -46,7 +58,8 @@ export async function GET(req: Request) {
         authzEnabled: false,
         principal: null,
         localBoard: true,
-        rules: []
+        rules: [],
+        ...(ldapSummary ? { ldap: ldapSummary } : {})
       });
     }
 
@@ -56,7 +69,7 @@ export async function GET(req: Request) {
       reason === 'deny_unknown_principal'
         ? 'Identity is not provisioned as a principal'
         : 'Authentication required',
-      { reason }
+      { reason, ...(ldapSummary ? { ldap: ldapSummary } : {}) }
     );
 
     if (ctx.expiredSession) {
@@ -70,13 +83,21 @@ export async function GET(req: Request) {
     return res;
   }
 
-  const { id, name, kind, role } = ctx.principal;
+  const { id, name, kind, role, ldapUid, ldapGroups } = ctx.principal;
   const ability = buildAbilityFor(ctx.principal);
 
   return NextResponse.json({
     authzEnabled: true,
-    principal: { id, name, kind, role },
+    principal: {
+      id,
+      name,
+      kind,
+      role,
+      ...(ldapUid ? { ldapUid } : {}),
+      ...(Array.isArray(ldapGroups) ? { ldapGroups } : {})
+    },
     localBoard: ctx.localBoard,
-    rules: ability.rules
+    rules: ability.rules,
+    ...(ldapSummary ? { ldap: ldapSummary } : {})
   });
 }

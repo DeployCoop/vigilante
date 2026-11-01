@@ -11,6 +11,10 @@ import {
   resolvePrincipalByToken,
   MIN_PASSWORD_LENGTH
 } from '../engine/authz.js';
+import {
+  getVigilanteLdapStatus,
+  authenticateLdapUser
+} from '../engine/authz-ldap.js';
 import { getVigilanteAuthzFile } from '../engine/config.js';
 
 export const AUTHZ_USAGE = `Usage: vigilante authz <command> [options]
@@ -22,6 +26,7 @@ Commands:
     --role <role>                 ${ROLES.join(' | ')} (default: viewer)
     --kind <kind>                 human | service (default: human)
     --oidc-subject <sub>          Map an OIDC identity instead of issuing a token
+    --ldap-uid <uid>              Map an OpenLDAP UID (e.g. uid=alice)
     --grant <permission>          Extra permission grant (repeatable)
     --scope-module <moduleId>     Scope grant to a specific module
     --scope-namespace <ns>        Scope grant to a specific namespace
@@ -35,7 +40,9 @@ Commands:
     --namespace <ns>              Target namespace
     --cluster <name>              Target cluster
     --source loopback|any         Caller source (default: any)
-    --auth-method <method>        session | token | oidc | any (default: token)
+    --auth-method <method>        session | token | oidc | ldap | any (default: token)
+  ldap-status                     Inspect Axonwall OpenLDAP integration & reachability
+  ldap-test <username> <password> Test OpenLDAP user bind and CASL role resolution
 `;
 
 export async function runAuthzCli(args = []) {
@@ -114,7 +121,9 @@ export async function runAuthzCli(args = []) {
     store.principals.forEach((p, idx) => {
       const status = p.disabled ? '🔴 DISABLED' : '🟢 ACTIVE';
       console.log(`[${idx + 1}] ${p.name} (${p.id}) [${p.role.toUpperCase()}] ${status}`);
-      console.log(`    Kind: ${p.kind} | Has Token: ${Boolean(p.tokenHash)} | OIDC: ${p.oidcSubject || 'None'}`);
+      console.log(
+        `    Kind: ${p.kind} | Has Token: ${Boolean(p.tokenHash)} | OIDC: ${p.oidcSubject || 'None'} | LDAP: ${p.ldapUid || 'None'}`
+      );
       if (p.grants && p.grants.length > 0) {
         console.log(`    Grants (${p.grants.length}): ${p.grants.map(g => g.permission).join(', ')}`);
       }
@@ -135,6 +144,7 @@ export async function runAuthzCli(args = []) {
     const role = flags.role || 'viewer';
     const kind = flags.kind || 'human';
     const oidcSubject = flags['oidc-subject'] || flags.oidc;
+    const ldapUid = flags['ldap-uid'] || flags.ldap;
 
     const grants = [];
     if (flags.grant) {
@@ -152,9 +162,12 @@ export async function runAuthzCli(args = []) {
     }
 
     try {
-      const res = await addPrincipal({ name, kind, role, oidcSubject, grants }, filePath);
+      const res = await addPrincipal({ name, kind, role, oidcSubject, ldapUid, grants }, filePath);
       console.log(`\n✔ Principal created: ${res.principal.name} (${res.principal.id})`);
       console.log(`Role: ${res.principal.role} | Kind: ${res.principal.kind}`);
+      if (res.principal.ldapUid) {
+        console.log(`LDAP UID: ${res.principal.ldapUid}`);
+      }
       if (res.token) {
         console.log(`\nToken (shown once — store it now, it cannot be recovered):\n  ${res.token}\n`);
       }
@@ -226,6 +239,50 @@ export async function runAuthzCli(args = []) {
     console.log(`Reason:   ${decision.reason}`);
     console.log(`Principal: ${principal ? `${principal.name} (${principal.id})` : 'unauthenticated'}\n`);
     return decision.allowed ? 0 : 1;
+  }
+
+  if (sub === 'ldap-status') {
+    const st = await getVigilanteLdapStatus();
+    console.log(`\n🔐 VIGILANTE OPENLDAP INTEGRATION STATUS`);
+    console.log('='.repeat(65));
+    console.log(`Enabled:        ${st.enabled ? 'YES' : 'NO'}`);
+    console.log(`Reachable:      ${st.reachable ? '🟢 ONLINE' : '🔴 OFFLINE'}`);
+    console.log(`Source:         ${st.source}${st.discoveredPath ? ` (${st.discoveredPath})` : ''}`);
+    console.log(`URI:            ${st.uri}`);
+    console.log(`Base DN:        ${st.baseDN}`);
+    console.log(`Service Bind:   ${st.bindDN || '(anonymous / direct bind)'}`);
+    console.log(`Auto-Provision: ${st.autoProvisionPrincipals ? 'YES' : 'NO'}`);
+    console.log(`Break-Glass:    ${st.allowLocalBreakGlass ? 'YES' : 'NO'}`);
+    console.log(`Default Role:   ${st.defaultRole}`);
+    console.log(`Role Mappings:`);
+    console.log(`  owner:    ${(st.roleMapping.ownerGroups || []).join(', ')}`);
+    console.log(`  admin:    ${(st.roleMapping.adminGroups || []).join(', ')}`);
+    console.log(`  operator: ${(st.roleMapping.operatorGroups || []).join(', ')}`);
+    console.log(`  viewer:   ${(st.roleMapping.viewerGroups || []).join(', ')}\n`);
+    return 0;
+  }
+
+  if (sub === 'ldap-test') {
+    const username = positional[0] || flags.username;
+    const password = positional[1] || flags.password;
+    if (!username || !password) {
+      console.error('✖ Error: Usage: `vigilante authz ldap-test <username> <password>`');
+      return 1;
+    }
+    const res = await authenticateLdapUser(username, password);
+    if (!res.ok) {
+      console.error(`\n✖ OpenLDAP authentication failed [${res.code}]: ${res.error}\n`);
+      return 1;
+    }
+    console.log(`\n✅ OPENLDAP AUTHENTICATION SUCCEEDED`);
+    console.log('='.repeat(65));
+    console.log(`Username:     ${res.username}`);
+    console.log(`User DN:      ${res.userDN}`);
+    console.log(`Display Name: ${res.displayName}`);
+    console.log(`Email:        ${res.email || 'N/A'}`);
+    console.log(`Groups:       ${(res.groups || []).join(', ') || '(none)'}`);
+    console.log(`Mapped Role:  ${res.role.toUpperCase()}\n`);
+    return 0;
   }
 
   console.error(`Unknown authz command '${sub}'. Run \`vigilante authz --help\` for usage.`);
