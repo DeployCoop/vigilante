@@ -303,6 +303,24 @@ async function runTests() {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
 
+  // Test 5: LDAPS TLS verification defaults on; explicit opt-out honored.
+  // (No TLS server needed here: the live cert-rejection behavior is
+  // covered by the mock-directory probe; this pins the config contract.)
+  {
+    const secure = resolveVigilanteLdapConfig({ enabled: true, uri: 'ldaps://127.0.0.1:636' });
+    assert.strictEqual(secure.tlsRejectUnauthorized, true, 'LDAPS must verify certificates by default');
+    assert.strictEqual(secure.tlsCaFile, null);
+    const insecure = resolveVigilanteLdapConfig({
+      enabled: true,
+      uri: 'ldaps://127.0.0.1:636',
+      tlsRejectUnauthorized: false,
+      tlsCaFile: '/tmp/ca.pem'
+    });
+    assert.strictEqual(insecure.tlsRejectUnauthorized, false, 'Explicit opt-out must be honored');
+    assert.strictEqual(insecure.tlsCaFile, '/tmp/ca.pem');
+    console.log('✔ Test 5 passed: LDAPS TLS verification on by default, opt-out and CA file honored.');
+  }
+
   console.log('🎉 ALL VIGILANTE OPENLDAP AUTHZ TESTS PASSED SUCCESSFULLY!\n');
 }
 

@@ -275,6 +275,32 @@ export function resolveVigilanteLdapConfig(overrides = {}) {
     overrides.timeoutMs || process.env.VIGILANTE_LDAP_TIMEOUT_MS || yamlLdap?.timeoutMs || 5000
   );
 
+  // TLS verification for ldaps:// is ON by default. The old code passed
+  // rejectUnauthorized: false unconditionally, so any certificate — a
+  // self-signed cert for an unrelated CN included — was accepted, and a
+  // MITM could capture the bind password and user passwords. Private-CA
+  // deployments should point tlsCaFile at their CA bundle instead of
+  // disabling verification; tlsRejectUnauthorized: false is an explicit,
+  // insecure opt-out for lab use only.
+  const tlsRejectUnauthorized =
+    overrides.tlsRejectUnauthorized !== undefined
+      ? Boolean(overrides.tlsRejectUnauthorized)
+      : process.env.VIGILANTE_LDAP_TLS_REJECT_UNAUTHORIZED !== undefined
+      ? process.env.VIGILANTE_LDAP_TLS_REJECT_UNAUTHORIZED !== 'false' &&
+        process.env.VIGILANTE_LDAP_TLS_REJECT_UNAUTHORIZED !== '0'
+      : fileBinding?.tlsRejectUnauthorized !== undefined
+      ? Boolean(fileBinding.tlsRejectUnauthorized)
+      : yamlLdap?.tlsRejectUnauthorized !== undefined
+      ? Boolean(yamlLdap.tlsRejectUnauthorized)
+      : true;
+
+  const tlsCaFile =
+    overrides.tlsCaFile ||
+    process.env.VIGILANTE_LDAP_TLS_CA_FILE ||
+    fileBinding?.tlsCaFile ||
+    yamlLdap?.tlsCaFile ||
+    null;
+
   const source = overrides.uri
     ? 'override'
     : envUri || envBaseDN || envEnabled !== undefined
@@ -299,6 +325,8 @@ export function resolveVigilanteLdapConfig(overrides = {}) {
     allowLocalBreakGlass,
     defaultRole,
     timeoutMs,
+    tlsRejectUnauthorized,
+    tlsCaFile,
     roleMapping: {
       ownerGroups,
       adminGroups,
@@ -553,9 +581,11 @@ function parseLdapTarget(uri) {
 }
 
 class MinimalLdapSession {
-  constructor(uri, timeoutMs = 5000) {
+  constructor(uri, timeoutMs = 5000, tlsOptions = {}) {
     this.uri = uri;
     this.timeoutMs = timeoutMs;
+    this.tlsRejectUnauthorized = tlsOptions.rejectUnauthorized !== false;
+    this.tlsCaFile = tlsOptions.caFile || null;
     this.socket = null;
     this.buffer = Buffer.alloc(0);
     this.nextMsgId = 1;
@@ -594,9 +624,26 @@ class MinimalLdapSession {
         }
       };
 
-      this.socket = isTls
-        ? tls.connect({ host, port, rejectUnauthorized: false }, onConnect)
-        : net.createConnection({ host, port }, onConnect);
+      if (isTls) {
+        const tlsOptions = { host, port, rejectUnauthorized: this.tlsRejectUnauthorized };
+        if (this.tlsCaFile) {
+          try {
+            tlsOptions.ca = fsSync.readFileSync(this.tlsCaFile);
+          } catch (err) {
+            // Fail closed: never silently fall back to the system CAs
+            // when the operator pinned a specific CA bundle.
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              reject(new Error(`LDAP TLS CA file unreadable (${this.tlsCaFile}): ${err.message}`));
+            }
+            return;
+          }
+        }
+        this.socket = tls.connect(tlsOptions, onConnect);
+      } else {
+        this.socket = net.createConnection({ host, port }, onConnect);
+      }
 
       this.socket.on('error', onError);
       this.socket.on('data', chunk => {
@@ -743,7 +790,10 @@ export async function authenticateLdapUser(username, password, configOverrides =
     };
   }
 
-  const lookupSession = new MinimalLdapSession(cfg.uri, cfg.timeoutMs);
+  const lookupSession = new MinimalLdapSession(cfg.uri, cfg.timeoutMs, {
+    rejectUnauthorized: cfg.tlsRejectUnauthorized,
+    caFile: cfg.tlsCaFile
+  });
   let userDN = '';
   let displayName = cleanUser;
   let email = undefined;
@@ -810,7 +860,12 @@ export async function authenticateLdapUser(username, password, configOverrides =
     }
 
     // Phase 2: Verify user password on a separate LDAP session
-    const userSession = new MinimalLdapSession(cfg.uri, cfg.timeoutMs);
+    // (same TLS options as the lookup session — otherwise the opt-out /
+    // CA-pinned paths would fail here after succeeding above)
+    const userSession = new MinimalLdapSession(cfg.uri, cfg.timeoutMs, {
+      rejectUnauthorized: cfg.tlsRejectUnauthorized,
+      caFile: cfg.tlsCaFile
+    });
     try {
       await userSession.connect();
       const userBind = await userSession.bind(userDN, cleanPass);
@@ -925,6 +980,8 @@ export async function getVigilanteLdapStatus(configOverrides = {}) {
     autoProvisionPrincipals: cfg.autoProvisionPrincipals,
     allowLocalBreakGlass: cfg.allowLocalBreakGlass,
     defaultRole: cfg.defaultRole,
+    tlsRejectUnauthorized: cfg.tlsRejectUnauthorized,
+    tlsCaFile: cfg.tlsCaFile,
     roleMapping: cfg.roleMapping,
     source: cfg.source,
     discoveredPath: cfg.discoveredPath

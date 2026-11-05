@@ -804,24 +804,149 @@ export const MAX_SANDBOX_TTL_MINUTES = 120;
  */
 export const activeSandboxesRegistry = new Map();
 
-let sandboxRegistryLoaded = false;
+// --- Sandbox registry concurrency -------------------------------------------
+// In-process mutex: chains every registry mutation so concurrent spawns,
+// reaps, terminates, and TTL extensions in one process cannot interleave
+// their check-then-act sections (spawn's quota/dedup checks span the kubectl
+// apply await). A rejection never breaks the chain.
+let sandboxRegistryMutex = Promise.resolve();
+function withSandboxRegistryLock(fn) {
+  const result = sandboxRegistryMutex.then(() => fn());
+  sandboxRegistryMutex = result.catch(() => {});
+  return result;
+}
 
-async function ensureSandboxRegistryLoaded() {
-  if (sandboxRegistryLoaded) return;
-  sandboxRegistryLoaded = true;
+// Cross-process file lock for the registry file itself: the tmp+rename
+// persist is atomic, but read-modify-write across processes (a long-lived
+// MCP server vs a CLI invocation) can still lose records. The lock is
+// advisory and best-effort: a lock older than 30s is treated as stale
+// (crashed holder) and removed, and failure to acquire degrades to an
+// unlocked persist with a warning rather than failing the operation.
+async function acquireRegistryFileLock() {
+  const lockFile = `${getCtfSandboxesFile()}.lock`;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await handle.writeFile(String(process.pid));
+      return async () => {
+        try { await handle.close(); } catch {}
+        try { await fs.unlink(lockFile); } catch {}
+      };
+    } catch (err) {
+      if (err.code !== 'EEXIST') break;
+      try {
+        const stat = await fs.stat(lockFile);
+        if (Date.now() - stat.mtimeMs > 30000) {
+          await fs.unlink(lockFile);
+          continue;
+        }
+      } catch {
+        // Lock vanished mid-check; retry.
+      }
+      await new Promise(res => setTimeout(res, 50));
+    }
+  }
+  logger.warn('KCTF:REGISTRY', 'Could not acquire registry file lock; proceeding unlocked');
+  return async () => {};
+}
+
+// Refresh the in-memory map from disk. The registry file is the durable
+// source of truth: a process that has been alive across CLI spawns must
+// not persist over records it never saw. On read/parse failure the
+// in-memory state is kept.
+async function refreshSandboxRegistryFromDisk() {
   try {
     const raw = await fs.readFile(getCtfSandboxesFile(), 'utf8');
     const records = JSON.parse(raw);
     if (Array.isArray(records)) {
+      activeSandboxesRegistry.clear();
       for (const rec of records) {
-        if (rec && rec.id && !activeSandboxesRegistry.has(rec.id)) {
-          activeSandboxesRegistry.set(rec.id, rec);
-        }
+        if (rec && rec.id) activeSandboxesRegistry.set(rec.id, rec);
       }
     }
   } catch {
-    // No registry file yet (or unreadable) — start from the in-memory state.
+    // Missing/corrupt file — keep in-memory state.
   }
+}
+
+// Run a registry mutation under both locks, refreshing from disk first so
+// the mutation applies to the latest durable state, then persisting.
+async function withSandboxRegistryMutation(fn) {
+  return withSandboxRegistryLock(async () => {
+    const release = await acquireRegistryFileLock();
+    try {
+      await refreshSandboxRegistryFromDisk();
+      const result = await fn();
+      await persistSandboxRegistry();
+      return result;
+    } finally {
+      await release();
+    }
+  });
+}
+
+// A sandbox counts against quota/dedup only while it is actually live:
+// stored status is 'ACTIVE' from spawn until reap/terminate, so an
+// expired-but-unreaped record must not block a respawn.
+function isSandboxEffectivelyActive(sbx, now = Date.now()) {
+  return sbx && sbx.status === 'ACTIVE' && new Date(sbx.expiresAt).getTime() > now;
+}
+
+// Team names must map injectively to DNS-safe identifiers. The old strip
+// mapping collapsed team-1/team1/team_1 onto one Deployment/Ingress host,
+// letting a second team overwrite (and hijack the flag of) the first.
+// Normalizing separators to '-' and appending a short hash of the raw id
+// keeps names readable while making distinct raw ids distinct.
+export function deriveSafeTeamName(teamId) {
+  const base = String(teamId)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/, '');
+  const hash = crypto.createHash('sha256').update(String(teamId)).digest('hex').slice(0, 6);
+  return `${base || 'team'}-${hash}`;
+}
+
+export function deriveSandboxAppName(teamId, challengeId) {
+  const safeChal = String(challengeId).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  return `${deriveSafeTeamName(teamId)}-${safeChal}`;
+}
+
+// Pre-fix records carry no stored appName; their objects were created with
+// the old strip derivation, so cleanup must reproduce it exactly.
+function legacySandboxAppName(teamId, challengeId) {
+  const safeTeam = String(teamId).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const safeChal = String(challengeId).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  return `${safeTeam}-${safeChal}`;
+}
+
+// Resolve the kubectl delete target for a record: stored values first
+// (post-fix records), legacy derivation and caller fallbacks otherwise.
+// Cleanup must delete what spawn actually created, not what the caller
+// happens to pass today.
+function cleanupTargetForRecord(record, { namespace, clusterName } = {}) {
+  return {
+    appName: record.appName || legacySandboxAppName(record.teamId, record.challengeId),
+    namespace: record.namespace || namespace || 'ctf-sandboxes',
+    kubeContext: record.kubeContext || `k3d-${record.clusterName || clusterName || 'vigilante-dev'}`
+  };
+}
+
+async function deleteSandboxObjects({ appName, namespace, kubeContext }) {
+  // Type-qualified names: a comma type list with several names deletes
+  // every type x every name, including same-named unrelated objects of
+  // other types in the namespace — hence the explicit per-type list.
+  await execa('kubectl', [
+    'delete',
+    `deployment/${appName}`,
+    `service/${appName}`,
+    `ingress/${appName}-ingress`,
+    `networkpolicy/${appName}-netpol`,
+    '-n', namespace,
+    '--context', kubeContext,
+    '--ignore-not-found=true'
+  ]);
 }
 
 async function persistSandboxRegistry() {
@@ -886,10 +1011,10 @@ export function generateEphemeralSandboxManifest({
   if (!isValidHostname(domain)) {
     throw new Error(`Invalid domain '${domain}': expected a dotted hostname`);
   }
-  const safeTeam = teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const safeTeam = deriveSafeTeamName(teamId);
   const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
   const safeSandbox = String(sandboxId).toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  const appName = `${safeTeam}-${safeChal}`;
+  const appName = deriveSandboxAppName(teamId, challengeId);
   const ingressHost = `${appName}.ctf.${domain}`;
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
   const createdAt = new Date().toISOString();
@@ -1068,11 +1193,15 @@ export async function spawnEphemeralSandbox({
   }
   const effectiveTtlMinutes = Math.min(MAX_SANDBOX_TTL_MINUTES, Math.max(1, Math.floor(ttlValue)));
 
-  await ensureSandboxRegistryLoaded();
-
-  // 1. Check team concurrency quota
+  // Everything from the quota check through registration runs under the
+  // registry mutation lock: the quota/dedup checks span the kubectl apply
+  // await, so without serialization two concurrent spawns both pass.
+  return withSandboxRegistryMutation(async () => {
+  const now0 = Date.now();
+  // 1. Check team concurrency quota (effectively-active only: an
+  // expired-but-unreaped record must not block a respawn)
   const existingTeamSandboxes = Array.from(activeSandboxesRegistry.values()).filter(
-    s => s.teamId === teamId && s.status === 'ACTIVE'
+    s => s.teamId === teamId && isSandboxEffectivelyActive(s, now0)
   );
 
   if (existingTeamSandboxes.length >= MAX_SANDBOXES_PER_TEAM) {
@@ -1096,14 +1225,15 @@ export async function spawnEphemeralSandbox({
   // 4. Derive dynamic HMAC flag
   const dynamicFlag = deriveTeamHmacFlag({ teamId, challengeId, secretKey });
 
-  // 5. Build identifiers & timestamps
-  const safeTeam = teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const safeChal = challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
-  const sandboxId = `sbx-${safeTeam}-${safeChal}-${crypto.randomBytes(3).toString('hex')}`;
+  // 5. Build identifiers & timestamps (shared derivation with the
+  // manifest builder, so cleanup deletes exactly what spawn created)
+  const appName = deriveSandboxAppName(teamId, challengeId);
+  const sandboxId = `sbx-${appName}-${crypto.randomBytes(3).toString('hex')}`;
   const now = Date.now();
   const expiresAt = new Date(now + effectiveTtlMinutes * 60 * 1000).toISOString();
-  const host = `${safeTeam}-${safeChal}.ctf.${domain}`;
+  const host = `${appName}.ctf.${domain}`;
   const connectionUrl = chal.serviceType === 'HTTP' ? `http://${host}` : `nc ${domain} ${chal.port}`;
+  const kubeContext = `k3d-${clusterName}`;
 
   // 6. Generate Kubernetes manifest
   const manifest = generateEphemeralSandboxManifest({
@@ -1124,7 +1254,7 @@ export async function spawnEphemeralSandbox({
       await execa('kubectl', [
         'apply',
         '-f', '-',
-        '--context', `k3d-${clusterName}`
+        '--context', kubeContext
       ], { input: manifest });
     } catch (err) {
       // A failed apply means nothing was provisioned — fail the spawn
@@ -1133,7 +1263,10 @@ export async function spawnEphemeralSandbox({
     }
   }
 
-  // 8. Register in active registry
+  // 8. Register in active registry (persisted by the mutation helper).
+  // appName/clusterName/kubeContext are stored so reap/terminate clean
+  // up exactly what spawn created, even if caller arguments differ later
+  // or the derivation changes in a future release.
   const sandboxRecord = {
     id: sandboxId,
     teamId,
@@ -1147,6 +1280,9 @@ export async function spawnEphemeralSandbox({
     connectionUrl,
     flag: dynamicFlag,
     namespace,
+    appName,
+    clusterName,
+    kubeContext,
     createdAt: new Date(now).toISOString(),
     expiresAt,
     ttlMinutes: effectiveTtlMinutes,
@@ -1155,10 +1291,10 @@ export async function spawnEphemeralSandbox({
   };
 
   activeSandboxesRegistry.set(sandboxId, sandboxRecord);
-  await persistSandboxRegistry();
   logger.info('KCTF:SPAWNER', `Provisioned sandbox '${sandboxId}' for Team '${teamId}' on '${challengeId}' (TTL: ${effectiveTtlMinutes}m)`);
 
   return sandboxRecord;
+  });
 }
 
 /**
@@ -1170,7 +1306,9 @@ export async function listActiveSandboxes({
   clusterName = 'vigilante-dev',
   includeSecrets = false
 } = {}) {
-  await ensureSandboxRegistryLoaded();
+  // Read path: refresh from disk under the in-process lock (no file lock
+  // needed — persists use tmp+rename, so readers see whole old/new files).
+  await withSandboxRegistryLock(() => refreshSandboxRegistryFromDisk());
   const now = Date.now();
   const results = [];
 
@@ -1208,7 +1346,12 @@ export async function extendSandboxTtl({
   additionalMinutes = 15,
   maxTtlMinutes = MAX_SANDBOX_TTL_MINUTES
 } = {}) {
-  await ensureSandboxRegistryLoaded();
+  const extension = Number(additionalMinutes);
+  if (!Number.isFinite(extension) || extension <= 0) {
+    throw new Error(`Invalid additionalMinutes '${additionalMinutes}': expected a positive number of minutes`);
+  }
+
+  return withSandboxRegistryMutation(async () => {
   let record = null;
 
   if (sandboxId && activeSandboxesRegistry.has(sandboxId)) {
@@ -1230,12 +1373,15 @@ export async function extendSandboxTtl({
   const created = new Date(record.createdAt).getTime();
   const maxExpiry = created + maxTtlMinutes * 60 * 1000;
 
-  const newExpiryTime = Math.min(maxExpiry, curExpiry + additionalMinutes * 60 * 1000);
+  // Extend from now when the stored expiry is already past: extending
+  // from a past expiry would persist an already-expired sandbox and
+  // report success for a record the next reap deletes.
+  const baseExpiry = Math.max(Date.now(), curExpiry);
+  const newExpiryTime = Math.min(maxExpiry, baseExpiry + extension * 60 * 1000);
   const newTtlMinutes = Math.round((newExpiryTime - created) / 60000);
 
   record.expiresAt = new Date(newExpiryTime).toISOString();
   record.ttlMinutes = newTtlMinutes;
-  await persistSandboxRegistry();
 
   logger.info('KCTF:SPAWNER', `Extended TTL for sandbox '${record.id}' to ${record.expiresAt} (Total: ${newTtlMinutes}m)`);
 
@@ -1246,6 +1392,7 @@ export async function extendSandboxTtl({
     remainingMinutes: Math.max(0, Math.round((newExpiryTime - Date.now()) / 60000)),
     ttlMinutes: newTtlMinutes
   };
+  });
 }
 
 /**
@@ -1256,40 +1403,29 @@ export async function reapExpiredSandboxes({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
-  await ensureSandboxRegistryLoaded();
+  return withSandboxRegistryMutation(async () => {
   const now = Date.now();
   const reaped = [];
 
-  for (const [id, sbx] of activeSandboxesRegistry.entries()) {
+  for (const [id, sbx] of Array.from(activeSandboxesRegistry.entries())) {
     const expiry = new Date(sbx.expiresAt).getTime();
     if (expiry <= now || sbx.status === 'EXPIRED') {
-      sbx.status = 'TERMINATED';
-      activeSandboxesRegistry.delete(id);
-
+      // Cluster objects first, against the record's own target. Only on
+      // success is the record dropped: a failed cleanup leaves the record
+      // in place so the next reap retries, instead of orphaning live
+      // objects past TTL with no record left to clean them.
       if (!mock) {
-        const safeTeam = sbx.teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const safeChal = sbx.challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
-        const appName = `${safeTeam}-${safeChal}`;
         try {
-          // Type-qualified names: a comma type list with several names
-          // deletes every type x every name, including same-named
-          // unrelated objects of other types in the namespace.
-          await execa('kubectl', [
-            'delete',
-            `deployment/${appName}`,
-            `service/${appName}`,
-            `ingress/${appName}-ingress`,
-            `networkpolicy/${appName}-netpol`,
-            '-n', namespace,
-            '--context', `k3d-${clusterName}`,
-            '--ignore-not-found=true'
-          ]);
+          await deleteSandboxObjects(cleanupTargetForRecord(sbx, { namespace, clusterName }));
         } catch (err) {
-          logger.warn('KCTF:REAPER', `Cleanup warning for ${appName}: ${err.message}`);
+          logger.warn('KCTF:REAPER', `Cleanup failed for sandbox '${id}': ${err.message}; record retained for retry`);
+          continue;
         }
       }
 
+      activeSandboxesRegistry.delete(id);
       reaped.push({
+        id,
         sandboxId: id,
         teamId: sbx.teamId,
         challengeId: sbx.challengeId,
@@ -1300,11 +1436,8 @@ export async function reapExpiredSandboxes({
     }
   }
 
-  if (reaped.length > 0) {
-    await persistSandboxRegistry();
-  }
-
   return reaped;
+  });
 }
 
 /**
@@ -1325,7 +1458,7 @@ export async function terminateSandbox({
   clusterName = 'vigilante-dev',
   mock = false
 } = {}) {
-  await ensureSandboxRegistryLoaded();
+  return withSandboxRegistryMutation(async () => {
   let targetId = sandboxId;
   let targetRecord = null;
 
@@ -1345,30 +1478,19 @@ export async function terminateSandbox({
     return { success: false, message: 'Sandbox not found' };
   }
 
-  targetRecord.status = 'TERMINATED';
-  activeSandboxesRegistry.delete(targetId);
-  await persistSandboxRegistry();
-
+  // Cluster cleanup first, against the record's own target. A failed
+  // cleanup keeps the record and reports failure — the old behavior
+  // deleted the record, swallowed the error, and reported success.
   if (!mock) {
-    const safeTeam = targetRecord.teamId.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const safeChal = targetRecord.challengeId.toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const appName = `${safeTeam}-${safeChal}`;
     try {
-      await execa('kubectl', [
-        'delete',
-        `deployment/${appName}`,
-        `service/${appName}`,
-        `ingress/${appName}-ingress`,
-        `networkpolicy/${appName}-netpol`,
-        '-n', namespace,
-        '--context', `k3d-${clusterName}`,
-        '--ignore-not-found=true'
-      ]);
-    } catch {
-      // Ignore not found
+      await deleteSandboxObjects(cleanupTargetForRecord(targetRecord, { namespace, clusterName }));
+    } catch (err) {
+      return { success: false, message: `Cluster cleanup failed for sandbox '${targetId}': ${err.message}; record retained for retry` };
     }
   }
 
+  activeSandboxesRegistry.delete(targetId);
   logger.info('KCTF:SPAWNER', `Terminated sandbox '${targetId}'`);
   return { success: true, sandboxId: targetId };
+  });
 }

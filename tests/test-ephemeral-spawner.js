@@ -9,6 +9,7 @@ import {
   reapExpiredSandboxes,
   terminateSandbox,
   activeSandboxesRegistry,
+  deriveSafeTeamName,
   MAX_SANDBOXES_PER_TEAM
 } from '../src/engine/kctf.js';
 
@@ -32,11 +33,11 @@ const sbx1 = await spawnEphemeralSandbox({
   mock: true
 });
 
-assert.ok(sbx1.id.startsWith('sbx-teamalpha-web-flag-leak-'));
+assert.ok(sbx1.id.startsWith(`sbx-${deriveSafeTeamName('team_alpha')}-web-flag-leak-`));
 assert.strictEqual(sbx1.teamId, 'team_alpha');
 assert.strictEqual(sbx1.challengeId, 'web-flag-leak');
 assert.strictEqual(sbx1.port, 8080);
-assert.strictEqual(sbx1.host, 'teamalpha-web-flag-leak.ctf.ctf.test');
+assert.strictEqual(sbx1.host, `${deriveSafeTeamName('team_alpha')}-web-flag-leak.ctf.ctf.test`);
 assert.ok(sbx1.flag.startsWith('VIGILANTE{web-flag-leak_team_alpha_'));
 assert.strictEqual(sbx1.status, 'ACTIVE');
 assert.ok(sbx1.manifest.includes('kind: Deployment'));
@@ -102,9 +103,15 @@ assert.ok(extendRes.remainingMinutes >= 59);
 console.log('✔ Test 5 passed: extendSandboxTtl safely extends expiration time.');
 
 // Test 6: Reaper terminates expired sandboxes
-// Artificially expire sbx2
-const sbx2Record = activeSandboxesRegistry.get(sbx2.id);
-sbx2Record.expiresAt = new Date(Date.now() - 5000).toISOString();
+// Artificially expire sbx2 and persist the expiry: the registry file is
+// the durable source of truth, so an in-memory-only mutation is not
+// visible to a reap that refreshes from disk first.
+const registryFile = path.join(tempXdg, 'vigilante', 'ctf-sandboxes.json');
+const registryRecords = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
+for (const rec of registryRecords) {
+  if (rec.id === sbx2.id) rec.expiresAt = new Date(Date.now() - 5000).toISOString();
+}
+fs.writeFileSync(registryFile, JSON.stringify(registryRecords, null, 2));
 
 const reaped = await reapExpiredSandboxes({ mock: true });
 assert.strictEqual(reaped.length, 1);
