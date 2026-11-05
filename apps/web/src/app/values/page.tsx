@@ -61,7 +61,10 @@ export default function ValuesPage() {
     if (!selectedChart) return;
     setSaving(true);
     try {
-      const filePath = selectedChart.userOverridePath || selectedChart.targetPath;
+      // Save to the existing override, or to the canonical XDG override
+      // location for a first-time edit — never to the shipped default,
+      // which the old targetPath fallback silently overwrote.
+      const filePath = selectedChart.userOverridePath || selectedChart.xdgPath;
       const res = await fetch('/api/values', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -201,7 +204,7 @@ export default function ValuesPage() {
                     {selectedChart.moduleId} / {selectedChart.chartName}.yaml
                   </h3>
                   <p className="text-[11px] text-slate-500 pt-0.5">
-                    Target Override: <code>{selectedChart.userOverridePath || selectedChart.targetPath}</code>
+                    Target Override: <code>{selectedChart.userOverridePath || selectedChart.xdgPath}</code>
                   </p>
                 </div>
 

@@ -14,20 +14,11 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   try {
-    const { searchParams } = new URL(request.url);
-
-    const filePath = searchParams.get('file');
-
+    // No ?file= branch: it used to read any server-readable path for any
+    // cluster:read holder (viewer included), e.g. authz.yaml with its
+    // password and token hashes. Chart contents are served below from the
+    // chart set only, and nothing else in this route reads a caller path.
     await ensureVigilanteConfig();
-
-    if (filePath) {
-      if (fsSync.existsSync(filePath)) {
-        const content = await fs.readFile(filePath, 'utf8');
-        return NextResponse.json({ success: true, filePath, content });
-      } else {
-        return NextResponse.json({ success: false, error: 'File not found' }, { status: 404 });
-      }
-    }
 
     const charts = await listChartValues();
     const configFile = getVigilanteConfigFile();
@@ -99,8 +90,27 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'filePath and content are required' }, { status: 400 });
       }
 
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, content, 'utf8');
+      // Containment: only chart values files this route itself serves may
+      // be written — a chart's default, its existing override, or its
+      // canonical XDG override location. Any other path (config, secrets,
+      // credentials, outside the chart set) is rejected even for
+      // cluster:write holders. Paths are resolved before comparison so
+      // relative, absolute, and ..-containing spellings of the same file
+      // compare equal.
+      const charts = await listChartValues();
+      const allowed = new Set<string>();
+      for (const c of charts) {
+        if (c.defaultPath) allowed.add(path.resolve(c.defaultPath));
+        if (c.userOverridePath) allowed.add(path.resolve(c.userOverridePath));
+        if (c.xdgPath) allowed.add(path.resolve(c.xdgPath));
+      }
+      const resolved = path.resolve(filePath);
+      if (!allowed.has(resolved)) {
+        return NextResponse.json({ success: false, error: 'filePath is not a chart values file' }, { status: 403 });
+      }
+
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, content, 'utf8');
 
       return NextResponse.json({ success: true, saved: filePath });
     }
