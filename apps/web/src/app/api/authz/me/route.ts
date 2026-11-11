@@ -18,15 +18,21 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const ctx = await resolveAuthzContext(req);
   const ldapCfg = resolveVigilanteLdapConfig();
-  const ldapSummary = ldapCfg.enabled
-    ? {
-        enabled: true,
-        uri: ldapCfg.uri,
-        baseDN: ldapCfg.baseDN,
-        source: ldapCfg.source,
-        allowLocalBreakGlass: ldapCfg.allowLocalBreakGlass
-      }
-    : undefined;
+  // LDAP internals (URI, base DN, source, break-glass flag) go only to
+  // authenticated callers. Anonymous callers — including the login probe —
+  // get just `enabled`, which the sign-in UI needs to choose the LDAP tab
+  // and reveals nothing beyond "LDAP login exists".
+  const ldapSummary = !ldapCfg.enabled
+    ? undefined
+    : ctx.principal
+      ? {
+          enabled: true,
+          uri: ldapCfg.uri,
+          baseDN: ldapCfg.baseDN,
+          source: ldapCfg.source,
+          allowLocalBreakGlass: ldapCfg.allowLocalBreakGlass
+        }
+      : { enabled: true };
 
   if (ctx.expiredSession) {
     recordAuthEvent(req, 'session_expired', null);

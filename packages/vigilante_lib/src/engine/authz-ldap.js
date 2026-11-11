@@ -265,11 +265,15 @@ export function resolveVigilanteLdapConfig(overrides = {}) {
       ? Boolean(yamlLdap.allowLocalBreakGlass)
       : true;
 
+  // No implicit fallback role: a user whose groups map to nothing is
+  // denied (NO_MAPPED_ROLE) unless an operator explicitly configures a
+  // default role. The old 'viewer' default meant any valid directory
+  // credential got at least viewer, even with zero mapped groups.
   const defaultRole =
     overrides.defaultRole ||
     process.env.VIGILANTE_LDAP_DEFAULT_ROLE ||
     yamlLdap?.defaultRole ||
-    'viewer';
+    null;
 
   const timeoutMs = Number(
     overrides.timeoutMs || process.env.VIGILANTE_LDAP_TIMEOUT_MS || yamlLdap?.timeoutMs || 5000
@@ -340,14 +344,18 @@ export function resolveVigilanteLdapConfig(overrides = {}) {
 
 /**
  * Map a list of LDAP group CNs to the highest-privilege Vigilante CASL role.
- * Precedence: owner > admin > operator > viewer > defaultRole
+ * Precedence: owner > admin > operator > viewer > defaultRole.
+ * A null defaultRole means "no fallback": groups that map to nothing
+ * yield null (the caller denies with NO_MAPPED_ROLE) instead of silently
+ * granting a role. Pass an explicit defaultRole only when the deployment
+ * deliberately wants unmapped users to have that role.
  *
  * @param {string[]} groups
  * @param {Object} [roleMapping]
- * @param {string} [defaultRole='viewer']
+ * @param {string|null} [defaultRole=null]
  * @returns {'owner' | 'admin' | 'operator' | 'viewer' | null}
  */
-export function mapLdapGroupsToRole(groups = [], roleMapping = DEFAULT_ROLE_MAPPING, defaultRole = 'viewer') {
+export function mapLdapGroupsToRole(groups = [], roleMapping = DEFAULT_ROLE_MAPPING, defaultRole = null) {
   const normalized = new Set(
     (groups || []).map(g => {
       const s = String(g).trim();
@@ -826,11 +834,31 @@ export async function authenticateLdapUser(username, password, configOverrides =
         'pwdAccountLockedTime'
       ]);
 
+      // A failed search is a directory error, not "user not found": fail
+      // closed instead of misreporting it (and never read partial entries).
+      if (userSearch.resultCode !== 0) {
+        return {
+          ok: false,
+          code: 'LDAP_USER_LOOKUP_FAILED',
+          error: `OpenLDAP user lookup failed (code ${userSearch.resultCode}).`
+        };
+      }
+
       if (!userSearch.entries || userSearch.entries.length === 0) {
         return {
           ok: false,
           code: 'USER_NOT_FOUND',
           error: `User '${cleanUser}' was not found in OpenLDAP directory.`
+        };
+      }
+
+      // Ambiguous identity: never silently pick the first of several
+      // entries — a duplicate could carry another user's groups/role.
+      if (userSearch.entries.length > 1) {
+        return {
+          ok: false,
+          code: 'LDAP_AMBIGUOUS_USER',
+          error: `Multiple OpenLDAP entries match '${cleanUser}'; refusing to guess which one to bind.`
         };
       }
 
@@ -888,6 +916,16 @@ export async function authenticateLdapUser(username, password, configOverrides =
       dn: userDN
     });
     const groupSearch = await lookupSession.search(cfg.groupSearchBase, groupFilter, ['cn']);
+    // A failed group search must fail the login, not silently fall back
+    // to whatever memberOf (often nothing) the user entry carried — that
+    // failure used to land every valid credential on the viewer role.
+    if (groupSearch.resultCode !== 0) {
+      return {
+        ok: false,
+        code: 'LDAP_GROUP_LOOKUP_FAILED',
+        error: `OpenLDAP group lookup failed (code ${groupSearch.resultCode}).`
+      };
+    }
     if (groupSearch.entries && groupSearch.entries.length > 0) {
       for (const ge of groupSearch.entries) {
         const cns = ge.attributes?.cn || [];
