@@ -103,6 +103,37 @@ function createMockLdapServer() {
       cn: 'Locked Analyst',
       locked: '20261101000000Z',
       groups: ['vigilante-readonly']
+    },
+    'nogroup-user': {
+      dn: 'uid=nogroup-user,ou=users,dc=axonwall,dc=local',
+      password: 'nogroup-secret',
+      cn: 'No Group User',
+      mail: 'nogroup@axonwall.local',
+      groups: ['unmapped-group']
+    },
+    dup: {
+      dn: 'uid=dup,ou=users,dc=axonwall,dc=local',
+      password: 'dup-secret',
+      cn: 'Dup Short',
+      groups: ['vigilante-readonly']
+    },
+    'dup-user': {
+      dn: 'uid=dup-user,ou=users,dc=axonwall,dc=local',
+      password: 'dup-user-secret',
+      cn: 'Dup User',
+      groups: ['vigilante-readonly']
+    },
+    'group-error-user': {
+      dn: 'uid=group-error-user,ou=users,dc=axonwall,dc=local',
+      password: 'group-error-secret',
+      cn: 'Group Error User',
+      groups: ['vigilante-readonly']
+    },
+    'user-error-user': {
+      dn: 'uid=user-error-user,ou=users,dc=axonwall,dc=local',
+      password: 'user-error-secret',
+      cn: 'User Error User',
+      groups: ['vigilante-readonly']
     }
   };
 
@@ -148,7 +179,16 @@ function createMockLdapServer() {
           const baseObject = sParts[0].value.toString('utf8');
           const rawFilterBytes = sParts[6].value.toString('utf8');
 
-          if (baseObject.startsWith('ou=users')) {
+          // Error-injection triggers for the fail-closed tests: a search
+          // that fails at the directory must never be read as "no match".
+          let searchResultCode = 0;
+          if (baseObject.startsWith('ou=users') && rawFilterBytes.includes('user-error-user')) {
+            searchResultCode = 32;
+          } else if (baseObject.startsWith('ou=groups') && rawFilterBytes.includes('group-error-user')) {
+            searchResultCode = 32;
+          }
+
+          if (searchResultCode === 0 && baseObject.startsWith('ou=users')) {
             for (const [uid, u] of Object.entries(users)) {
               if (rawFilterBytes.includes(uid)) {
                 const attrList = [
@@ -165,7 +205,7 @@ function createMockLdapServer() {
                 socket.write(berSeq([berInt(msgId), entry]));
               }
             }
-          } else if (baseObject.startsWith('ou=groups')) {
+          } else if (searchResultCode === 0 && baseObject.startsWith('ou=groups')) {
             for (const [uid, u] of Object.entries(users)) {
               if (rawFilterBytes.includes(uid)) {
                 for (const g of u.groups) {
@@ -182,7 +222,7 @@ function createMockLdapServer() {
             }
           }
 
-          const done = berEl(0x65, Buffer.concat([berEnum(0), berStr(''), berStr('')]));
+          const done = berEl(0x65, Buffer.concat([berEnum(searchResultCode), berStr(''), berStr('')]));
           socket.write(berSeq([berInt(msgId), done]));
         }
       }
@@ -319,6 +359,78 @@ async function runTests() {
     assert.strictEqual(insecure.tlsRejectUnauthorized, false, 'Explicit opt-out must be honored');
     assert.strictEqual(insecure.tlsCaFile, '/tmp/ca.pem');
     console.log('✔ Test 5 passed: LDAPS TLS verification on by default, opt-out and CA file honored.');
+  }
+
+  // Test 6: Fail-closed LDAP lookups — no silent viewer fallback, no
+  // first-entry-wins, no swallowed search errors (hunt A2/A3).
+  {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-ldap-test-'));
+    const server = createMockLdapServer();
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+
+    try {
+      const pluginJsonPath = path.join(tmpDir, 'vigilante.json');
+      await fs.writeFile(
+        pluginJsonPath,
+        JSON.stringify({
+          pluginId: 'core-vigilante',
+          enabled: true,
+          url: `ldap://127.0.0.1:${port}`,
+          baseDN: 'dc=axonwall,dc=local',
+          bindDN: 'cn=svc-vigilante,ou=services,dc=axonwall,dc=local',
+          bindPassword: 'svc-pass-123',
+          userSearchBase: 'ou=users,dc=axonwall,dc=local',
+          userSearchFilter: '(uid={username})',
+          groupSearchBase: 'ou=groups,dc=axonwall,dc=local',
+          groupSearchFilter: '(|(memberUid={username})(member={userDn}))',
+          roleGroups: {
+            admin: ['axonwall-admin', 'vigilante-admin'],
+            operator: ['axonwall-operator', 'vigilante-operator'],
+            readonly: ['axonwall-readonly', 'vigilante-readonly']
+          }
+        }),
+        'utf8'
+      );
+      const opts = { pluginConfigPath: pluginJsonPath };
+
+      // Config contract: no implicit default role. An explicitly
+      // configured default is still honored.
+      const cfg = resolveVigilanteLdapConfig({ enabled: true, uri: 'ldap://127.0.0.1:1' });
+      assert.strictEqual(cfg.defaultRole, null, 'Unmapped LDAP users must be denied, not defaulted to viewer');
+      assert.strictEqual(mapLdapGroupsToRole([], undefined), null);
+      assert.strictEqual(mapLdapGroupsToRole([], undefined, 'viewer'), 'viewer');
+
+      // Happy path still works through the new checks.
+      const analystRes = await authenticateLdapUser('soc-analyst', 'analyst-secret-password', opts);
+      assert.strictEqual(analystRes.ok, true);
+      assert.strictEqual(analystRes.role, 'operator');
+
+      // Zero mapped groups -> NO_MAPPED_ROLE, not viewer.
+      const noGroupRes = await authenticateLdapUser('nogroup-user', 'nogroup-secret', opts);
+      assert.strictEqual(noGroupRes.ok, false);
+      assert.strictEqual(noGroupRes.code, 'NO_MAPPED_ROLE');
+
+      // Duplicate directory entries -> ambiguous, never first-wins.
+      const dupRes = await authenticateLdapUser('dup-user', 'dup-user-secret', opts);
+      assert.strictEqual(dupRes.ok, false);
+      assert.strictEqual(dupRes.code, 'LDAP_AMBIGUOUS_USER');
+
+      // Group search failure -> fail closed, not silent viewer.
+      const groupErrRes = await authenticateLdapUser('group-error-user', 'group-error-secret', opts);
+      assert.strictEqual(groupErrRes.ok, false);
+      assert.strictEqual(groupErrRes.code, 'LDAP_GROUP_LOOKUP_FAILED');
+
+      // User search failure -> fail closed, not "user not found".
+      const userErrRes = await authenticateLdapUser('user-error-user', 'user-error-secret', opts);
+      assert.strictEqual(userErrRes.ok, false);
+      assert.strictEqual(userErrRes.code, 'LDAP_USER_LOOKUP_FAILED');
+
+      console.log('✔ Test 6 passed: fail-closed LDAP lookups (no viewer fallback, no first-entry-wins, search errors denied).');
+    } finally {
+      server.close();
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   }
 
   console.log('🎉 ALL VIGILANTE OPENLDAP AUTHZ TESTS PASSED SUCCESSFULLY!\n');

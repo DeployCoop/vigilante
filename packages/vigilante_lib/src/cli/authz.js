@@ -42,8 +42,62 @@ Commands:
     --source loopback|any         Caller source (default: any)
     --auth-method <method>        session | token | oidc | ldap | any (default: token)
   ldap-status                     Inspect Axonwall OpenLDAP integration & reachability
-  ldap-test <username> <password> Test OpenLDAP user bind and CASL role resolution
+  ldap-test <username>            Test OpenLDAP user bind and CASL role resolution
+                                  (password via stdin, $VIGILANTE_LDAP_TEST_PASSWORD,
+                                  or hidden prompt — never argv)
 `;
+
+/**
+ * Read the ldap-test password without ever putting it in argv:
+ * $VIGILANTE_LDAP_TEST_PASSWORD, else piped stdin (first line), else a
+ * hidden TTY prompt (echo disabled). Returns '' when nothing was given.
+ */
+async function readLdapTestPassword() {
+  const fromEnv = process.env.VIGILANTE_LDAP_TEST_PASSWORD;
+  if (fromEnv) return fromEnv;
+
+  if (!process.stdin.isTTY) {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    return Buffer.concat(chunks).toString('utf8').split('\n')[0].trim();
+  }
+
+  process.stdout.write('Password: ');
+  return new Promise(resolve => {
+    const stdin = process.stdin;
+    let password = '';
+    const cleanup = () => {
+      stdin.removeListener('data', onData);
+      if (stdin.setRawMode) stdin.setRawMode(false);
+      stdin.pause();
+    };
+    const onData = chunk => {
+      for (const ch of chunk.toString('utf8')) {
+        if (ch === '\n' || ch === '\r') {
+          cleanup();
+          process.stdout.write('\n');
+          resolve(password);
+          return;
+        }
+        if (ch === '\u0003') {
+          // Ctrl-C: abort without authenticating.
+          cleanup();
+          process.stdout.write('\n');
+          resolve('');
+          return;
+        }
+        if (ch === '\u007f') {
+          password = password.slice(0, -1);
+          continue;
+        }
+        password += ch;
+      }
+    };
+    if (stdin.setRawMode) stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+  });
+}
 
 export async function runAuthzCli(args = []) {
   const sub = args[0];
@@ -253,7 +307,7 @@ export async function runAuthzCli(args = []) {
     console.log(`Service Bind:   ${st.bindDN || '(anonymous / direct bind)'}`);
     console.log(`Auto-Provision: ${st.autoProvisionPrincipals ? 'YES' : 'NO'}`);
     console.log(`Break-Glass:    ${st.allowLocalBreakGlass ? 'YES' : 'NO'}`);
-    console.log(`Default Role:   ${st.defaultRole}`);
+    console.log(`Default Role:   ${st.defaultRole || '(none — unmapped users are denied)'}`);
     console.log(`Role Mappings:`);
     console.log(`  owner:    ${(st.roleMapping.ownerGroups || []).join(', ')}`);
     console.log(`  admin:    ${(st.roleMapping.adminGroups || []).join(', ')}`);
@@ -263,10 +317,28 @@ export async function runAuthzCli(args = []) {
   }
 
   if (sub === 'ldap-test') {
-    const username = positional[0] || flags.username;
-    const password = positional[1] || flags.password;
-    if (!username || !password) {
-      console.error('✖ Error: Usage: `vigilante authz ldap-test <username> <password>`');
+    const username = flags.username || positional[0];
+    // A password on the command line is visible in `ps` and shell
+    // history. Refuse every argv spelling of it (second positional,
+    // --password, --password=..., and a positional after --username)
+    // instead of silently ignoring one of them.
+    const argvPassword =
+      flags.password !== undefined ||
+      positional[1] !== undefined ||
+      (flags.username !== undefined && positional[0] !== undefined) ||
+      rest.some(a => a === '--password' || a.startsWith('--password='));
+    if (argvPassword) {
+      console.error('✖ Error: `ldap-test` no longer accepts a password on the command line (visible in `ps` and shell history).');
+      console.error('  Pipe it via stdin, set VIGILANTE_LDAP_TEST_PASSWORD, or type it at the prompt.');
+      return 1;
+    }
+    if (!username) {
+      console.error('✖ Error: Usage: `vigilante authz ldap-test <username>`');
+      return 1;
+    }
+    const password = await readLdapTestPassword();
+    if (!password) {
+      console.error('✖ Error: No password provided (stdin, $VIGILANTE_LDAP_TEST_PASSWORD, or prompt).');
       return 1;
     }
     const res = await authenticateLdapUser(username, password);

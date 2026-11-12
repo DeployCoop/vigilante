@@ -75,15 +75,19 @@ export async function POST(req: Request) {
           const msg = err instanceof Error ? err.message : 'Principal is disabled';
           return apiError(403, msg, { reason: 'deny_disabled_principal' });
         }
-      } else if (ldapRes.code === 'ACCOUNT_LOCKED') {
-        return apiError(403, ldapRes.error || 'Directory account is locked', {
-          reason: 'deny_disabled_principal'
-        });
       } else if (
-        !ldapCfg.allowLocalBreakGlass ||
-        (ldapRes.code !== 'USER_NOT_FOUND' && ldapRes.code !== 'LDAP_UNAVAILABLE')
+        ldapCfg.allowLocalBreakGlass &&
+        (ldapRes.code === 'USER_NOT_FOUND' || ldapRes.code === 'LDAP_UNAVAILABLE')
       ) {
-        return apiError(401, ldapRes.error || 'Invalid OpenLDAP credentials', {
+        // Fall through to the local token / break-glass flow below.
+      } else {
+        // Every other LDAP failure gets the same generic 401. The old
+        // code returned the directory error verbatim — "User 'alice' was
+        // not found in OpenLDAP directory" — which let anyone enumerate
+        // directory users, and the ACCOUNT_LOCKED 403 leaked lock state
+        // (and therefore existence) for any guessed username, no
+        // password required. The detailed code stays server-side only.
+        return apiError(401, 'Invalid username or password', {
           reason: 'deny_unauthenticated'
         });
       }

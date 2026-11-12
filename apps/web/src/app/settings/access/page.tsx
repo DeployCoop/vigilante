@@ -45,7 +45,7 @@ interface LdapDirectoryConfig {
   discoveredPath?: string | null;
   autoProvisionPrincipals: boolean;
   allowLocalBreakGlass: boolean;
-  defaultRole: string;
+  defaultRole: string | null;
   roleMapping: {
     ownerGroups: string[];
     adminGroups: string[];
