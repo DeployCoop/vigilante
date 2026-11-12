@@ -41,6 +41,14 @@ interface MentorResult {
   guidance: string;
 }
 
+interface CrashDiagnosis {
+  signal: string;
+  crashType: string;
+  faultAddress?: string | null;
+  deBruijnOffset: number | null;
+  socraticQuestions?: string[];
+}
+
 export default function CTFArenaPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -51,12 +59,14 @@ export default function CTFArenaPage() {
 
   // Socratic Mentor modal state
   const [mentorOpen, setMentorOpen] = useState<boolean>(false);
+  const [mentorMode, setMentorMode] = useState<'hint' | 'crash'>('hint');
   const [mentorTier, setMentorTier] = useState<number>(1);
   const [mentorQuestion, setMentorQuestion] = useState<string>('');
   const [mentorResult, setMentorResult] = useState<MentorResult | null>(null);
-  // Write-only: the Crash Triage button clears any prior diagnosis; the
-  // value itself is not rendered (the triage flow lives in the modal).
-  const [, setCrashDiagnosis] = useState<unknown>(null);
+  const [mentorError, setMentorError] = useState<string | null>(null);
+  const [crashLog, setCrashLog] = useState<string>('');
+  const [crashDiagnosis, setCrashDiagnosis] = useState<CrashDiagnosis | null>(null);
+  const [crashLoading, setCrashLoading] = useState<boolean>(false);
   const [mentorLoading, setMentorLoading] = useState<boolean>(false);
 
 
@@ -98,6 +108,7 @@ export default function CTFArenaPage() {
 
   const handleAskMentor = async () => {
     setMentorLoading(true);
+    setMentorError(null);
     try {
       const res = await fetch('/api/ctf/mentor', {
         method: 'POST',
@@ -110,11 +121,46 @@ export default function CTFArenaPage() {
         })
       });
       const data = await res.json();
-      setMentorResult(data.hint);
+      if (res.ok && data.success && data.hint) {
+        setMentorResult(data.hint);
+      } else {
+        setMentorResult(null);
+        setMentorError(data.error || 'Mentor request failed');
+      }
     } catch {
-      // Ignore
+      setMentorResult(null);
+      setMentorError('Mentor request failed');
     } finally {
       setMentorLoading(false);
+    }
+  };
+
+  const handleDiagnoseCrash = async () => {
+    if (!crashLog.trim()) return;
+    setCrashLoading(true);
+    setMentorError(null);
+    try {
+      const res = await fetch('/api/ctf/mentor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'crash',
+          crashLog,
+          challengeId: selectedChallenge?.id
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.diagnosis) {
+        setCrashDiagnosis(data.diagnosis);
+      } else {
+        setCrashDiagnosis(null);
+        setMentorError(data.error || 'Crash analysis failed');
+      }
+    } catch {
+      setCrashDiagnosis(null);
+      setMentorError('Crash analysis request failed');
+    } finally {
+      setCrashLoading(false);
     }
   };
 
@@ -254,6 +300,8 @@ export default function CTFArenaPage() {
                   <button
                     onClick={() => {
                       setSelectedChallenge(chal);
+                      setMentorMode('hint');
+                      setMentorError(null);
                       setMentorOpen(true);
                     }}
                     className="flex-1 py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-center gap-1 transition-colors"
@@ -264,7 +312,10 @@ export default function CTFArenaPage() {
                   <button
                     onClick={() => {
                       setSelectedChallenge(chal);
+                      setMentorMode('crash');
                       setCrashDiagnosis(null);
+                      setMentorError(null);
+                      setMentorOpen(true);
                     }}
                     className="flex-1 py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-center gap-1 transition-colors"
                   >
@@ -286,7 +337,9 @@ export default function CTFArenaPage() {
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-cyan-400" />
                 <h3 className="font-bold text-white text-base">
-                  3-Tier Socratic AI Mentor: {selectedChallenge.name}
+                  {mentorMode === 'crash'
+                    ? `Crash Triage: ${selectedChallenge.name}`
+                    : `3-Tier Socratic AI Mentor: ${selectedChallenge.name}`}
                 </h3>
               </div>
               <button
@@ -297,56 +350,112 @@ export default function CTFArenaPage() {
               </button>
             </div>
 
-            {/* Tier Selector */}
-            <div className="grid grid-cols-3 gap-2 text-xs font-mono">
-              {[
-                { tier: 1, name: 'Tier 1: Recon', penalty: '0% Penalty' },
-                { tier: 2, name: 'Tier 2: Probes', penalty: '10% Penalty' },
-                { tier: 3, name: 'Tier 3: Tools', penalty: '25% Penalty' }
-              ].map((t) => (
-                <button
-                  key={t.tier}
-                  onClick={() => setMentorTier(t.tier)}
-                  className={`p-2.5 rounded-lg border text-center transition-colors ${
-                    mentorTier === t.tier
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
-                      : 'bg-slate-900 border-slate-800 text-slate-400'
-                  }`}
-                >
-                  <div className="font-bold">{t.name}</div>
-                  <div className="text-[10px] text-slate-500">{t.penalty}</div>
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-mono text-slate-400">Describe what you observe or where you are stuck:</label>
-              <textarea
-                value={mentorQuestion}
-                onChange={(e) => setMentorQuestion(e.target.value)}
-                placeholder="e.g. When I send a format string, what register holds the parameter?"
-                className="w-full h-20 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <button
-              onClick={handleAskMentor}
-              disabled={mentorLoading}
-              className="w-full py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition-colors disabled:opacity-50"
-            >
-              {mentorLoading ? 'Querying Socratic Engine...' : 'Unlock Socratic Guidance'}
-            </button>
-
-            {mentorResult && (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-cyan-800/50 space-y-2 text-xs font-mono">
-                <div className="text-cyan-400 font-bold flex items-center justify-between">
-                  <span>Mentor Insight (Penalty: {mentorResult.penaltyPercent}%)</span>
-                  <span>{mentorResult.tierName}</span>
-                </div>
-                <div className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-                  {mentorResult.guidance}
-                </div>
+            {mentorError && (
+              <div className="p-3 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 font-mono text-xs">
+                {mentorError}
               </div>
+            )}
+
+            {mentorMode === 'crash' ? (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-slate-400">Paste the crash log or GDB dump to triage:</label>
+                  <textarea
+                    value={crashLog}
+                    onChange={(e) => setCrashLog(e.target.value)}
+                    placeholder="e.g. Program received signal SIGSEGV, Segmentation fault."
+                    className="w-full h-32 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleDiagnoseCrash}
+                  disabled={crashLoading || !crashLog.trim()}
+                  className="w-full py-2.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold text-xs font-mono transition-colors disabled:opacity-50"
+                >
+                  {crashLoading ? 'Analyzing Crash…' : 'Diagnose Crash'}
+                </button>
+
+                {crashDiagnosis && (
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-purple-800/50 space-y-2 text-xs font-mono">
+                    <div className="text-purple-400 font-bold flex items-center justify-between">
+                      <span>Signal: {crashDiagnosis.signal}</span>
+                      <span>Type: {crashDiagnosis.crashType}</span>
+                    </div>
+                    <div className="text-slate-300">
+                      Fault Address: <code className="text-cyan-400">{crashDiagnosis.faultAddress || 'N/A'}</code>
+                    </div>
+                    {crashDiagnosis.deBruijnOffset !== null && (
+                      <div className="text-emerald-400">
+                        ✔ Exact Cyclic Offset: {crashDiagnosis.deBruijnOffset} bytes
+                      </div>
+                    )}
+                    {(crashDiagnosis.socraticQuestions || []).length > 0 && (
+                      <div className="pt-1 space-y-1">
+                        {(crashDiagnosis.socraticQuestions || []).map((q: string, i: number) => (
+                          <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 text-slate-400">
+                            ❓ {q}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Tier Selector */}
+                <div className="grid grid-cols-3 gap-2 text-xs font-mono">
+                  {[
+                    { tier: 1, name: 'Tier 1: Recon', penalty: '0% Penalty' },
+                    { tier: 2, name: 'Tier 2: Probes', penalty: '10% Penalty' },
+                    { tier: 3, name: 'Tier 3: Tools', penalty: '25% Penalty' }
+                  ].map((t) => (
+                    <button
+                      key={t.tier}
+                      onClick={() => setMentorTier(t.tier)}
+                      className={`p-2.5 rounded-lg border text-center transition-colors ${
+                        mentorTier === t.tier
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="font-bold">{t.name}</div>
+                      <div className="text-[10px] text-slate-500">{t.penalty}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-slate-400">Describe what you observe or where you are stuck:</label>
+                  <textarea
+                    value={mentorQuestion}
+                    onChange={(e) => setMentorQuestion(e.target.value)}
+                    placeholder="e.g. When I send a format string, what register holds the parameter?"
+                    className="w-full h-20 bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleAskMentor}
+                  disabled={mentorLoading}
+                  className="w-full py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition-colors disabled:opacity-50"
+                >
+                  {mentorLoading ? 'Querying Socratic Engine...' : 'Unlock Socratic Guidance'}
+                </button>
+
+                {mentorResult && (
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-cyan-800/50 space-y-2 text-xs font-mono">
+                    <div className="text-cyan-400 font-bold flex items-center justify-between">
+                      <span>Mentor Insight (Penalty: {mentorResult.penaltyPercent}%)</span>
+                      <span>{mentorResult.tierName}</span>
+                    </div>
+                    <div className="text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {mentorResult.guidance}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

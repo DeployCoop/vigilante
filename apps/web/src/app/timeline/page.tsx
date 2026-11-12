@@ -23,27 +23,42 @@ interface TimelineNode {
 interface TimelineData {
   nodes: TimelineNode[];
   edges: unknown[];
-  rootCause?: { title?: string; entity?: string };
-  dwell?: { humanDwell?: string };
+  // Real shapes from the timeline engine: identifyRootCause returns
+  // {rootCauseNode, initialVector, confidence}; calculateDwellTime
+  // returns {dwellTimeString, ...}. There is no `title`/`entity` on
+  // rootCause and no `humanDwell` on dwell — the old reads always
+  // fell through to hardcoded banner text.
+  rootCause?: { rootCauseNode?: TimelineNode | null; initialVector?: string; confidence?: number };
+  dwell?: { dwellTimeString?: string; dwellTimeMs?: number };
   ascii?: string;
 }
 
 export default function TimelinePage() {
   const [data, setData] = useState<TimelineData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
 
   const fetchTimeline = useCallback(() => {
     fetch('/api/timeline')
       .then((res) => res.json())
       .then((d) => {
+        if (d.success === false) {
+          setError(d.error || 'Timeline request failed');
+          setLoading(false);
+          return;
+        }
+        setError(null);
         setData(d);
         if (d.nodes?.length > 0) {
           setSelectedNode((prev) => prev ?? d.nodes[0]);
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setError('Timeline request failed');
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -95,11 +110,16 @@ export default function TimelinePage() {
       </div>
 
       {/* Dwell Time & Root Cause Banner */}
+      {error && (
+        <div className="p-3 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 font-mono text-xs">
+          Timeline unavailable: {error}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60">
           <div className="text-[10px] text-slate-500 uppercase">Calculated Attacker Dwell Time</div>
           <div className="text-2xl font-bold text-cyan-400 pt-1">
-            {dwell?.humanDwell || '100s'}
+            {dwell?.dwellTimeString ?? '—'}
           </div>
           <div className="text-[11px] text-slate-500 pt-0.5">
             Initial Compromise to Lateral Hop
@@ -109,10 +129,10 @@ export default function TimelinePage() {
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60">
           <div className="text-[10px] text-slate-500 uppercase">Pinpointed Root Cause ($t_0$)</div>
           <div className="text-sm font-bold text-rose-400 pt-1.5 truncate">
-            {rootCause?.title || 'Inbound Ingress Connection'}
+            {rootCause?.rootCauseNode?.title || rootCause?.initialVector || '—'}
           </div>
           <div className="text-[11px] text-slate-500 pt-0.5">
-            Entity: <code>{rootCause?.entity || 'ingress-nginx'}</code>
+            Entity: <code>{rootCause?.rootCauseNode?.entity ?? '—'}</code>
           </div>
         </div>
 

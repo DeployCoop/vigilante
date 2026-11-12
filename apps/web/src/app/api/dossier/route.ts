@@ -31,19 +31,22 @@ export async function GET(request: Request) {
 
     let hostList = await listHostDossiers().catch(() => []);
     if (hostList.length === 0) {
-      // Build a starter dossier for local IP if empty
+      // Build a starter dossier for local IP if empty. The values below
+      // used to be fabricated with `||` fallbacks: a host with a real
+      // risk score of 0 displayed 25, and a host with zero open ports
+      // displayed 3. Pass the built dossier's real values through.
       const initial = await buildHostDossier(defaultIp).catch(() => null);
       if (initial) {
         hostList = [
           {
             target: defaultIp,
-            riskScore: initial.riskScore || 25,
-            riskTier: initial.riskTier || 'LOW',
+            riskScore: initial.riskScore ?? 0,
+            riskTier: initial.riskTier ?? 'CLEAN',
             riskColor: initial.riskColor || 'cyan',
-            openPortsCount: initial.network?.openPorts?.length || 3,
-            cvesCount: initial.vulnerabilities?.cves?.length || 0,
+            openPortsCount: initial.network?.openPorts?.length ?? 0,
+            cvesCount: initial.vulnerabilities?.cves?.length ?? 0,
             isBmc: Boolean(initial.outOfBand?.detected),
-            updatedAt: initial.updatedAt || new Date().toISOString()
+            updatedAt: initial.updatedAt ?? null
           }
         ];
       }

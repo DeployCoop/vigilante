@@ -204,11 +204,19 @@ export default function NastyMapPage() {
         const data = await res.json();
         if (data.success) {
           setUploadFeedback(`✔ Uploaded & Parsed: ${file.name}`);
-          // Refresh scans
+          // Refresh scans, then select the uploaded one by the id the
+          // list actually uses. The old code selected `data.filename`
+          // ("scan-<ts>.xml"), but list ids are the filename minus
+          // ".xml", so the picker rendered blank and the topology
+          // fetch asked for a scan that matched nothing.
           const scansRes = await fetch('/api/scans');
           const scansData = await scansRes.json();
-          setScans(scansData.scans || []);
-          setSelectedScanId(data.filename);
+          const fresh = scansData.scans || [];
+          setScans(fresh);
+          const uploaded = fresh.find((s: Scan) => s.filename === data.filename);
+          setSelectedScanId(
+            uploaded ? uploaded.id || uploaded.filename || '' : data.filename.replace(/\.xml$/, '')
+          );
         }
       } catch (err: unknown) {
         setUploadFeedback(`✖ Upload failed: ${errorMessage(err)}`);

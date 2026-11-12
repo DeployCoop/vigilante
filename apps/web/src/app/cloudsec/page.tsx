@@ -42,15 +42,28 @@ interface CloudSecData {
 export default function CloudSecPage() {
   const [data, setData] = useState<CloudSecData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchCloudSec = () => {
     fetch('/api/cloudsec')
       .then((res) => res.json())
       .then((d) => {
-        setData(d);
+        // The old code ignored `success`: a 500 left `risk` undefined
+        // and the `||` fallbacks below rendered a fabricated
+        // "65/100 HIGH RISK, 7 assets" over empty lists.
+        if (d.success === false) {
+          setError(d.error || 'Cloud scan failed');
+          setData(null);
+        } else {
+          setError(null);
+          setData(d);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setError('Cloud scan request failed');
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -95,11 +108,16 @@ export default function CloudSecPage() {
       </div>
 
       {/* Composite Risk Banner */}
+      {error && (
+        <div className="p-3 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 font-mono text-xs">
+          Cloud scan unavailable: {error}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60">
           <div className="text-[10px] text-slate-500 uppercase">Composite Cloud Risk Score</div>
           <div className="text-2xl font-bold text-white flex items-baseline gap-2 pt-1">
-            <span>{risk?.score || 65} / 100</span>
+            <span>{risk?.score ?? '—'} / 100</span>
             <span
               className={`text-xs px-2 py-0.5 rounded font-mono ${
                 risk?.tier === 'CRITICAL'
@@ -107,20 +125,20 @@ export default function CloudSecPage() {
                   : 'bg-amber-950 text-amber-400 border border-amber-800'
               }`}
             >
-              {risk?.tier || 'HIGH RISK'}
+              {risk?.tier ?? '—'}
             </span>
           </div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60">
           <div className="text-[10px] text-slate-500 uppercase">Critical Privilege Escalation</div>
-          <div className="text-2xl font-bold text-rose-400 pt-1">{risk?.criticalCount || 2} Findings</div>
+          <div className="text-2xl font-bold text-rose-400 pt-1">{risk?.criticalCount ?? '—'} Findings</div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60">
           <div className="text-[10px] text-slate-500 uppercase">Scanned Cloud Resources</div>
           <div className="text-2xl font-bold text-cyan-400 pt-1">
-            {(data?.workloadsCount || 3) + (data?.bucketsCount || 4)} Assets
+            {(data?.workloadsCount ?? 0) + (data?.bucketsCount ?? 0)} Assets
           </div>
         </div>
       </div>

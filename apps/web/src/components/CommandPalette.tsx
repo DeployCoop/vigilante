@@ -63,7 +63,7 @@ export const COMMAND_ITEMS = [
   { href: '/modules', label: 'Security Modules & Multi-Tenant Stacks', section: 'NIST Phase 3: Containment & Simulation', icon: Layers, key: '0' },
 ];
 
-export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+export function CommandPalette({ isOpen, onClose, onToggle }: { isOpen: boolean; onClose: () => void; onToggle: () => void }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -85,8 +85,10 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'p')) {
         e.preventDefault();
-        if (isOpen) onClose();
-        else onClose(); // parent handles toggle
+        // Both branches used to call onClose(), so Ctrl/Cmd+K could
+        // never open the palette even though the shortcut is advertised
+        // in AppShell and on the dashboard.
+        onToggle();
       }
 
       if (!isOpen) return;
@@ -110,7 +112,7 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, filteredItems, selectedIndex, router, onClose]);
+  }, [isOpen, filteredItems, selectedIndex, router, onClose, onToggle]);
 
   if (!isOpen) return null;
 

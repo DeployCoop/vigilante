@@ -22,8 +22,13 @@ import Image from 'next/image';
 import { errorMessage } from '@/lib/envelope';
 
 interface StatusData {
-  cluster?: { connected?: boolean; provider?: string; name?: string };
-  certs?: { valid?: boolean };
+  clusterName?: string;
+  // Real fields from /api/status: getClusterInfo returns
+  // {provider, clusterName, kubectlConnected, ...} — there is no
+  // `connected` or `name`, and no `certs` object used to exist at all
+  // (the route now reports cert presence via checkCertificates).
+  cluster?: { kubectlConnected?: boolean; provider?: string; clusterName?: string };
+  certs?: { exists?: boolean };
 }
 
 interface ScaffoldResult {
@@ -61,6 +66,7 @@ export default function CTFEventGuidePage() {
   
   // Readiness status
   const [status, setStatus] = useState<StatusData | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [sandboxes, setSandboxes] = useState<unknown[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
@@ -96,10 +102,18 @@ export default function CTFEventGuidePage() {
 
   const fetchStatus = () => {
     Promise.all([
-      fetch('/api/status').then(r => r.json()).catch(() => ({})),
+      fetch('/api/status').then(r => r.json()).catch(() => null),
       fetch('/api/ctf/sandboxes').then(r => r.json()).catch(() => ({}))
     ]).then(([st, sb]) => {
-      setStatus(st);
+      // A failed status fetch used to land here as `{}` and render the
+      // cards as "Not running" — a dead API looked like a dead cluster.
+      if (!st || st.success === false) {
+        setStatus(null);
+        setStatusError(st?.error || 'Could not reach /api/status');
+      } else {
+        setStatus(st);
+        setStatusError(null);
+      }
       setSandboxes(sb.sandboxes || []);
       setLoadingStatus(false);
     });
@@ -310,11 +324,15 @@ export default function CTFEventGuidePage() {
                 </button>
               </div>
               <div className="text-sm font-bold text-white flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${status?.cluster?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                <span>{status?.cluster?.provider ? `${status.cluster.provider.toUpperCase()} (${status.cluster.name || 'default'})` : 'Local Cluster'}</span>
+                <span className={`w-2 h-2 rounded-full ${statusError ? 'bg-slate-500' : status?.cluster?.kubectlConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                <span>{status?.cluster?.provider ? `${status.cluster.provider.toUpperCase()} (${status.cluster.clusterName || status?.clusterName || 'default'})` : 'Local Cluster'}</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                {status?.cluster?.connected ? 'Connected to Kubernetes API' : 'Not running. Start via `vigilante up`'}
+                {statusError
+                  ? `Status unavailable: ${statusError}`
+                  : status?.cluster?.kubectlConnected
+                    ? 'Connected to Kubernetes API'
+                    : 'Kubernetes API unreachable — start via `vigilante up`'}
               </p>
             </div>
 
@@ -324,11 +342,15 @@ export default function CTFEventGuidePage() {
                 <span>Local TLS & Domain</span>
               </div>
               <div className="text-sm font-bold text-white flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${status?.certs?.valid ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className={`w-2 h-2 rounded-full ${statusError ? 'bg-slate-500' : status?.certs?.exists ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                 <span>*.vigilante.local</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                {status?.certs?.valid ? 'mkcert CA trusted & /etc/hosts mapped' : 'Synchronize with `vigilante hostr`'}
+                {statusError
+                  ? 'Certificate status unknown'
+                  : status?.certs?.exists
+                    ? 'Certificate pair present (existence check only)'
+                    : 'No certificate pair — run `vigilante hostr`'}
               </p>
             </div>
 

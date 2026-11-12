@@ -204,7 +204,7 @@ export default function VulnPage() {
                     <div className="flex items-center justify-between font-bold text-xs">
                       <span>{d.target}</span>
                       <span className={`text-[10px] px-2 py-0.2 rounded border ${getRiskColor(d.riskTier)}`}>
-                        {d.riskTier || 'LOW'} ({d.riskScore || 25})
+                        {d.riskTier ?? '—'} ({d.riskScore ?? '—'})
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-500 flex items-center gap-3">
@@ -227,7 +227,7 @@ export default function VulnPage() {
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
                       <span>Host Dossier: {selectedDossier.target}</span>
                       <span className={`text-[10px] px-2 py-0.5 rounded border ${getRiskColor(selectedDossier.riskTier)}`}>
-                        {selectedDossier.riskTier} RISK ({selectedDossier.riskScore}/100)
+                        {selectedDossier.riskTier ?? '—'} RISK ({selectedDossier.riskScore ?? '—'}/100)
                       </span>
                     </h3>
                     <p className="text-[11px] text-slate-500 pt-0.5">

@@ -72,7 +72,14 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       packets: filtered,
-      totalCount: rawPackets.length
+      totalCount: rawPackets.length,
+      // This stream is regenerated from generateSyntheticPacketStream
+      // on every poll: mark it honestly (Rule 4) and stamp the
+      // generation, so the page can tell a fresh stream from the one
+      // its selected packet came from instead of matching by
+      // positional id.
+      synthetic: true,
+      generatedAt: new Date().toISOString()
     });
   } catch (err: unknown) {
     return NextResponse.json(

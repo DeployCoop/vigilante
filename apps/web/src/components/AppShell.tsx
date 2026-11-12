@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
+      <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} onToggle={() => setIsPaletteOpen((v) => !v)} />
 
       {/* Top Navbar */}
       <header className="h-14 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md px-4 flex items-center justify-between sticky top-0 z-40">

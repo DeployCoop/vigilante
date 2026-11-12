@@ -64,12 +64,19 @@ interface Packet {
   hexDump: string;
 }
 
+// Stable identity for a packet within one generated stream. Positional
+// ids (1..15) are NOT stable: the route regenerates the whole stream on
+// every poll, so `prev ?? first` kept the old #3 in the detail pane
+// while the table highlighted the new #3.
+const packetKey = (p: Packet) => [p.timestamp, p.src, p.dst, p.protocol, p.length].join('|');
+
 export default function SnifferPage() {
   const [packets, setPackets] = useState<Packet[]>([]);
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [filter, setFilter] = useState<string>('');
   const [exportedStatus, setExportedStatus] = useState<string | null>(null);
+  const [synthetic, setSynthetic] = useState<boolean>(false);
 
   const fetchPackets = useCallback(() => {
     fetch(`/api/sniffer?filter=${filter}`)
@@ -77,9 +84,18 @@ export default function SnifferPage() {
       .then((d) => {
         if (d.success) {
           setPackets(d.packets || []);
-          if (d.packets?.length > 0) {
-            setSelectedPacket((prev) => prev ?? d.packets[0]);
-          }
+          setSynthetic(Boolean(d.synthetic));
+          setSelectedPacket((prev) => {
+            if (!d.packets?.length) return null;
+            // Keep the selection only if that exact packet survived
+            // into the new stream; otherwise follow the live stream
+            // (pause freezes it for inspection).
+            if (prev) {
+              const match = d.packets.find((p: Packet) => packetKey(p) === packetKey(prev));
+              if (match) return match;
+            }
+            return d.packets[0];
+          });
         }
       })
       .catch(() => {});
@@ -139,13 +155,18 @@ export default function SnifferPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              Live Network Packet Sniffer & Dissector
+              Network Packet Sniffer & Dissector
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-950 border border-teal-800 text-teal-300">
                 Wireshark Web View
               </span>
+              {synthetic && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300">
+                  Synthetic stream
+                </span>
+              )}
             </h1>
             <p className="text-xs text-slate-400">
-              Live Ethernet/IP/TCP/UDP/DNS/TLS dissection, BPF protocol filtering, side-by-side hex dump, and PCAP export.
+              Simulated Ethernet/IP/TCP/UDP/DNS/TLS dissection, BPF protocol filtering, side-by-side hex dump, and PCAP export.
             </p>
           </div>
         </div>
@@ -245,7 +266,7 @@ export default function SnifferPage() {
         <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 space-y-3">
           <div className="text-slate-400 font-bold uppercase text-[11px] pb-2 border-b border-slate-800 flex items-center justify-between">
             <span>Protocol Hierarchy Dissection</span>
-            <span className="text-cyan-400">Frame {selectedPacket?.id || 1}</span>
+            <span className="text-cyan-400">{selectedPacket ? `Frame ${selectedPacket.id}` : 'No frame selected'}</span>
           </div>
 
           {selectedPacket ? (

@@ -24,15 +24,28 @@ interface LineageData {
 export default function LineagePage() {
   const [data, setData] = useState<LineageData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchLineage = () => {
     fetch('/api/lineage')
       .then((res) => res.json())
       .then((d) => {
-        setData(d);
+        // The old code never checked `success`: on an API 500 the empty
+        // anomalies list rendered a green "Process Ancestry Clean" — a
+        // failed security fetch displayed as a clean bill of health.
+        if (d.success === false) {
+          setError(d.error || 'Lineage trace failed');
+          setData(null);
+        } else {
+          setError(null);
+          setData(d);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setError('Lineage request failed');
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -77,6 +90,11 @@ export default function LineagePage() {
       </div>
 
       {/* Anomalies Alert Box */}
+      {error && (
+        <div className="p-3 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 font-mono text-xs">
+          Lineage data unavailable: {error}
+        </div>
+      )}
       <div
         className={`p-4 rounded-xl border font-mono text-xs space-y-2 ${
           anomalies.length > 0
@@ -124,7 +142,7 @@ export default function LineagePage() {
             <Terminal className="w-4 h-4 text-cyan-400" />
             <span className="font-bold text-white">Hierarchical Process Execution Tree</span>
           </div>
-          <span>Total Nodes: {tree?.totalProcesses || 7}</span>
+          <span>Total Nodes: {tree?.totalProcesses ?? '—'}</span>
         </div>
 
         <pre className="p-4 rounded-lg bg-black/70 border border-slate-900 text-slate-200 overflow-x-auto text-[12px] leading-relaxed selection:bg-cyan-500/30">
