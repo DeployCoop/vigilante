@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const { action, tier = 1, userQuery, crashLog, challengeId } = body;
+    const { action, tier = 1, userQuery, crashLog, challengeId, provider } = body;
 
     if (action === 'crash') {
       if (!crashLog) {
@@ -25,10 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, diagnosis });
     }
 
-    // Default: Socratic Hint Tier
+    // Default: Socratic Hint Tier. The analyst page's provider select
+    // used to be decorative — the request never carried it, so every
+    // hint came from the engine default. Forward it when given (the
+    // engine validates against SUPPORTED_PROVIDERS).
     const hint = await getSocraticHintTier({
       tier: Number(tier),
-      userQuery: userQuery || 'How do I analyze this vulnerability?'
+      userQuery: userQuery || 'How do I analyze this vulnerability?',
+      provider
     });
 
     return NextResponse.json({

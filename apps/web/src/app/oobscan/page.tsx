@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Cpu,
   Play,
@@ -32,12 +32,34 @@ interface Bmc {
 }
 
 interface OobScan {
+  id?: string;
   target?: string;
   timestamp?: string;
+  createdAt?: string;
+  mtime?: string;
   bmcs?: Bmc[];
-  parsed?: { bmcs?: Bmc[]; totalBmcs?: number; totalRakpHashes?: number };
+  totalBmcs?: number;
+  totalRakpHashes?: number;
+  // Saved scans carry the counts and hash lines at the top level
+  // (listSavedOobScans); a fresh runOobScan result carries them under
+  // `parsed` instead. The helpers below read either shape.
+  parsed?: {
+    bmcs?: Bmc[];
+    totalBmcs?: number;
+    totalRakpHashes?: number;
+    rakpHashes?: { hashcatLine?: string; hash?: string }[];
+  };
   rakpHashes?: string[];
 }
+
+const scanBmcs = (s: OobScan): Bmc[] => s.bmcs ?? s.parsed?.bmcs ?? [];
+const scanBmcCount = (s: OobScan): number => s.totalBmcs ?? s.parsed?.totalBmcs ?? scanBmcs(s).length;
+const scanRakpLines = (s: OobScan): string[] => {
+  if (s.rakpHashes?.length) return s.rakpHashes;
+  return (s.parsed?.rakpHashes || []).map((h) => h.hashcatLine || h.hash || '').filter(Boolean);
+};
+const scanRakpCount = (s: OobScan): number => s.totalRakpHashes ?? s.parsed?.totalRakpHashes ?? scanRakpLines(s).length;
+const scanTime = (s: OobScan): string | undefined => s.createdAt || s.mtime || s.timestamp;
 
 interface OobData {
   targets: OobTarget[];
@@ -55,13 +77,28 @@ export default function OobscanPage() {
   const [activeScan, setActiveScan] = useState<OobScan | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Set before the post-scan refetch so the detail pane shows the scan
+  // that just finished instead of the previous one.
+  const selectNewestRef = useRef(false);
+
   const fetchOobData = useCallback(() => {
     fetch('/api/oobscan')
       .then((res) => res.json())
       .then((d) => {
         setData(d);
+        // The target list never contains the hardcoded '127.0.0.1'
+        // default (it starts with ff02::1); a default outside the list
+        // renders a blank select. Fall back to the first real target.
+        if (d.targets?.length > 0) {
+          setSelectedTarget((prev) => (d.targets.some((t: OobTarget) => t.value === prev) ? prev : d.targets[0].value));
+        }
         if (d.scans?.length > 0) {
-          setActiveScan((prev) => prev ?? d.scans[0]);
+          if (selectNewestRef.current) {
+            selectNewestRef.current = false;
+            setActiveScan(d.scans[0]);
+          } else {
+            setActiveScan((prev) => prev ?? d.scans[0]);
+          }
         }
         setLoading(false);
       })
@@ -83,6 +120,7 @@ export default function OobscanPage() {
       });
       const result = await res.json();
       if (result.success) {
+        selectNewestRef.current = true;
         fetchOobData();
       }
     } catch (err) {
@@ -220,10 +258,12 @@ export default function OobscanPage() {
                   >
                     <div>
                       <div className="font-bold text-slate-200">{s.target || 'Subnet'}</div>
-                      <div className="text-[10px] text-slate-500">{s.timestamp || 'Recent'}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {scanTime(s) ? new Date(scanTime(s) as string).toLocaleString() : 'Recent'}
+                      </div>
                     </div>
                     <span className="text-xs font-bold text-amber-400">
-                      {s.parsed?.totalBmcs || s.bmcs?.length || 0} BMCs
+                      {scanBmcCount(s)} BMCs
                     </span>
                   </div>
                 ))}
@@ -240,18 +280,18 @@ export default function OobscanPage() {
               <div className="grid grid-cols-3 gap-3 font-mono">
                 <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/60 text-center">
                   <div className="text-[10px] text-slate-500 uppercase">Target</div>
-                  <div className="text-sm font-bold text-amber-400 pt-0.5">{activeScan.target || '127.0.0.1'}</div>
+                  <div className="text-sm font-bold text-amber-400 pt-0.5">{activeScan.target || '—'}</div>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/60 text-center">
                   <div className="text-[10px] text-slate-500 uppercase">BMCs Identified</div>
                   <div className="text-sm font-bold text-white pt-0.5">
-                    {activeScan.parsed?.totalBmcs || activeScan.bmcs?.length || 0}
+                    {scanBmcCount(activeScan)}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/60 text-center">
                   <div className="text-[10px] text-slate-500 uppercase">RAKP Hashes</div>
                   <div className="text-sm font-bold text-rose-400 pt-0.5">
-                    {activeScan.parsed?.totalRakpHashes || activeScan.rakpHashes?.length || 0}
+                    {scanRakpCount(activeScan)}
                   </div>
                 </div>
               </div>
@@ -263,12 +303,12 @@ export default function OobscanPage() {
                   <span className="text-[10px] text-amber-400">IPMI v1.5 / v2.0 & Redfish</span>
                 </div>
                 <div className="divide-y divide-slate-800/60">
-                  {(activeScan.bmcs || activeScan.parsed?.bmcs || []).length === 0 ? (
+                  {scanBmcs(activeScan).length === 0 ? (
                     <div className="p-6 text-center text-slate-500">
                       No BMC devices detected on the specified subnet.
                     </div>
                   ) : (
-                    (activeScan.bmcs || activeScan.parsed?.bmcs || []).map((bmc, idx: number) => (
+                    scanBmcs(activeScan).map((bmc, idx: number) => (
                       <div key={idx} className="p-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-white font-bold text-sm">{bmc.ip}</span>
@@ -297,7 +337,7 @@ export default function OobscanPage() {
                   </div>
                   <button
                     onClick={() => {
-                      const hashText = (activeScan.rakpHashes || []).join('\n');
+                      const hashText = scanRakpLines(activeScan).join('\n');
                       navigator.clipboard.writeText(hashText);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
@@ -309,8 +349,8 @@ export default function OobscanPage() {
                   </button>
                 </div>
                 <div className="bg-black/60 p-3 rounded-lg border border-slate-900 text-slate-400 text-[11px] max-h-32 overflow-y-auto whitespace-pre">
-                  {(activeScan.rakpHashes || []).length > 0
-                    ? activeScan.rakpHashes.join('\n')
+                  {scanRakpLines(activeScan).length > 0
+                    ? scanRakpLines(activeScan).join('\n')
                     : 'No RAKP hashes captured in this scan.'}
                 </div>
               </div>

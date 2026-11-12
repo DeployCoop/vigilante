@@ -33,6 +33,7 @@ export default function AnalystPage() {
 
   const [crashDump, setCrashDump] = useState<string>('Program received signal SIGSEGV, Segmentation fault.\n$rip: 0x0000000041346141\n$rsp: 0x00007fffffffe100\n$rbp: 0x4141414141414141');
   const [crashResult, setCrashResult] = useState<CrashDiagnosis | null>(null);
+  const [crashError, setCrashError] = useState<string | null>(null);
 
   const handleSend = async () => {
     if (!inputQuery.trim()) return;
@@ -45,16 +46,23 @@ export default function AnalystPage() {
       const res = await fetch('/api/ctf/mentor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'hint', tier: 2, userQuery: inputQuery })
+        // The provider select used to be decorative: the request never
+        // carried it, so every hint came back from the engine default.
+        body: JSON.stringify({ action: 'hint', tier: 2, userQuery: inputQuery, provider })
       });
       const data = await res.json();
+      // A failed hint used to render a canned "Methodology probe:..."
+      // line as if it were the mentor's answer. Report the failure.
       const botMsg = {
         role: 'assistant',
-        content: data.hint?.guidance || 'Methodology probe: What happens to input data before validation? Check memory alignments and verify buffer bounds.'
+        content:
+          res.ok && data.success && data.hint?.guidance
+            ? data.hint.guidance
+            : `Mentor request failed: ${data.error || 'unknown error'}`
       };
       setMessages((prev) => [...prev, botMsg]);
     } catch {
-      // Fallback
+      setMessages((prev) => [...prev, { role: 'assistant', content: 'Mentor request failed: network error' }]);
     } finally {
       setLoading(false);
     }
@@ -62,6 +70,7 @@ export default function AnalystPage() {
 
   const handleDiagnoseCrash = async () => {
     if (!crashDump) return;
+    setCrashError(null);
     try {
       const res = await fetch('/api/ctf/mentor', {
         method: 'POST',
@@ -69,9 +78,15 @@ export default function AnalystPage() {
         body: JSON.stringify({ action: 'crash', crashLog: crashDump })
       });
       const data = await res.json();
-      setCrashResult(data.diagnosis);
+      if (res.ok && data.success && data.diagnosis) {
+        setCrashResult(data.diagnosis);
+      } else {
+        setCrashResult(null);
+        setCrashError(data.error || 'Crash analysis failed');
+      }
     } catch {
-      // Ignore
+      setCrashResult(null);
+      setCrashError('Crash analysis request failed');
     }
   };
 
@@ -177,6 +192,12 @@ export default function AnalystPage() {
               Diagnose Crash Root Cause & Calculate Cyclic Offset
             </button>
           </div>
+
+          {crashError && (
+            <div className="p-3 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 font-mono text-xs">
+              Crash analysis failed: {crashError}
+            </div>
+          )}
 
           {crashResult && (
             <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-800/60 text-xs font-mono space-y-2">
