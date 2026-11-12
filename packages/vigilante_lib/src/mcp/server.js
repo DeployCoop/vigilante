@@ -2212,6 +2212,10 @@ export function createVigilanteMcpServer() {
               webhookPath: {
                 type: 'string',
                 description: 'URL path for canary trap (default: /api/v1/trap)'
+              },
+              autoIsolate: {
+                type: 'boolean',
+                description: 'Trigger SOAR isolation when a canary trips (default: true)'
               }
             }
           }
@@ -4183,7 +4187,30 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
     // Tool: inspect_process_memory
     if (name === 'inspect_process_memory') {
       const { pid, mapsContent } = args;
-      const anomalies = detectMemoryAnomalies(pid, mapsContent);
+      // The old call passed the pid number as the segments argument
+      // (and the maps text as `options`, where the engine never looks)
+      // — the same false-clean as the CLI: every inspection returned
+      // zero anomalies. Score the maps text; when the caller did not
+      // supply it, read /proc/<pid>/maps here, and fail the tool
+      // rather than reporting a clean bill when the maps are unreadable.
+      let content = mapsContent;
+      if (content == null) {
+        if (!Number.isInteger(pid) || pid <= 0) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ success: false, pid, error: `Invalid pid: ${pid}` }, null, 2) }],
+            isError: true
+          };
+        }
+        try {
+          content = await fs.readFile(`/proc/${pid}/maps`, 'utf8');
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ success: false, pid, error: `Cannot read /proc/${pid}/maps: ${err.message}` }, null, 2) }],
+            isError: true
+          };
+        }
+      }
+      const anomalies = detectMemoryAnomalies(content);
       return {
         content: [{ type: 'text', text: JSON.stringify({ pid, anomaliesCount: anomalies.length, anomalies }, null, 2) }]
       };
@@ -4200,8 +4227,11 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
 
     // Tool: start_canary_webhook_listener
     if (name === 'start_canary_webhook_listener') {
-      const { port = 9099, webhookPath = '/api/v1/trap' } = args;
-      const listener = await startCanaryWebhookListener({ port, path: webhookPath, autoContain: false });
+      // The old call hardcoded `autoContain: false` — a name the
+      // listener never reads (it honors `autoIsolate`) — so the
+      // operator's intent was dropped and every trip isolated anyway.
+      const { port = 9099, webhookPath = '/api/v1/trap', autoIsolate } = args;
+      const listener = await startCanaryWebhookListener({ port, path: webhookPath, autoIsolate });
       return {
         content: [{ type: 'text', text: JSON.stringify({ status: 'LISTENING', port: listener.port, path: listener.path }, null, 2) }]
       };

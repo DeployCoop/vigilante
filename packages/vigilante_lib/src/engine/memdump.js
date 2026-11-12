@@ -115,7 +115,7 @@ export function detectMemoryAnomalies(segments = [], options = {}) {
     }
   }
 
-  logger.info('MEMDUMP', `Memory anomaly scan evaluated ${segments.length} segments, flagged ${anomalies.length} findings.`);
+  logger.info('MEMDUMP', `Memory anomaly scan evaluated ${segList.length} segments, flagged ${anomalies.length} findings.`);
   return anomalies;
 }
 
