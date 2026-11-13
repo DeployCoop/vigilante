@@ -62,7 +62,17 @@ async function runTests() {
   if (!exists) throw new Error('Artifact metadata not persisted');
   console.log(`✔ Test 4 passed: Saved memory triage artifact and raw dump to Evidence Vault: ${savedPath}`);
 
-  console.log('🎉 ALL 4 IN-MEMORY FORENSICS TESTS PASSED SUCCESSFULLY!\n');
+  // Test 5: detectMemoryAnomalies accepts raw /proc maps text — the
+  // string path the CLI and the MCP inspect_process_memory tool rely
+  // on. Previously untested; the old callers passed a pid number
+  // instead and always scored zero anomalies.
+  const anomaliesFromText = detectMemoryAnomalies(mockMaps);
+  if (anomaliesFromText.length !== 4) {
+    throw new Error(`Expected 4 memory anomalies from maps text, got: ${anomaliesFromText.length}`);
+  }
+  console.log(`✔ Test 5 passed: detectMemoryAnomalies scores raw maps text (${anomaliesFromText.length} anomalies).`);
+
+  console.log('🎉 ALL 5 IN-MEMORY FORENSICS TESTS PASSED SUCCESSFULLY!\n');
 }
 
 runTests().catch(err => {

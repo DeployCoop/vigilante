@@ -79,6 +79,36 @@ async function runTests() {
   assert.strictEqual(list[0].podName, 'payment-processor-prod');
   console.log(`✔ Test 6 passed: listSavedSnapshots retrieved ${list.length} stored container snapshot.`);
 
+  // Test 7: traversal containment (H4) — a hostile podName /
+  // containerId must not escape the snapshots dir. The old code
+  // joined the raw values into the bundle path, so this input wrote
+  // to <tempBase>/tmp/pwn-* instead of <outputDir>/snapshot-*.
+  const evilRes = await createForensicsSnapshot({
+    podName: '../../../tmp/pwn',
+    containerId: '../../etc/passwd',
+    pid: process.pid,
+    rootfsDir
+  }, { outputDir });
+  assert.ok(!evilRes.snapshotId.includes('/'), `snapshotId must not contain path separators: ${evilRes.snapshotId}`);
+  assert.ok(evilRes.snapshotDir.startsWith(outputDir + path.sep), `bundle escaped the snapshots dir: ${evilRes.snapshotDir}`);
+  assert.strictEqual(await fs.stat(path.join(tempBase, 'tmp')).catch(() => null), null, 'traversal must not create <tempBase>/tmp');
+  assert.strictEqual(evilRes.manifest.podName, '../../../tmp/pwn', 'manifest keeps the true pod identity');
+  const evilVerify = await verifySnapshotIntegrity(evilRes.snapshotDir);
+  assert.strictEqual(evilVerify.valid, true, 'sanitized snapshot must still verify pristine');
+  console.log(`✔ Test 7 passed: traversal podName/containerId contained inside snapshots dir (${evilRes.snapshotId}).`);
+
+  // Test 8: verifySnapshotIntegrity fails closed on corrupt bundles
+  // (M19) — truncated or missing bundle files used to throw out of
+  // the verifier instead of returning valid:false.
+  await fs.writeFile(path.join(evilRes.snapshotDir, 'volatiles.json'), '{"truncated": ', 'utf8');
+  const verifyCorrupt = await verifySnapshotIntegrity(evilRes.snapshotDir);
+  assert.strictEqual(verifyCorrupt.valid, false, 'truncated volatiles.json must fail verification, not throw');
+  assert.ok(verifyCorrupt.issue, 'corrupt bundle must carry an issue');
+  await fs.rm(path.join(evilRes.snapshotDir, 'disk_diff.json'));
+  const verifyMissing = await verifySnapshotIntegrity(evilRes.snapshotDir);
+  assert.strictEqual(verifyMissing.valid, false, 'missing disk_diff.json must fail verification, not throw');
+  console.log('✔ Test 8 passed: verifySnapshotIntegrity fails closed on truncated/missing bundle files.');
+
   // Cleanup
   await fs.rm(tempBase, { recursive: true, force: true });
 

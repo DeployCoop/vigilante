@@ -655,10 +655,27 @@ if (command === 'mcp') {
   });
 } else if (command === 'memdump') {
   import('../src/engine/memdump.js').then(async (memdump) => {
+    // The pid used to be passed straight to detectMemoryAnomalies as
+    // a number, which the engine treats as "neither maps text nor a
+    // segment array" and scores as zero anomalies — every run printed
+    // a false-clean. Read the process maps and score that text; a pid
+    // whose maps cannot be read is an error, not a clean bill.
     const targetPid = parseInt(cli.input[1] || '1', 10);
+    if (!Number.isInteger(targetPid) || targetPid <= 0) {
+      console.error(`Invalid pid: ${cli.input[1] || '1'}`);
+      process.exit(1);
+    }
+    let mapsContent;
+    try {
+      const { readFile } = await import('node:fs/promises');
+      mapsContent = await readFile(`/proc/${targetPid}/maps`, 'utf8');
+    } catch (err) {
+      console.error(`Cannot read /proc/${targetPid}/maps: ${err.message}`);
+      process.exit(1);
+    }
     console.log(`\n🧬 IN-MEMORY PROCESS & MAPS FORENSIC TRIAGE [PID: ${targetPid}]`);
     console.log('='.repeat(70));
-    const anomalies = memdump.detectMemoryAnomalies(targetPid);
+    const anomalies = memdump.detectMemoryAnomalies(mapsContent);
     console.log(`Discovered In-Memory Anomalies: ${anomalies.length}`);
     if (anomalies.length > 0) {
       anomalies.forEach((a, idx) => {
@@ -669,6 +686,9 @@ if (command === 'mcp') {
     }
     console.log();
     process.exit(0);
+  }).catch((err) => {
+    console.error(`memdump failed: ${err.message}`);
+    process.exit(1);
   });
 } else if (command === 'sbom') {
   import('../src/engine/supplychain.js').then(async (sc) => {
