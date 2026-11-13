@@ -119,6 +119,32 @@ async function runTests() {
       console.log('✔ Test 8 passed: readSavedScan and deleteSavedScan operated cleanly.');
     }
 
+    // Test 9: M-timeouts — a hung nmap is killed at the per-scan timeout
+    // (default 10 min; the override here keeps the test fast).
+    const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-fake-nmap-'));
+    const fakeNmap = path.join(fakeBinDir, 'nmap');
+    await fs.writeFile(fakeNmap, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "Nmap version 7.95"; exit 0; fi\nsleep 30\n', 'utf8');
+    await fs.chmod(fakeNmap, 0o755);
+    const origPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}:${origPath}`;
+    try {
+      const start = Date.now();
+      let timeoutErr = null;
+      try {
+        await runNmapScan({ target: '127.0.0.1', profile: 'quick', timeoutMs: 200 });
+      } catch (err) {
+        timeoutErr = err;
+      }
+      const elapsedMs = Date.now() - start;
+      if (!timeoutErr) throw new Error('runNmapScan against a hung nmap must reject');
+      if (!/timed out/i.test(timeoutErr.message)) throw new Error(`Expected a timeout error, got: ${timeoutErr.message}`);
+      if (elapsedMs > 5000) throw new Error(`runNmapScan must abort near timeoutMs, took ${elapsedMs}ms`);
+      console.log(`✔ Test 9 passed: hung nmap killed after ~200ms timeout (took ${elapsedMs}ms).`);
+    } finally {
+      process.env.PATH = origPath;
+      await fs.rm(fakeBinDir, { recursive: true, force: true });
+    }
+
     console.log('🎉 All Data Collection & Nmap tests passed successfully!');
   } finally {
     try {

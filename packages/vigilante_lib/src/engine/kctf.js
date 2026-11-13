@@ -6,6 +6,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { getCtfSandboxesFile, requireCtfFlagSecret, assertDnsLabel, isValidHostname } from './config.js';
+import { KUBECTL_TIMEOUT_MS } from './k8s.js';
 
 export const CHALLENGE_CATEGORIES = [
   { id: 'web', name: 'Web Exploitation', icon: '🌐', color: 'blue', description: 'HTTP/HTTPS vulnerabilities, auth bypass, injection & token flaws' },
@@ -489,7 +490,8 @@ export async function spinUpChallenge({
       '-n', namespace,
       '-f', '-'
     ], {
-      input: manifest
+      input: manifest,
+      timeout: KUBECTL_TIMEOUT_MS
     });
 
     if (onLog) {
@@ -647,7 +649,7 @@ export async function deleteChallenge({
       '-n', namespace,
       '--context', `k3d-${clusterName}`,
       '--ignore-not-found=true'
-    ]);
+    ], { timeout: KUBECTL_TIMEOUT_MS });
 
     // 2. Delete Deployment
     await execa('kubectl', [
@@ -655,7 +657,7 @@ export async function deleteChallenge({
       '-n', namespace,
       '--context', `k3d-${clusterName}`,
       '--ignore-not-found=true'
-    ]);
+    ], { timeout: KUBECTL_TIMEOUT_MS });
 
     // 3. Delete Service
     await execa('kubectl', [
@@ -663,7 +665,7 @@ export async function deleteChallenge({
       '-n', namespace,
       '--context', `k3d-${clusterName}`,
       '--ignore-not-found=true'
-    ]);
+    ], { timeout: KUBECTL_TIMEOUT_MS });
 
     if (onLog) {
       onLog(`[kctf] Challenge '${challengeName}' and associated resources deleted successfully.`);
@@ -694,7 +696,7 @@ export async function toggleChallengeStatus({
       `--replicas=${replicas}`,
       '-n', namespace,
       '--context', `k3d-${clusterName}`
-    ]);
+    ], { timeout: KUBECTL_TIMEOUT_MS });
 
     await execa('kubectl', [
       'patch', 'challenge.kctf.dev', challengeName,
@@ -702,7 +704,7 @@ export async function toggleChallengeStatus({
       `-p={"spec":{"deployed":${deployed}}}`,
       '-n', namespace,
       '--context', `k3d-${clusterName}`
-    ]).catch(() => {});
+    ], { timeout: KUBECTL_TIMEOUT_MS }).catch(() => {});
 
     return { success: true, name: challengeName, deployed };
   } catch (err) {
@@ -778,7 +780,7 @@ export async function getChallengeLogs({
       '-n', namespace,
       '--context', `k3d-${clusterName}`,
       `--tail=${lines}`
-    ]);
+    ], { timeout: KUBECTL_TIMEOUT_MS });
     return stdout || '(No logs emitted yet)';
   } catch (err) {
     return `Error fetching logs: ${err.message}`;
@@ -946,7 +948,7 @@ async function deleteSandboxObjects({ appName, namespace, kubeContext }) {
     '-n', namespace,
     '--context', kubeContext,
     '--ignore-not-found=true'
-  ]);
+  ], { timeout: KUBECTL_TIMEOUT_MS });
 }
 
 async function persistSandboxRegistry() {
@@ -1255,7 +1257,7 @@ export async function spawnEphemeralSandbox({
         'apply',
         '-f', '-',
         '--context', kubeContext
-      ], { input: manifest });
+      ], { input: manifest, timeout: KUBECTL_TIMEOUT_MS });
     } catch (err) {
       // A failed apply means nothing was provisioned — fail the spawn
       // instead of registering an ACTIVE sandbox that does not exist.

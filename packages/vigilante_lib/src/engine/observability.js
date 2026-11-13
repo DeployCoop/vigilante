@@ -304,7 +304,7 @@ function isPrivateIp(ip) {
 
 /**
  * Stream live observability events (synthetic/eBPF probe harness)
- * @param {Object} options - { intervalMs, maxEvents }
+ * @param {Object} options - { intervalMs, maxEvents, capacity }
  * @param {Function} onEvent - Callback invoked on each event
  * @returns {Object} Stream controller { stop: Function, ringBuffer: ObservabilityRingBuffer }
  */
@@ -312,8 +312,13 @@ export function streamLiveEvents(options = {}, onEvent) {
   const emitter = new EventEmitter();
   const ringBuffer = new ObservabilityRingBuffer(options.capacity || 500);
   const intervalMs = options.intervalMs || 500;
+  // M-events: maxEvents was documented but ignored, so a stream never
+  // stopped on its own and a dropped controller leaked the interval
+  // forever. Default 1000 events, then the stream stops itself.
+  const maxEvents = options.maxEvents ?? 1000;
   let active = true;
   let timer = null;
+  let delivered = 0;
 
   const syscalls = ['execve', 'connect', 'openat', 'setuid', 'ptrace', 'bpf', 'memfd_create'];
   const pods = ['auth-service-7f89d', 'api-gateway-3ab21', 'payment-db-0', 'ingress-nginx-99ac'];
@@ -322,6 +327,7 @@ export function streamLiveEvents(options = {}, onEvent) {
   timer = setInterval(() => {
     if (!active) {
       clearInterval(timer);
+      timer = null;
       return;
     }
 
@@ -348,10 +354,19 @@ export function streamLiveEvents(options = {}, onEvent) {
     }
 
     const recorded = ringBuffer.push(evt);
+    delivered += 1;
     if (typeof onEvent === 'function') {
       onEvent(recorded);
     }
     emitter.emit('event', recorded);
+    if (delivered >= maxEvents) {
+      active = false;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      emitter.emit('end', { delivered });
+    }
   }, intervalMs);
 
   return {
@@ -359,7 +374,11 @@ export function streamLiveEvents(options = {}, onEvent) {
     emitter,
     stop: () => {
       active = false;
-      if (timer) clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      emitter.removeAllListeners();
     }
   };
 }

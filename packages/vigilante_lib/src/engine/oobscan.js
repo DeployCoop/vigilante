@@ -444,15 +444,21 @@ function extractTargetFromFilename(filename) {
  * @param {boolean} [options.disableLogins=false] - Disable default credential checks
  * @param {boolean} [options.ipmiFull=false] - Perform full IPMI walk
  * @param {Function} [options.onLog] - Streaming log callback
+ * @param {number} [options.timeoutMs=600000] - Per-scan subprocess timeout (10 min default)
  * @returns {Promise<Object>}
  */
+// Default per-scan subprocess timeout (M-timeouts): a scan against a
+// blackholed target could otherwise run until the operator kills it.
+const DEFAULT_SCAN_TIMEOUT_MS = 600000;
+
 export async function runOobScan({
   target = '127.0.0.1',
   profile = 'standard',
   customArgs = [],
   disableLogins = false,
   ipmiFull = false,
-  onLog = null
+  onLog = null,
+  timeoutMs = DEFAULT_SCAN_TIMEOUT_MS
 } = {}) {
   await ensureVigilanteConfig();
   const oobscansDir = getVigilanteOobscansDir();
@@ -504,7 +510,7 @@ export async function runOobScan({
   let fullOutput = '';
 
   try {
-    const subprocess = execa('oobscan', args);
+    const subprocess = execa('oobscan', args, { timeout: timeoutMs });
 
     if (subprocess.stdout) {
       subprocess.stdout.on('data', (chunk) => {

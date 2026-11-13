@@ -11,6 +11,16 @@ import { globalModuleRegistry } from '../modules/registry.js';
 import { listNistIncidents, NIST_ATTACK_VECTORS, NIST_LIFECYCLE_PHASES } from './nist.js';
 import { findDeBruijnOffset } from './ctf-tools.js';
 
+// M-llm: chat fetches previously took an optional `signal` defaulting to
+// null and created no AbortController, so a stalled model or hung
+// connection could block the caller forever. Every chat entry point now
+// aborts after DEFAULT_CHAT_TIMEOUT_MS unless the caller supplies its own
+// signal (health/model probes already used their own 2.5s/3s controllers).
+export const DEFAULT_CHAT_TIMEOUT_MS = 120000;
+// Streaming accumulation cap for chatOllama: a runaway model streaming
+// forever grows fullContent without bound; abort past this many chars.
+export const MAX_STREAM_CONTENT_CHARS = 2000000;
+
 /**
  * System prompt definition for the Vigilante AI Security Analyst (NIST SP 800-61 Rev. 2 Compliant)
  */
@@ -292,8 +302,12 @@ export async function chatOllama({
   messages = [],
   temperature = 0.2,
   onChunk = null,
-  signal = null
+  signal = null,
+  timeoutMs = DEFAULT_CHAT_TIMEOUT_MS
 }) {
+  // A caller-provided signal is honored as-is; otherwise the chat aborts
+  // after timeoutMs instead of hanging forever on a stalled model.
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs);
   const targetHost = host || getOllamaHost();
   const isStreaming = typeof onChunk === 'function';
 
@@ -302,7 +316,7 @@ export async function chatOllama({
   const response = await fetch(`${targetHost}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal,
+    signal: effectiveSignal,
     body: JSON.stringify({
       model,
       messages,
@@ -341,6 +355,9 @@ export async function chatOllama({
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
+    if (buffer.length > MAX_STREAM_CONTENT_CHARS) {
+      throw new Error(`Ollama stream exceeded the ${MAX_STREAM_CONTENT_CHARS}-character cap for a single line; aborting a runaway model response.`);
+    }
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
@@ -354,10 +371,15 @@ export async function chatOllama({
         const chunk = parsed.message?.content || '';
         if (chunk) {
           fullContent += chunk;
+          if (fullContent.length > MAX_STREAM_CONTENT_CHARS) {
+            throw new Error(`Ollama stream exceeded the ${MAX_STREAM_CONTENT_CHARS}-character cap; aborting a runaway model response.`);
+          }
           onChunk(chunk, fullContent);
         }
       } catch (err) {
-        if (err.message && err.message.startsWith('Ollama streaming error:')) {
+        // The cap error is thrown inside this try: rethrow it (like the
+        // streaming error) instead of swallowing it as an incomplete chunk.
+        if (err.message && (err.message.startsWith('Ollama streaming error:') || err.message.includes('character cap'))) {
           throw err;
         }
         // Ignore incomplete JSON chunks in buffer
@@ -375,10 +397,14 @@ export async function chatOllama({
       const chunk = parsed.message?.content || '';
       if (chunk) {
         fullContent += chunk;
+        if (fullContent.length > MAX_STREAM_CONTENT_CHARS) {
+          throw new Error(`Ollama stream exceeded the ${MAX_STREAM_CONTENT_CHARS}-character cap; aborting a runaway model response.`);
+        }
         onChunk(chunk, fullContent);
       }
     } catch (err) {
-      if (err.message && err.message.startsWith('Ollama streaming error:')) {
+      // As in the streaming loop: rethrow the cap error, don't swallow it.
+      if (err.message && (err.message.startsWith('Ollama streaming error:') || err.message.includes('character cap'))) {
         throw err;
       }
     }
@@ -407,8 +433,10 @@ export async function chatAnthropic({
   system = DEFAULT_SYSTEM_PROMPT,
   temperature = 0.2,
   onChunk = null,
-  signal = null
+  signal = null,
+  timeoutMs = DEFAULT_CHAT_TIMEOUT_MS
 }) {
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs);
   const cfg = loadConfig();
   const key = apiKey || process.env.ANTHROPIC_API_KEY || cfg.ai?.anthropic?.apiKey;
 
@@ -421,7 +449,7 @@ export async function chatAnthropic({
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    signal,
+    signal: effectiveSignal,
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': key,
@@ -470,8 +498,10 @@ export async function chatOpenAI({
   messages = [],
   temperature = 0.2,
   onChunk = null,
-  signal = null
+  signal = null,
+  timeoutMs = DEFAULT_CHAT_TIMEOUT_MS
 }) {
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs);
   const cfg = loadConfig();
   const key = apiKey || process.env.OPENAI_API_KEY || cfg.ai?.openai?.apiKey;
 
@@ -481,7 +511,7 @@ export async function chatOpenAI({
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    signal,
+    signal: effectiveSignal,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${key}`
@@ -527,8 +557,10 @@ export async function chatGemini({
   messages = [],
   temperature = 0.2,
   onChunk = null,
-  signal = null
+  signal = null,
+  timeoutMs = DEFAULT_CHAT_TIMEOUT_MS
 }) {
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs);
   const cfg = loadConfig();
   const key = apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || cfg.ai?.gemini?.apiKey;
 
@@ -562,7 +594,7 @@ export async function chatGemini({
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const response = await fetch(url, {
     method: 'POST',
-    signal,
+    signal: effectiveSignal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
@@ -605,8 +637,10 @@ export async function chatOpenAICompatible({
   messages = [],
   temperature = 0.2,
   onChunk = null,
-  signal = null
+  signal = null,
+  timeoutMs = DEFAULT_CHAT_TIMEOUT_MS
 }) {
+  const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs);
   const cfg = loadConfig();
   const providerLower = providerName.toLowerCase();
   const key = apiKey || (envKey ? process.env[envKey] : null) || cfg.ai?.[providerLower]?.apiKey;
@@ -619,7 +653,7 @@ export async function chatOpenAICompatible({
 
   const response = await fetch(cleanUrl, {
     method: 'POST',
-    signal,
+    signal: effectiveSignal,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${key}`

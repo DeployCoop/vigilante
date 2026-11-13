@@ -6,7 +6,7 @@ import path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { runInteractiveTerminal } from '../utils/terminal-runner.js';
 import { sanitizePathComponent } from './config.js';
-import { resolveKubeContext, getClusterContext } from './cluster.js';
+import { resolveKubeContext, getClusterContext, KUBECTL_TIMEOUT_MS } from './cluster.js';
 
 /**
  * Format age from ISO timestamp into concise human string (e.g. 12s, 4m, 2h, 5d)
@@ -300,7 +300,7 @@ export async function getPodLogs({ clusterName = 'vigilante-dev', namespace = 'd
     }
   }
   try {
-    const { stdout } = await execa('kubectl', args);
+    const { stdout } = await execa('kubectl', args, { timeout: KUBECTL_TIMEOUT_MS });
     return stdout || '(No logs returned)';
   } catch (err) {
     return `Error retrieving logs for ${namespace}/${podName}: ${err.message}`;
@@ -325,7 +325,7 @@ export async function describePod({ clusterName = 'vigilante-dev', namespace = '
     }
   }
   try {
-    const { stdout } = await execa('kubectl', args);
+    const { stdout } = await execa('kubectl', args, { timeout: KUBECTL_TIMEOUT_MS });
     return stdout || '(No describe output returned)';
   } catch (err) {
     return `Error describing ${namespace}/${podName}: ${err.message}`;

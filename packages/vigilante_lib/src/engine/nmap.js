@@ -324,13 +324,19 @@ function extractTargetFromFilename(filename) {
  * @param {string} [options.profile='quick'] - Scan profile id
  * @param {Array<string>} [options.customArgs=[]] - Additional nmap arguments
  * @param {Function} [options.onLog] - Streaming log callback
+ * @param {number} [options.timeoutMs=600000] - Per-scan subprocess timeout (10 min default)
  * @returns {Promise<Object>}
  */
+// Default per-scan subprocess timeout (M-timeouts): a scan against a
+// blackholed target could otherwise run until the operator kills it.
+const DEFAULT_SCAN_TIMEOUT_MS = 600000;
+
 export async function runNmapScan({
   target = '127.0.0.1',
   profile = 'quick',
   customArgs = [],
-  onLog = null
+  onLog = null,
+  timeoutMs = DEFAULT_SCAN_TIMEOUT_MS
 } = {}) {
   await ensureVigilanteConfig();
   const nmapsDir = getVigilanteNmapsDir();
@@ -372,7 +378,7 @@ export async function runNmapScan({
   let fullOutput = '';
 
   try {
-    const subprocess = execa('nmap', nmapArgs);
+    const subprocess = execa('nmap', nmapArgs, { timeout: timeoutMs });
 
     if (subprocess.stdout) {
       subprocess.stdout.on('data', (chunk) => {

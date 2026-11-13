@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   checkOobscanInstalled,
   detectOobTargets,
+  runOobScan,
   OOB_SCAN_PROFILES,
   parseOobReportContent,
   exportRakpHashes,
@@ -213,7 +214,41 @@ async function runTests() {
   assert(React.isValidElement(el), 'React element for OOBScanView must be valid');
   console.log('✔ Test 8 passed: OOBScanView React Ink component instantiated successfully.');
 
-  console.log('\n🎉 ALL 8 OOBSCAN TESTS PASSED SUCCESSFULLY!\n');
+  // Test 9: M-timeouts — a hung oobscan is killed at the per-scan timeout
+  // (default 10 min; the override here keeps the test fast).
+  {
+    const os = await import('node:os');
+    const tempXdg = path.join(os.tmpdir(), `vigilante-oobscan-timeout-${Math.random().toString(36).slice(2, 8)}`);
+    const origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = tempXdg;
+    const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-fake-oobscan-'));
+    const fakeOobscan = path.join(fakeBinDir, 'oobscan');
+    await fs.writeFile(fakeOobscan, '#!/bin/sh\nif [ "$1" = "version" ]; then echo "oobscan version 1.2.3"; exit 0; fi\nsleep 30\n', 'utf8');
+    await fs.chmod(fakeOobscan, 0o755);
+    const origPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}:${origPath}`;
+    try {
+      const start = Date.now();
+      let timeoutErr = null;
+      try {
+        await runOobScan({ target: '127.0.0.1', profile: 'standard', timeoutMs: 200 });
+      } catch (err) {
+        timeoutErr = err;
+      }
+      const elapsedMs = Date.now() - start;
+      assert.ok(timeoutErr, 'runOobScan against a hung oobscan must reject');
+      assert.match(timeoutErr.message, /timed out/i, `Expected a timeout error, got: ${timeoutErr.message}`);
+      assert.ok(elapsedMs < 5000, `runOobScan must abort near timeoutMs, took ${elapsedMs}ms`);
+      console.log(`✔ Test 9 passed: hung oobscan killed after ~200ms timeout (took ${elapsedMs}ms).`);
+    } finally {
+      process.env.PATH = origPath;
+      process.env.XDG_CONFIG_HOME = origXdg;
+      await fs.rm(fakeBinDir, { recursive: true, force: true });
+      await fs.rm(tempXdg, { recursive: true, force: true });
+    }
+  }
+
+  console.log('\n🎉 ALL 9 OOBSCAN TESTS PASSED SUCCESSFULLY!\n');
 }
 
 runTests().catch((err) => {

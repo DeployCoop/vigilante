@@ -73,11 +73,24 @@ export function ensureInstanceDirsSync(instanceName = 'vigilante-dev') {
 // already holding the chain.
 const instanceWriteChains = new Map();
 
+// Diagnostic for tests: how many per-instance write chains are currently
+// held (M-instances — the map must drain to 0 once writers settle).
+export function getInstanceWriteChainCount() {
+  return instanceWriteChains.size;
+}
+
 function withInstanceWriteLock(instanceName, fn) {
   const key = sanitizePathComponent(instanceName || 'vigilante-dev');
   const prev = instanceWriteChains.get(key) || Promise.resolve();
   const run = prev.then(fn, fn);
-  instanceWriteChains.set(key, run.catch(() => {}));
+  const settled = run.catch(() => {});
+  instanceWriteChains.set(key, settled);
+  // M-instances: evict the chain entry once it settles so the map does
+  // not grow one key per instance ever touched. The identity check keeps
+  // a chain queued behind this one from being deleted early.
+  settled.then(() => {
+    if (instanceWriteChains.get(key) === settled) instanceWriteChains.delete(key);
+  });
   return run;
 }
 
@@ -106,7 +119,18 @@ async function saveInstanceMetadataUnlocked(instanceName = 'vigilante-dev', meta
     updatedAt: new Date().toISOString()
   };
 
-  await fs.writeFile(metadataPath, JSON.stringify(merged, null, 2), 'utf8');
+  // M-instances: write atomically (tmp file + rename) so a kill mid-write
+  // cannot leave a torn instance.json behind; a torn file made
+  // loadInstanceMetadata return null and listInstances fabricate a
+  // default record for a real instance.
+  const tmpPath = `${metadataPath}.tmp-${process.pid}`;
+  try {
+    await fs.writeFile(tmpPath, JSON.stringify(merged, null, 2), 'utf8');
+    await fs.rename(tmpPath, metadataPath);
+  } catch (err) {
+    await fs.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
   logger.info('INSTANCES:SAVE_META', `Saved metadata for instance '${instanceName}' at ${metadataPath}`);
   return metadataPath;
 }
@@ -288,7 +312,15 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
   deleteCluster = true,
   onLog = null
 } = {}) {
+  // M-instances: deletion previously bypassed the write lock, so a
+  // concurrent save could resurrect metadata for a deleted instance (or
+  // a delete could remove the dir while a save was mid-write). Serialize
+  // with the other writers for this instance.
   const safeName = sanitizePathComponent(instanceName || 'vigilante-dev');
+  return withInstanceWriteLock(safeName, () => deleteInstanceUnlocked(safeName, { deleteCluster, onLog }));
+}
+
+async function deleteInstanceUnlocked(safeName, { deleteCluster = true, onLog = null } = {}) {
   const instancePath = getInstanceDir(safeName);
   // Defense in depth: never recursively delete the instances root itself or
   // anything outside it, regardless of how instancePath was derived.

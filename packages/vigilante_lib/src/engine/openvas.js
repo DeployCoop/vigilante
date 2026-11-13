@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { execa } from 'execa';
-import { getVigilanteEvidenceDir, ensureVigilanteConfig, shQuote } from './config.js';
+import { getVigilanteEvidenceDir, ensureVigilanteConfig, shQuote, sanitizePathComponent } from './config.js';
 import { saveEvidenceFile, listHostEvidence } from './evidence.js';
 import { logger } from '../utils/logger.js';
 
@@ -462,7 +462,11 @@ export async function listSavedOpenVasReports(networkTarget = 'local_network', h
     const netDir = path.join(evidenceDir, networkTarget.replace(/\//g, '_'));
 
     if (hostIp) {
-      const hostDir = path.join(netDir, hostIp);
+      // M-openvas: hostIp was joined into the path unsanitized, so
+      // '../A/10.0.0.5' read another network's report (cross-network
+      // read). Sanitize it like every other path component; a traversal
+      // input maps to a nonexistent directory and returns [] below.
+      const hostDir = path.join(netDir, sanitizePathComponent(hostIp));
       const reportFile = path.join(hostDir, 'openvas_report.json');
       try {
         const content = await fs.readFile(reportFile, 'utf8');

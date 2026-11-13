@@ -18,6 +18,14 @@ export const AD_TICK_PHASES = {
   TICK_COMPLETE: 'TICK_COMPLETE'
 };
 
+// M-histories: injectedFlags/rounds/tickHistory grew without bound for the
+// life of a runner. Histories are capped to the most recent entries.
+// MAX_TICK_HISTORY matches tournament.js (both push to the same
+// adState.tickHistory array).
+export const MAX_AD_ROUNDS = 500;
+export const MAX_INJECTED_FLAGS = 5000;
+export const MAX_TICK_HISTORY = 500;
+
 /**
  * Generate a deterministic tick-scoped flag for an Attack-Defense service
  */
@@ -87,6 +95,9 @@ export class AttackDefenseRunner {
     this.isRunning = false;
     this.timer = null;
     this.currentPhase = AD_TICK_PHASES.IDLE;
+    // Set by stop(); an in-flight tick aborts at the next phase boundary
+    // instead of running to TICK_COMPLETE. Cleared by start().
+    this.stopRequested = false;
 
     // Services registered for AD
     this.services = [
@@ -164,9 +175,14 @@ export class AttackDefenseRunner {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
+    this.stopRequested = false;
     logger.info('AD_RUNNER', `Started Attack-Defense autonomous runner (Tick: ${this.tickDurationSeconds}s)`);
-    this.stepTick(); // Run initial tick immediately
-    this.timer = setInterval(() => this.stepTick(), this.tickDurationSeconds * 1000);
+    // stepTick is async and was never awaited, so a throwing tick was an
+    // unhandled rejection. Log the failure and keep scheduling.
+    this.stepTick().catch((err) => logger.error('AD_RUNNER', `Tick failed: ${err.message}`)); // Run initial tick immediately
+    this.timer = setInterval(() => {
+      this.stepTick().catch((err) => logger.error('AD_RUNNER', `Tick failed: ${err.message}`));
+    }, this.tickDurationSeconds * 1000);
   }
 
   /**
@@ -178,6 +194,10 @@ export class AttackDefenseRunner {
       this.timer = null;
     }
     this.isRunning = false;
+    // Cooperative cancellation: a tick already in flight aborts at the
+    // next phase boundary instead of running to TICK_COMPLETE and
+    // overwriting the IDLE phase set below.
+    this.stopRequested = true;
     this.currentPhase = AD_TICK_PHASES.IDLE;
     logger.info('AD_RUNNER', 'Stopped Attack-Defense autonomous runner');
   }
@@ -202,6 +222,19 @@ export class AttackDefenseRunner {
     }
   }
 
+  /**
+   * Phase-boundary stop check (M-ad). Returns true when stop() was called
+   * and the tick should abort without recording a round or completing;
+   * the phase is reset to IDLE so the runner's visible state matches
+   * "stopped" instead of being overwritten by the aborted tick.
+   */
+  abortIfStopped(tick, phaseName) {
+    if (!this.stopRequested) return false;
+    logger.info('AD_RUNNER', `Tick #${tick} aborted at ${phaseName} boundary (runner stopped).`);
+    this.currentPhase = AD_TICK_PHASES.IDLE;
+    return true;
+  }
+
   async executeTick() {
     const currentTick = (this.tournament.adState.currentTick || 0) + 1;
     this.tournament.adState.currentTick = currentTick;
@@ -217,12 +250,14 @@ export class AttackDefenseRunner {
     // --------------------------------------------------------------------------
     // Phase 1: TICK_PREPARE
     // --------------------------------------------------------------------------
+    if (this.abortIfStopped(currentTick, 'TICK_PREPARE')) return null;
     this.currentPhase = AD_TICK_PHASES.TICK_PREPARE;
     this.broadcast('TICK_START', { tick: currentTick });
 
     // --------------------------------------------------------------------------
     // Phase 2: FLAG_INJECT (Generate and deposit tick flags)
     // --------------------------------------------------------------------------
+    if (this.abortIfStopped(currentTick, 'FLAG_INJECT')) return null;
     this.currentPhase = AD_TICK_PHASES.FLAG_INJECT;
     const teams = Array.from(this.tournament.teams.values());
 
@@ -245,6 +280,10 @@ export class AttackDefenseRunner {
           injectedAt: Date.now(),
           capturedBy: []
         });
+        // Prune oldest flags first (Map preserves insertion order).
+        while (this.injectedFlags.size > MAX_INJECTED_FLAGS) {
+          this.injectedFlags.delete(this.injectedFlags.keys().next().value);
+        }
 
         tickRecord.services[team.id][svc.id] = {
           flag,
@@ -261,6 +300,7 @@ export class AttackDefenseRunner {
     // --------------------------------------------------------------------------
     // Phase 3: SLA_CHECK (Execute autonomous health checks)
     // --------------------------------------------------------------------------
+    if (this.abortIfStopped(currentTick, 'SLA_CHECK')) return null;
     this.currentPhase = AD_TICK_PHASES.SLA_CHECK;
     for (const team of teams) {
       for (const svc of this.services) {
@@ -282,6 +322,7 @@ export class AttackDefenseRunner {
     // --------------------------------------------------------------------------
     // Phase 4: POINT_CALCULATION (Defense, Attack & SLA scoring)
     // --------------------------------------------------------------------------
+    if (this.abortIfStopped(currentTick, 'POINT_CALCULATION')) return null;
     this.currentPhase = AD_TICK_PHASES.POINT_CALCULATION;
     for (const team of teams) {
       for (const svc of this.services) {
@@ -314,10 +355,17 @@ export class AttackDefenseRunner {
     // --------------------------------------------------------------------------
     // Phase 5: TICK_COMPLETE
     // --------------------------------------------------------------------------
+    if (this.abortIfStopped(currentTick, 'TICK_COMPLETE')) return null;
     this.currentPhase = AD_TICK_PHASES.TICK_COMPLETE;
     tickRecord.completedAt = new Date().toISOString();
     this.rounds.push(tickRecord);
+    if (this.rounds.length > MAX_AD_ROUNDS) {
+      this.rounds.splice(0, this.rounds.length - MAX_AD_ROUNDS);
+    }
     this.tournament.adState.tickHistory.push(tickRecord);
+    if (this.tournament.adState.tickHistory.length > MAX_TICK_HISTORY) {
+      this.tournament.adState.tickHistory.splice(0, this.tournament.adState.tickHistory.length - MAX_TICK_HISTORY);
+    }
 
     this.broadcast('AD_TICK_COMPLETE', {
       tick: currentTick,
