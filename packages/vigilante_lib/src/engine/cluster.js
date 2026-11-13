@@ -211,21 +211,49 @@ export async function createK3sCluster(clusterName = 'axonwall-k3s', options = {
  * @param {Object} [options]
  */
 export async function deleteK3sCluster(clusterName = 'vigilante-dev', options = {}) {
+  assertCliTarget(clusterName, 'cluster name');
   const { onLog = null, stopService = false } = options;
 
   if (onLog) onLog(`[k3s] Cleaning up K3s target '${clusterName}'...`);
 
-  if (stopService) {
-    try {
-      await execa('systemctl', ['stop', 'k3s']);
-      if (onLog) onLog(`[k3s] Stopped k3s system service.`);
-    } catch (err) {
-      if (onLog) onLog(`[k3s] Could not stop k3s service: ${err.message}`);
-    }
+  // Mirror deleteK3dCluster: a cluster that isn't there is not_found,
+  // not deleted. listK3sClusters reports the host's single k3s cluster
+  // (VIGILANTE_CLUSTER_NAME || 'axonwall-k3s') when k3s is available
+  // and [] when it isn't, so a name that matches nothing on the host
+  // is a ghost — the old code returned 'deleted' for it unconditionally,
+  // and deleteInstance (plus the Ink down workflow) reported the
+  // cluster destroyed when nothing had happened.
+  const clusters = await listK3sClusters();
+  const exists = clusters.some(c => c.name === clusterName);
+  if (!exists) {
+    if (onLog) onLog(`[k3s] No k3s cluster named '${clusterName}' found; nothing to delete.`);
+    return {
+      status: 'not_found',
+      provider: 'k3s',
+      clusterName
+    };
   }
 
+  // The cluster exists. Stopping the host-wide k3s service is the only
+  // destructive act available, and it is opt-in (stopService) because
+  // it kills the cluster for every instance on the host — no caller
+  // passes it today. A failed stop throws, like deleteK3dCluster throws
+  // when `k3d cluster delete` fails, so deleteInstance reports
+  // clusterStatus 'error' and success false instead of a false 'deleted'.
+  if (stopService) {
+    await execa('systemctl', ['stop', 'k3s']);
+    if (onLog) onLog(`[k3s] Stopped k3s system service.`);
+    return {
+      status: 'deleted',
+      provider: 'k3s',
+      clusterName
+    };
+  }
+
+  // Exists, but the caller did not ask to stop the shared service, so
+  // nothing was destroyed. Report that honestly instead of 'deleted'.
   return {
-    status: 'deleted',
+    status: 'not_deleted',
     provider: 'k3s',
     clusterName
   };
