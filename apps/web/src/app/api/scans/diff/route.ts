@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, compareNmapScans } from 'vigilante_lib/engine/nmap-xml.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       targetScan: { id: targetMeta.id, filename: targetMeta.filename, target: targetScan.target },
       diff
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

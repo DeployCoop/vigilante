@@ -3,13 +3,13 @@ import {
   listSavedOobScans,
   runOobScan,
   deleteSavedOobScan,
-  exportRakpHashes,
   checkOobscanInstalled,
   detectOobTargets,
   OOB_SCAN_PROFILES
 } from 'vigilante_lib/engine/oobscan.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +18,6 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action') || 'all';
-
     const config = loadConfig();
     const domain = config.defaults?.domain || 'vigilante.local';
     const ip = config.defaults?.ip || '127.0.0.1';
@@ -40,11 +37,11 @@ export async function GET(request: Request) {
       })),
       scans
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         profiles: [],
         scans: []
       },
@@ -70,11 +67,11 @@ export async function POST(request: Request) {
       success: true,
       result: res
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message
+        error: errorMessage(err)
       },
       { status: 500 }
     );
@@ -96,7 +93,7 @@ export async function DELETE(request: Request) {
 
     await deleteSavedOobScan(scanId);
     return NextResponse.json({ success: true, deleted: scanId });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

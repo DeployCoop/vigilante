@@ -1193,6 +1193,9 @@ Strictly refuse to write or suggest full exploit scripts or payloads.`;
 
 /**
  * Analyzes GDB crash dumps, SEGFAULT logs, or exception tracebacks and provides Socratic diagnostic feedback
+ * @param {Object} options
+ * @param {string} options.crashLog
+ * @param {{ id?: string, name?: string }|null} [options.challenge=null]
  */
 export function parseCrashContext({
   crashLog,

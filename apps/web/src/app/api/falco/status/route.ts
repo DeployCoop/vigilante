@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FalcoModule } from 'vigilante_lib/modules/falco/index.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +27,10 @@ export async function GET(req: Request) {
       status,
       driver
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json({
       success: false,
-      error: err.message
+      error: errorMessage(err)
     }, { status: 500 });
   }
 }

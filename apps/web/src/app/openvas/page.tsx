@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShieldAlert,
   Play,
@@ -8,12 +8,8 @@ import {
   Server,
   Lock,
   ExternalLink,
-  CheckCircle2,
-  AlertTriangle,
   FileText,
-  Clock,
   ChevronRight,
-  Info
 } from 'lucide-react';
 
 interface Finding {
@@ -26,22 +22,51 @@ interface Finding {
   solution: string;
 }
 
+interface OpenVasStatus {
+  ready?: boolean;
+  namespace?: string;
+  pods?: unknown[];
+}
+
+interface OpenVasCredentials {
+  username: string;
+}
+
+interface ScanProfile {
+  id: string;
+  name: string;
+  description?: string;
+  estimatedDuration?: string;
+}
+
+interface DiscoveredHost {
+  ip: string;
+  hostname?: string;
+  ports?: unknown[];
+}
+
+interface ScanReport {
+  targetHost?: string;
+  host?: { ip?: string };
+  timestamp?: string;
+  profile?: string;
+  findings?: Finding[];
+}
+
 export default function OpenVASPage() {
-  const [status, setStatus] = useState<any>(null);
-  const [credentials, setCredentials] = useState<any>(null);
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [discoveredHosts, setDiscoveredHosts] = useState<any[]>([]);
-  const [reports, setReports] = useState<any[]>([]);
+  const [status, setStatus] = useState<OpenVasStatus | null>(null);
+  const [credentials, setCredentials] = useState<OpenVasCredentials | null>(null);
+  const [profiles, setProfiles] = useState<ScanProfile[]>([]);
+  const [discoveredHosts, setDiscoveredHosts] = useState<DiscoveredHost[]>([]);
+  const [reports, setReports] = useState<ScanReport[]>([]);
   const [selectedHost, setSelectedHost] = useState<string>('127.0.0.1');
   const [customHost, setCustomHost] = useState<string>('');
   const [selectedProfile, setSelectedProfile] = useState<string>('full-and-fast');
   const [loading, setLoading] = useState<boolean>(true);
   const [scanning, setScanning] = useState<boolean>(false);
-  const [activeReport, setActiveReport] = useState<any>(null);
-  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+  const [activeReport, setActiveReport] = useState<ScanReport | null>(null);
 
-  const fetchStatus = () => {
-    setLoading(true);
+  const fetchStatus = useCallback(() => {
     fetch('/api/openvas?action=status')
       .then((res) => res.json())
       .then((data) => {
@@ -51,18 +76,18 @@ export default function OpenVASPage() {
           setProfiles(data.profiles || []);
           setDiscoveredHosts(data.discoveredHosts || []);
           setReports(data.reports || []);
-          if (data.reports?.length > 0 && !activeReport) {
-            setActiveReport(data.reports[0]);
+          if (data.reports?.length > 0) {
+            setActiveReport((prev) => prev ?? data.reports[0]);
           }
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchStatus();
-  }, []);
+  }, [fetchStatus]);
 
   const handleStartScan = async () => {
     const target = customHost.trim() || selectedHost;
@@ -157,7 +182,10 @@ export default function OpenVASPage() {
         </div>
 
         <button
-          onClick={fetchStatus}
+          onClick={() => {
+              setLoading(true);
+              fetchStatus();
+            }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-400 border border-slate-800"
         >
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
@@ -297,7 +325,6 @@ export default function OpenVASPage() {
                   {(activeReport.findings || []).map((f: Finding, idx: number) => (
                     <div
                       key={idx}
-                      onClick={() => setSelectedFinding(f)}
                       className="p-3.5 hover:bg-slate-900/40 cursor-pointer transition-colors flex items-start justify-between gap-4 font-mono text-xs"
                     >
                       <div className="space-y-1">

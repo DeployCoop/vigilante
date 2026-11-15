@@ -9,13 +9,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
-  Layers,
-  Key,
-  Server,
-  Zap,
-  Terminal,
   X
 } from 'lucide-react';
+import { errorMessage } from '@/lib/envelope';
 
 interface Canary {
   id: string;
@@ -36,7 +32,6 @@ export default function DeceptionPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchCanaries = () => {
-    setLoading(true);
     fetch('/api/deception')
       .then((res) => res.json())
       .then((data) => {
@@ -65,8 +60,8 @@ export default function DeceptionPage() {
         fetchCanaries();
         setTimeout(() => setStatusMessage(null), 4000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error triggering alarm: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error triggering alarm: ${errorMessage(err)}`);
     }
   };
 
@@ -89,8 +84,8 @@ export default function DeceptionPage() {
         fetchCanaries();
         setTimeout(() => setStatusMessage(null), 4000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error: ${errorMessage(err)}`);
     }
   };
 

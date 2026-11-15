@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listSavedXmlScans, readXmlScan, parseNmapXml } from 'vigilante_lib/engine/nmap-xml.js';
 import { saveEvidenceFile } from 'vigilante_lib/engine/evidence.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +30,8 @@ export async function GET(req: NextRequest) {
       scansCount: scans.length,
       scans
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       scan: parsed,
       filename
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

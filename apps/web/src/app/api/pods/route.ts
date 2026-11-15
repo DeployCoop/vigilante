@@ -4,6 +4,7 @@ import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { resolveKubeContext } from 'vigilante_lib/engine/cluster.js';
 import { execa } from 'execa';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +32,9 @@ export async function GET(request: Request) {
       if (action === 'logs') {
         const args = ['logs', podName, '-n', namespace, '--tail=150', ...ctxArgs];
         if (container) args.push('-c', container);
-        const { stdout, stderr } = await execa('kubectl', args).catch((err: any) => ({
+        const { stdout, stderr } = await execa('kubectl', args).catch((err: unknown) => ({
           stdout: '',
-          stderr: err.message
+          stderr: errorMessage(err)
         }));
         return NextResponse.json({
           success: true,
@@ -43,9 +44,9 @@ export async function GET(request: Request) {
 
       if (action === 'describe') {
         const args = ['describe', 'pod', podName, '-n', namespace, ...ctxArgs];
-        const { stdout, stderr } = await execa('kubectl', args).catch((err: any) => ({
+        const { stdout, stderr } = await execa('kubectl', args).catch((err: unknown) => ({
           stdout: '',
-          stderr: err.message
+          stderr: errorMessage(err)
         }));
         return NextResponse.json({
           success: true,
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
       namespace: namespace === 'all' ? null : namespace
     });
 
-    const namespaces = Array.from(new Set(pods.map((p: any) => p.namespace))).sort();
+    const namespaces = Array.from(new Set(pods.map((p) => p.namespace))).sort();
 
     return NextResponse.json({
       success: true,
@@ -68,11 +69,11 @@ export async function GET(request: Request) {
       namespaces,
       pods
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         pods: [],
         namespaces: []
       },

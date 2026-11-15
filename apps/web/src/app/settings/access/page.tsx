@@ -16,7 +16,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { useAbilityContext } from '@/lib/ability';
-import { apiErrorMessage } from '@/lib/envelope';
+import { apiErrorMessage, errorMessage } from '@/lib/envelope';
 
 interface Grant {
   permission: string;
@@ -88,35 +88,38 @@ export default function AccessPage() {
   const [editGrants, setEditGrants] = useState<Grant[]>([]);
   const [editRevocations, setEditRevocations] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/authz/principals');
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401 || res.status === 403) {
-        setForbidden(true);
-        setAuthzEnabled(true);
-        return;
-      }
-      if (!res.ok) throw new Error(apiErrorMessage(data, `Request failed (${res.status})`));
-      setForbidden(false);
-      setAuthzEnabled(Boolean(data.authzEnabled));
-      setPrincipals(data.principals ?? []);
-      setPermissions(data.permissions ?? []);
-      setRoles(data.roles ?? []);
-      if (data.authzEnabled) {
-        const auditRes = await fetch('/api/authz/audit?limit=50');
-        if (auditRes.ok) {
-          const auditData = await auditRes.json();
-          setAudit(auditData.entries ?? []);
+  // Promise-chain style: every setState sits inside a .then/.catch/.finally
+  // callback, so the mount effect can call load() directly. Callers that
+  // want the spinner/error reset set those flags before invoking load().
+  const load = useCallback((): Promise<void> => {
+    return fetch('/api/authz/principals')
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          setForbidden(true);
+          setAuthzEnabled(true);
+          return;
         }
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+        if (!res.ok) throw new Error(apiErrorMessage(data, `Request failed (${res.status})`));
+        setForbidden(false);
+        setAuthzEnabled(Boolean(data.authzEnabled));
+        setPrincipals(data.principals ?? []);
+        setPermissions(data.permissions ?? []);
+        setRoles(data.roles ?? []);
+        if (data.authzEnabled) {
+          const auditRes = await fetch('/api/authz/audit?limit=50');
+          if (auditRes.ok) {
+            const auditData = await auditRes.json();
+            setAudit(auditData.entries ?? []);
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        setError(errorMessage(err));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -297,7 +300,15 @@ export default function AccessPage() {
           )}
         </div>
         <div className="flex items-center space-x-2">
-          <button onClick={() => void load()} className={btnCls} disabled={loading}>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              void load();
+            }}
+            className={btnCls}
+            disabled={loading}
+          >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
             <span>Refresh</span>
           </button>

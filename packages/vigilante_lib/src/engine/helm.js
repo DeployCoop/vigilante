@@ -200,6 +200,7 @@ export async function resolveChartValuesArgs({
  * @param {Object} options
  * @param {string} [options.moduleId] - Optional specific module to export
  * @param {string} [options.targetDir='./values'] - Destination directory
+ * @param {boolean} [options.useXdg=false] - Export into the XDG values directory instead of targetDir
  * @param {string} [options.domain='vigilante.local']
  * @param {string} [options.clusterName='vigilante-dev']
  * @param {Function} [options.onLog]
@@ -288,7 +289,7 @@ async function getAvailableModuleIds(modulesDir) {
  * List all configurable chart values across modules and check for active user overrides
  * @param {Object} options
  * @param {string} [options.customValuesDir]
- * @returns {Promise<Array<{ moduleId: string, chartName: string, defaultPath: string, userOverridePath: string|null }>>}
+ * @returns {Promise<Array<{ moduleId: string, chartName: string, defaultPath: string, userOverridePath: string|null, xdgPath: string }>>}
  */
 export async function listChartValues({ customValuesDir } = {}) {
   const cwd = process.cwd();

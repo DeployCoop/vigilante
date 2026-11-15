@@ -1,20 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
   Server,
   RefreshCw,
   Search,
   Filter,
   CheckCircle2,
-  AlertTriangle,
   XCircle,
   Clock,
   Terminal,
   FileText,
   Copy,
   Check,
-  ChevronRight,
   X
 } from 'lucide-react';
 
@@ -44,8 +43,7 @@ export default function PodsPage() {
   } | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const fetchPods = (ns = selectedNamespace) => {
-    setLoading(true);
+  const fetchPods = useCallback((ns: string) => {
     fetch(`/api/pods?namespace=${ns}`)
       .then((res) => res.json())
       .then((data) => {
@@ -57,7 +55,7 @@ export default function PodsPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchPods(selectedNamespace);
@@ -65,7 +63,7 @@ export default function PodsPage() {
       fetchPods(selectedNamespace);
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedNamespace]);
+  }, [selectedNamespace, fetchPods]);
 
   const handleInspect = async (pod: PodItem, action: 'logs' | 'describe') => {
     setActiveModal({ pod, action, content: '', loading: true });
@@ -78,11 +76,11 @@ export default function PodsPage() {
         content: data.output || '(No output returned)',
         loading: false
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setActiveModal({
         pod,
         action,
-        content: `Error: ${err.message}`,
+        content: `Error: ${errorMessage(err)}`,
         loading: false
       });
     }
@@ -144,7 +142,10 @@ export default function PodsPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchPods(selectedNamespace)}
+            onClick={() => {
+            setLoading(true);
+            fetchPods(selectedNamespace);
+          }}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-800 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -171,7 +172,10 @@ export default function PodsPage() {
           <span className="text-xs text-slate-400 font-mono">Namespace:</span>
           <select
             value={selectedNamespace}
-            onChange={(e) => setSelectedNamespace(e.target.value)}
+            onChange={(e) => {
+              setLoading(true);
+              setSelectedNamespace(e.target.value);
+            }}
             className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-2.5 py-1 text-slate-300 font-mono focus:outline-none"
           >
             {namespaces.map((ns) => (

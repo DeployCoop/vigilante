@@ -3,8 +3,8 @@ import { globalModuleRegistry } from 'vigilante_lib/modules/registry.js';
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { ensureNamespace } from 'vigilante_lib/engine/k8s.js';
 import { setupCertificates } from 'vigilante_lib/engine/certs.js';
-import { recordNamespaceDeployment } from 'vigilante_lib/engine/instances.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     const allModules = globalModuleRegistry.getAll();
     const modulesStatus = await Promise.all(
-      allModules.map(async (m: any) => {
+      allModules.map(async (m) => {
         try {
           const status = await m.status({ domain, clusterName, namespace });
           const endpoints = await m.getEndpoints({ domain, namespace }).catch(() => []);
@@ -34,14 +34,14 @@ export async function GET(request: Request) {
             ...status,
             endpoints
           };
-        } catch (err: any) {
+        } catch (err: unknown) {
           return {
             id: m.id,
             name: m.name,
             description: m.description,
             dependencies: m.dependencies || [],
             installed: false,
-            error: err.message,
+            error: errorMessage(err),
             endpoints: []
           };
         }
@@ -55,8 +55,8 @@ export async function GET(request: Request) {
       namespace,
       modules: modulesStatus
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message, modules: [] }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err), modules: [] }, { status: 500 });
   }
 }
 
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

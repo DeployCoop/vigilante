@@ -6,8 +6,7 @@ import {
   loadAuthzStore,
   decide,
   resolvePrincipalByToken,
-  resolvePrincipalBySession,
-  verifyPasswordOrToken
+  resolvePrincipalBySession
 } from 'vigilante_lib/engine/authz.js';
 import {
   getOidcConfig,
@@ -47,6 +46,49 @@ export class AuthzError extends Error {
   }
 }
 
+export interface GrantScope {
+  moduleId?: string;
+  namespace?: string;
+  clusterName?: string;
+}
+
+export interface GrantContext {
+  notBefore?: string;
+  notAfter?: string;
+  source?: 'loopback' | 'any';
+  authMethod?: 'session' | 'token' | 'oidc' | 'any';
+}
+
+export interface Grant {
+  permission: string;
+  scope?: GrantScope;
+  context?: GrantContext;
+}
+
+/** A principal as stored in the authz store (engine PrincipalSchema shape). */
+export interface PrincipalRecord {
+  id: string;
+  name: string;
+  kind: string;
+  role: string;
+  oidcSubject?: string;
+  disabled: boolean;
+  grants: Grant[];
+  revocations: string[];
+  [key: string]: unknown;
+}
+
+export interface LoadedAuthz {
+  state: string;
+  store?: { version: number; principals: PrincipalRecord[]; sessions: unknown[] } | null;
+}
+
+export interface AuthzDecision {
+  allowed: boolean;
+  reason: string;
+  principalId?: string | null;
+}
+
 export interface PublicPrincipal {
   id: string;
   name: string;
@@ -54,14 +96,14 @@ export interface PublicPrincipal {
   role: string;
   oidcSubject?: string;
   disabled: boolean;
-  grants: any[];
+  grants: Grant[];
   revocations: string[];
   hasToken: boolean;
 }
 
 export interface AuthzContext {
-  loaded: any;
-  principal: any | null;
+  loaded: LoadedAuthz;
+  principal: PrincipalRecord | null;
   unknownPrincipal: boolean;
   localBoard: boolean;
   authMethod: 'session' | 'token' | 'oidc' | 'bootstrap' | null;
@@ -213,7 +255,7 @@ export interface AuditEntry {
   ts: string;
   principalId: string | null;
   permission?: string;
-  target?: any;
+  target?: unknown;
   allowed?: boolean;
   reason?: string;
   route: string;
@@ -261,7 +303,7 @@ export function rotateAuditIfNeeded(
   }
 }
 
-function shouldAudit(permission: string, decision: any): boolean {
+function shouldAudit(permission: string, decision: AuthzDecision): boolean {
   if (decision.reason === 'allow_disabled') return false;
   return !decision.allowed || !READ_PERMISSIONS.has(permission);
 }
@@ -269,8 +311,8 @@ function shouldAudit(permission: string, decision: any): boolean {
 export function recordAudit(
   req: Request,
   permission: string,
-  decision: any,
-  target?: any
+  decision: AuthzDecision,
+  target?: unknown
 ): void {
   try {
     const file = getVigilanteAuditLogFile();
@@ -359,7 +401,7 @@ export function readAuditEntries(limit = 200): AuditEntry[] {
 export async function checkPermission(
   req: Request,
   permission: string,
-  target?: any
+  target?: unknown
 ) {
   const ctx = await resolveAuthzContext(req);
   const opts = {
@@ -399,7 +441,7 @@ export function authzErrorResponse(err: unknown): NextResponse | null {
 export async function authorizeRequest(
   req: Request,
   permission: string,
-  target?: any
+  target?: unknown
 ): Promise<NextResponse | null> {
   const check = await checkPermission(req, permission, target);
   if (check.allowed) return null;
@@ -409,8 +451,8 @@ export async function authorizeRequest(
 export async function requirePermission(
   req: Request,
   permission: string,
-  target?: any
-): Promise<{ principal: any | null; decision: any }> {
+  target?: unknown
+): Promise<{ principal: PrincipalRecord | null; decision: AuthzDecision }> {
   const check = await checkPermission(req, permission, target);
   if (!check.allowed) throw new AuthzError(check.reason);
   return { principal: check.ctx.principal, decision: check.decision };
@@ -421,10 +463,10 @@ type RouteHandler<Ctx = unknown> = (req: Request, ctx: Ctx) => Promise<Response>
 export function withAuthz<Ctx = unknown>(
   permission: string,
   handler: RouteHandler<Ctx>,
-  opts: { targetFromBody?: (body: any) => any | undefined } = {}
+  opts: { targetFromBody?: (body: unknown) => unknown } = {}
 ): RouteHandler<Ctx> {
   return async (req: Request, ctx: Ctx) => {
-    let target: any = undefined;
+    let target: unknown = undefined;
     if (opts.targetFromBody && req.body) {
       try {
         const cloned = req.clone();

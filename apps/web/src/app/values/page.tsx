@@ -1,17 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
-  FileText,
   Save,
   RefreshCw,
   Download,
-  Check,
-  AlertCircle,
-  FolderTree,
   FileCode,
-  Layers,
-  ChevronRight
 } from 'lucide-react';
 
 interface ChartItem {
@@ -32,19 +27,18 @@ export default function ValuesPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [configFile, setConfigFile] = useState<string>('');
-  const [xdgDir, setXdgDir] = useState<string>('');
 
-  const fetchValues = () => {
-    setLoading(true);
+  // Auto-select the first chart once, on first load only (a ref flag, so
+  // the loader does not need to read selectedChart from state).
+  const autoSelectedRef = useRef(false);
+  const fetchValues = useCallback(() => {
     fetch('/api/values')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
           setCharts(data.charts || []);
-          if (data.configFile) setConfigFile(data.configFile);
-          if (data.xdgValuesDir) setXdgDir(data.xdgValuesDir);
-          if (data.charts?.length > 0 && !selectedChart) {
+          if (data.charts?.length > 0 && !autoSelectedRef.current) {
+            autoSelectedRef.current = true;
             setSelectedChart(data.charts[0]);
             setEditorContent(data.charts[0].content || '');
           }
@@ -52,11 +46,11 @@ export default function ValuesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchValues();
-  }, []);
+  }, [fetchValues]);
 
   const handleSelectChart = (c: ChartItem) => {
     setSelectedChart(c);
@@ -83,8 +77,8 @@ export default function ValuesPage() {
         fetchValues();
         setTimeout(() => setStatusMessage(null), 3000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error saving: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error saving: ${errorMessage(err)}`);
     } finally {
       setSaving(false);
     }
@@ -103,8 +97,8 @@ export default function ValuesPage() {
         fetchValues();
         setTimeout(() => setStatusMessage(null), 4000);
       }
-    } catch (err: any) {
-      setStatusMessage(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setStatusMessage(`Error: ${errorMessage(err)}`);
     }
   };
 
@@ -139,7 +133,10 @@ export default function ValuesPage() {
           </button>
 
           <button
-            onClick={fetchValues}
+            onClick={() => {
+              setLoading(true);
+              fetchValues();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

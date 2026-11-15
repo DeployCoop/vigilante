@@ -1,24 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { errorMessage } from '@/lib/envelope';
 import {
   Flame,
   Play,
   RefreshCw,
   Search,
-  Filter,
-  CheckCircle2,
-  AlertTriangle,
-  FileCode,
   Terminal,
-  Activity,
-  Layers,
-  Tag
 } from 'lucide-react';
 
+interface Playbook {
+  id: string;
+  name: string;
+  description: string;
+  category?: string;
+  severity?: string;
+  mitreTechniques: { id: string; name: string }[];
+  tags?: string[];
+}
+
 export default function ThreatSimPage() {
-  const [playbooks, setPlaybooks] = useState<any[]>([]);
-  const [selectedPlaybook, setSelectedPlaybook] = useState<any>(null);
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
   const [targetNamespace, setTargetNamespace] = useState<string>('opensearch');
   const [filterText, setFilterText] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -26,25 +30,24 @@ export default function ThreatSimPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const fetchPlaybooks = () => {
-    setLoading(true);
+  const fetchPlaybooks = useCallback(() => {
     fetch('/api/threatsim')
       .then((res) => res.json())
       .then((d) => {
         if (d.success) {
           setPlaybooks(d.playbooks || []);
-          if (d.playbooks?.length > 0 && !selectedPlaybook) {
-            setSelectedPlaybook(d.playbooks[0]);
+          if (d.playbooks?.length > 0) {
+            setSelectedPlaybook((prev) => prev ?? d.playbooks[0]);
           }
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchPlaybooks();
-  }, []);
+  }, [fetchPlaybooks]);
 
   const handleRunPlaybook = async () => {
     if (!selectedPlaybook) return;
@@ -67,8 +70,8 @@ export default function ThreatSimPage() {
       } else {
         setLogs((prev) => [...prev, `Error: ${data.error}`]);
       }
-    } catch (err: any) {
-      setLogs((prev) => [...prev, `Error: ${err.message}`]);
+    } catch (err: unknown) {
+      setLogs((prev) => [...prev, `Error: ${errorMessage(err)}`]);
     } finally {
       setExecuting(false);
     }
@@ -193,7 +196,7 @@ export default function ThreatSimPage() {
 
                 {selectedPlaybook.mitreTechniques && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {selectedPlaybook.mitreTechniques.map((m: any, i: number) => (
+                    {selectedPlaybook.mitreTechniques.map((m, i: number) => (
                       <span key={i} className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-purple-300 text-[10px]">
                         {m.id}: {m.name}
                       </span>

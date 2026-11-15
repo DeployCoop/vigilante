@@ -7,19 +7,25 @@ import {
   AlertTriangle,
   CheckCircle2,
   Terminal,
-  ShieldAlert,
-  Server,
-  Zap,
-  Layers,
-  ArrowRight
 } from 'lucide-react';
 
+interface LineageAnomaly {
+  mitreTechnique?: string;
+  message: string;
+  severity?: string;
+}
+
+interface LineageData {
+  anomalies: LineageAnomaly[];
+  tree?: { totalProcesses?: number };
+  ascii?: string;
+}
+
 export default function LineagePage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<LineageData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchLineage = () => {
-    setLoading(true);
     fetch('/api/lineage')
       .then((res) => res.json())
       .then((d) => {
@@ -59,7 +65,10 @@ export default function LineagePage() {
         </div>
 
         <button
-          onClick={fetchLineage}
+          onClick={() => {
+            setLoading(true);
+            fetchLineage();
+          }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-800"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -93,7 +102,7 @@ export default function LineagePage() {
 
         {anomalies.length > 0 && (
           <div className="space-y-1.5 pt-2 border-t border-rose-900/40">
-            {anomalies.map((a: any, i: number) => (
+            {anomalies.map((a, i: number) => (
               <div key={i} className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2">
                   <span className="px-1.5 py-0.2 rounded bg-rose-900/60 text-rose-200 border border-rose-700 text-[10px]">

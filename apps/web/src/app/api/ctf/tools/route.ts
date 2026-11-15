@@ -13,6 +13,7 @@ import {
 } from 'vigilante_lib/engine/ctf-tools.js';
 import { resolvePathInside } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
       { success: false, error: `Unknown CTF solver tool: '${tool}'` },
       { status: 400 }
     );
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

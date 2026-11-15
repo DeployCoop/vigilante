@@ -4,6 +4,7 @@ import { getDeployedNamespaces, listInstances } from 'vigilante_lib/engine/insta
 import { loadConfig } from 'vigilante_lib/engine/config.js';
 import { globalModuleRegistry } from 'vigilante_lib/modules/registry.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,10 +33,10 @@ export async function GET(req: Request) {
       modulesCount: modules.length,
       modules
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json({
       success: false,
-      error: err.message,
+      error: errorMessage(err),
       clusterName: 'vigilante-dev',
       domain: 'vigilante.local',
       modules: []

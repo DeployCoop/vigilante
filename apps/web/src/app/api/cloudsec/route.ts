@@ -5,6 +5,7 @@ import {
   calculateCloudRiskScore
 } from 'vigilante_lib/engine/cloudsec.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,11 +58,11 @@ export async function GET(req: Request) {
       workloadsCount: mockWorkloads.length,
       bucketsCount: mockBuckets.length
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message
+        error: errorMessage(err)
       },
       { status: 500 }
     );

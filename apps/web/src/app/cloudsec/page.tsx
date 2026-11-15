@@ -4,22 +4,46 @@ import React, { useState, useEffect } from 'react';
 import {
   Cloud,
   RefreshCw,
-  ShieldAlert,
   Key,
   FolderLock,
-  AlertTriangle,
-  CheckCircle2,
-  Lock,
-  Unlock,
-  ExternalLink
 } from 'lucide-react';
 
+interface CloudRisk {
+  score?: number;
+  tier?: string;
+  criticalCount?: number;
+}
+
+interface IdentityFinding {
+  provider: string;
+  resourceName: string;
+  namespace?: string;
+  severity: string;
+  message: string;
+  remediation?: string;
+}
+
+interface StorageFinding {
+  provider: string;
+  resourceName?: string;
+  bucketName?: string;
+  severity: string;
+  message: string;
+}
+
+interface CloudSecData {
+  risk?: CloudRisk;
+  workloadsCount?: number;
+  bucketsCount?: number;
+  idFindings: IdentityFinding[];
+  storageFindings: StorageFinding[];
+}
+
 export default function CloudSecPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<CloudSecData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchCloudSec = () => {
-    setLoading(true);
     fetch('/api/cloudsec')
       .then((res) => res.json())
       .then((d) => {
@@ -59,7 +83,10 @@ export default function CloudSecPage() {
         </div>
 
         <button
-          onClick={fetchCloudSec}
+          onClick={() => {
+            setLoading(true);
+            fetchCloudSec();
+          }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-slate-300 border border-slate-800"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -109,7 +136,7 @@ export default function CloudSecPage() {
         </div>
 
         <div className="divide-y divide-slate-800/60">
-          {idFindings.map((f: any, idx: number) => (
+          {idFindings.map((f, idx: number) => (
             <div key={idx} className="p-4 space-y-1.5 hover:bg-slate-900/30 transition-colors">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white flex items-center gap-2">
@@ -145,7 +172,7 @@ export default function CloudSecPage() {
         </div>
 
         <div className="divide-y divide-slate-800/60">
-          {storageFindings.map((b: any, idx: number) => (
+          {storageFindings.map((b, idx: number) => (
             <div key={idx} className="p-4 flex items-center justify-between hover:bg-slate-900/30 transition-colors">
               <div className="space-y-1">
                 <div className="font-bold text-white flex items-center gap-2">

@@ -3,23 +3,29 @@
 import React, { useState, useEffect } from 'react';
 import {
   Radio,
-  ShieldAlert,
-  Terminal,
-  Activity,
-  Filter,
   Play,
   Pause,
-  AlertTriangle,
   Server,
   Network,
-  ChevronDown
 } from 'lucide-react';
 
+interface BattleEvent {
+  id?: string;
+  severity: string;
+  source: string;
+  rule: string;
+  message: string;
+  container?: string;
+  time: string;
+  srcIp?: string;
+  destIp?: string;
+}
+
 export default function BattleStationPage() {
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<BattleEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState<boolean>(true);
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [selectedEvent, setSelectedEvent] = useState<BattleEvent | null>(null);
 
   useEffect(() => {
     if (!isStreaming) return;

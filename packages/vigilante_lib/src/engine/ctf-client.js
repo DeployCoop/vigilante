@@ -312,6 +312,15 @@ export async function recordSolveSession({
 
 /**
  * Compiles a solution bundle and cryptographically seals it into the Merkle Evidence Ledger
+ * @param {Object} options
+ * @param {string} options.teamId
+ * @param {string} options.challengeId
+ * @param {string} options.flag
+ * @param {string} [options.solveScriptContent='']
+ * @param {string} [options.writeupContent='']
+ * @param {string} [options.sessionCastContent='']
+ * @param {string} [options.outputDir='./ctf-workspace/vault']
+ * @param {string|null} [options.ledgerDir=null]
  */
 export async function sealSolveEvidence({
   teamId,

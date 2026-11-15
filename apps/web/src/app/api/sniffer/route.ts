@@ -9,6 +9,7 @@ import {
 import path from 'node:path';
 import os from 'node:os';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,18 +67,18 @@ export async function GET(request: Request) {
       };
     });
 
-    const filtered = filter ? rawPackets.filter((p: any) => filterPacket(p, filter)) : rawPackets;
+    const filtered = filter ? rawPackets.filter((p) => filterPacket(p, filter)) : rawPackets;
 
     return NextResponse.json({
       success: true,
       packets: filtered,
       totalCount: rawPackets.length
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: err.message,
+        error: errorMessage(err),
         packets: []
       },
       { status: 500 }
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
       bytesWritten: bytes,
       packetCount: packets.length
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

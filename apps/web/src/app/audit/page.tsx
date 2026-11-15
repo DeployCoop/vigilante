@@ -1,30 +1,40 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   FileCheck2,
   RefreshCw,
   Copy,
   Check,
-  Download,
-  AlertTriangle,
-  XCircle,
-  CheckCircle2,
-  ShieldAlert,
   FileCode,
-  Layers,
-  ChevronRight
 } from 'lucide-react';
 
+interface AuditFinding {
+  id?: string;
+  ruleId?: string;
+  title: string;
+  severity: string;
+  description: string;
+  file: string;
+  line?: number;
+  remediation?: string;
+}
+
+interface AuditResult {
+  findings: AuditFinding[];
+  passed?: boolean;
+  targetPath?: string;
+  filesAudited?: number;
+}
+
 export default function AuditPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AuditResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [targetPath, setTargetPath] = useState<string>('.');
   const [copiedSarif, setCopiedSarif] = useState<boolean>(false);
-  const [selectedFinding, setSelectedFinding] = useState<any>(null);
+  const [selectedFinding, setSelectedFinding] = useState<AuditFinding | null>(null);
 
-  const runAudit = (path = targetPath) => {
-    setLoading(true);
+  const runAudit = useCallback((path = targetPath) => {
     fetch(`/api/audit?path=${encodeURIComponent(path)}`)
       .then((res) => res.json())
       .then((d) => {
@@ -37,11 +47,11 @@ export default function AuditPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, [targetPath]);
 
   useEffect(() => {
     runAudit('.');
-  }, []);
+  }, [runAudit]);
 
   const handleCopySarif = async () => {
     try {
@@ -102,7 +112,10 @@ export default function AuditPage() {
           </button>
 
           <button
-            onClick={() => runAudit(targetPath)}
+            onClick={() => {
+              setLoading(true);
+              runAudit(targetPath);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -141,7 +154,10 @@ export default function AuditPage() {
             className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 placeholder-slate-600 focus:outline-none w-full sm:w-64"
           />
           <button
-            onClick={() => runAudit(targetPath)}
+            onClick={() => {
+              setLoading(true);
+              runAudit(targetPath);
+            }}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold"
           >
             Scan
@@ -164,7 +180,7 @@ export default function AuditPage() {
                 {loading ? 'Executing shift-left security scan...' : '✔ No policy violations discovered. Clean bill of health!'}
               </div>
             ) : (
-              findings.map((f: any, idx: number) => (
+              findings.map((f, idx: number) => (
                 <div
                   key={idx}
                   onClick={() => setSelectedFinding(f)}

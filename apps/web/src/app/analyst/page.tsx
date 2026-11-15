@@ -5,16 +5,23 @@ import {
   Cpu,
   Terminal,
   Send,
-  Sparkles,
-  AlertTriangle,
-  Flame,
-  CheckCircle2,
-  RefreshCw,
-  Users
 } from 'lucide-react';
 
+interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+interface CrashDiagnosis {
+  signal: string;
+  crashType: string;
+  faultAddress?: string | null;
+  deBruijnOffset: number | null;
+  socraticQuestions?: string[];
+}
+
 export default function AnalystPage() {
-  const [messages, setMessages] = useState<any[]>([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
       content: 'Welcome to the Socratic AI Security Analyst console. I enforce strict educational tournament guardrails: zero flag leaks and zero weaponized exploit generation. Paste a GDB crash dump, reverse engineering question, or security query to begin.'
@@ -25,7 +32,7 @@ export default function AnalystPage() {
   const [provider, setProvider] = useState<string>('ollama');
 
   const [crashDump, setCrashDump] = useState<string>('Program received signal SIGSEGV, Segmentation fault.\n$rip: 0x0000000041346141\n$rsp: 0x00007fffffffe100\n$rbp: 0x4141414141414141');
-  const [crashResult, setCrashResult] = useState<any>(null);
+  const [crashResult, setCrashResult] = useState<CrashDiagnosis | null>(null);
 
   const handleSend = async () => {
     if (!inputQuery.trim()) return;

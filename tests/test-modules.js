@@ -145,6 +145,45 @@ async function runTests() {
   }
   console.log('✔ Test 8 passed: vigil-soc chart upgraded to 0.6.0 with VIGIL_DIR state volume mount.');
 
+  // Test 9: getModuleStatuses collects every module's status and isolates failures
+  // (the web /api/status route calls this method; it must exist and must not
+  // let one module's failed probe fail the whole collection)
+  const statusRegistry = new ModuleRegistry();
+  statusRegistry.modules.clear();
+  let seenContext = null;
+  statusRegistry.register({
+    id: 'healthy',
+    name: 'Healthy Module',
+    status: async (ctx) => {
+      seenContext = ctx;
+      return { id: 'healthy', name: 'Healthy Module', installed: true, status: 'running' };
+    }
+  });
+  statusRegistry.register({
+    id: 'broken',
+    name: 'Broken Module',
+    status: async () => {
+      throw new Error('kubectl unreachable');
+    }
+  });
+  const statuses = await statusRegistry.getModuleStatuses('cluster-x', 'example.local');
+  if (statuses.length !== 2) {
+    throw new Error(`Expected 2 module statuses, got ${statuses.length}`);
+  }
+  if (statuses[0].id !== 'healthy' || statuses[0].status !== 'running' || statuses[0].installed !== true) {
+    throw new Error(`Healthy module status not passed through: ${JSON.stringify(statuses[0])}`);
+  }
+  if (statuses[1].id !== 'broken' || statuses[1].status !== 'error' || statuses[1].installed !== false || !String(statuses[1].details).includes('kubectl unreachable')) {
+    throw new Error(`Broken module must degrade to an error entry, got: ${JSON.stringify(statuses[1])}`);
+  }
+  if (!seenContext || seenContext.clusterName !== 'cluster-x' || seenContext.domain !== 'example.local') {
+    throw new Error(`status() must receive { clusterName, domain }, got: ${JSON.stringify(seenContext)}`);
+  }
+  if (typeof globalModuleRegistry.getModuleStatuses !== 'function') {
+    throw new Error('globalModuleRegistry must expose getModuleStatuses for the /api/status route');
+  }
+  console.log('✔ Test 9 passed: getModuleStatuses collects statuses, forwards cluster/domain, and isolates per-module failures.');
+
   console.log('🎉 All Modules tests passed successfully!');
 }
 

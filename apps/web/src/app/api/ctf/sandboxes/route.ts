@@ -8,6 +8,7 @@ import {
   reapExpiredSandboxes
 } from 'vigilante_lib/engine/kctf.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +25,8 @@ export async function GET(req: NextRequest) {
       count: sandboxes.length,
       sandboxes
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -68,8 +69,8 @@ export async function POST(req: NextRequest) {
       // Never expose the flag or the flag-bearing manifest over the API.
       sandbox: redactSandboxRecord(sbx)
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -116,7 +117,7 @@ export async function DELETE(req: NextRequest) {
 
     const res = await (terminateSandbox as any)({ sandboxId, mock });
     return NextResponse.json(res);
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

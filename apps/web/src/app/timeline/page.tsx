@@ -1,41 +1,54 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Clock,
   RefreshCw,
-  GitBranch,
-  ShieldAlert,
-  ArrowRight,
-  Terminal,
-  Activity,
-  Layers,
-  Zap,
-  Target
 } from 'lucide-react';
 
-export default function TimelinePage() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+interface TimelineNode {
+  id?: string;
+  title: string;
+  severity: string;
+  sourceModule: string;
+  command?: string;
+  file?: string;
+  message?: string;
+  entity?: string;
+  mitreTechnique?: string;
+  pid?: number;
+  srcIp?: string;
+}
 
-  const fetchTimeline = () => {
-    setLoading(true);
+interface TimelineData {
+  nodes: TimelineNode[];
+  edges: unknown[];
+  rootCause?: { title?: string; entity?: string };
+  dwell?: { humanDwell?: string };
+  ascii?: string;
+}
+
+export default function TimelinePage() {
+  const [data, setData] = useState<TimelineData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
+
+  const fetchTimeline = useCallback(() => {
     fetch('/api/timeline')
       .then((res) => res.json())
       .then((d) => {
         setData(d);
-        if (d.nodes?.length > 0 && !selectedNode) {
-          setSelectedNode(d.nodes[0]);
+        if (d.nodes?.length > 0) {
+          setSelectedNode((prev) => prev ?? d.nodes[0]);
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  };
+  }, []);
 
   useEffect(() => {
     fetchTimeline();
-  }, []);
+  }, [fetchTimeline]);
 
   const nodes = data?.nodes || [];
   const edges = data?.edges || [];
@@ -124,7 +137,7 @@ export default function TimelinePage() {
           </div>
 
           <div className="space-y-2">
-            {nodes.map((node: any, idx: number) => (
+            {nodes.map((node, idx: number) => (
               <div
                 key={node.id || idx}
                 onClick={() => setSelectedNode(node)}

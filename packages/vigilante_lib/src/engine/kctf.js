@@ -1034,6 +1034,15 @@ spec:
 
 /**
  * Spawns an isolated ephemeral per-team sandbox for a challenge with dynamic Ingress & TTL
+ * @param {Object} options
+ * @param {string} options.teamId
+ * @param {string} options.challengeId
+ * @param {string} [options.namespace='ctf-sandboxes']
+ * @param {number} [options.ttlMinutes]
+ * @param {string} [options.domain='vigilante.local']
+ * @param {string} [options.secretKey]
+ * @param {string} [options.clusterName='vigilante-dev']
+ * @param {boolean} [options.mock=false]
  */
 export async function spawnEphemeralSandbox({
   teamId,
@@ -1300,6 +1309,13 @@ export async function reapExpiredSandboxes({
 
 /**
  * Terminate a sandbox immediately
+ * @param {Object} [options]
+ * @param {string} [options.sandboxId] - Terminate by ID; falls back to teamId + challengeId
+ * @param {string} [options.teamId]
+ * @param {string} [options.challengeId]
+ * @param {string} [options.namespace='ctf-sandboxes']
+ * @param {string} [options.clusterName='vigilante-dev']
+ * @param {boolean} [options.mock=false]
  */
 export async function terminateSandbox({
   sandboxId,

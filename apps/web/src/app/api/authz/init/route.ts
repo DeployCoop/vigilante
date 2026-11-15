@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     // Setup local TLS certs for domain if possible
     try {
       await setupCertificates('vigilante.local', { clusterName: 'vigilante-dev' });
-    } catch (err: any) {
+    } catch {
       // Non-fatal if mkcert is missing
     }
 
