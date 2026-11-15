@@ -76,8 +76,19 @@ export default function OpenVASPage() {
           setProfiles(data.profiles || []);
           setDiscoveredHosts(data.discoveredHosts || []);
           setReports(data.reports || []);
+          // The target list rarely contains the hardcoded '127.0.0.1'
+          // default; a default outside the list renders a blank select.
+          if (data.discoveredHosts?.length > 0) {
+            setSelectedHost((prev) => (data.discoveredHosts.some((h: DiscoveredHost) => h.ip === prev) ? prev : data.discoveredHosts[0].ip));
+          }
           if (data.reports?.length > 0) {
-            setActiveReport((prev) => prev ?? data.reports[0]);
+            // Re-resolve the active report against the fresh list by its
+            // stable key (the POST result object is not list-identical),
+            // so the detail pane and the highlighted row never diverge.
+            setActiveReport((prev) => {
+              if (!prev) return data.reports[0];
+              return data.reports.find((r: ScanReport) => r.targetHost === prev.targetHost && r.timestamp === prev.timestamp) || prev;
+            });
           }
         }
         setLoading(false);
@@ -176,7 +187,7 @@ export default function OpenVASPage() {
             </div>
             <div className="text-xs text-slate-400 font-mono pt-0.5">
               Namespace: <code>{status?.namespace || 'default'}</code> | Pods:{' '}
-              {status?.pods?.length || 8} active
+              {status?.pods?.length ?? '—'} active
             </div>
           </div>
         </div>

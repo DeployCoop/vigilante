@@ -14,7 +14,7 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const engine = (name) => path.join(repoRoot, 'packages/vigilante_lib/src/engine', name);
 
 const { queryDataLake, runRetrospectiveThreatHunt, ingestSecurityEvents, closeDataLake } = await import(engine('datalake.js'));
-const { spawnEphemeralSandbox, terminateSandbox } = await import(engine('kctf.js'));
+const { spawnEphemeralSandbox, terminateSandbox, deriveSandboxAppName } = await import(engine('kctf.js'));
 const { parseZeekConnLogs } = await import(engine('traffic.js'));
 const { triggerRansomwareContainment } = await import(engine('ransomware.js'));
 const { buildCausalTimeline, identifyRootCause, calculateDwellTime } = await import(engine('timeline.js'));
@@ -65,10 +65,14 @@ console.log('✔ Group 1 passed: datalake query API is async and returns rows.')
   }
   const deleteLine = fs.readFileSync(argvLog, 'utf8').split('\n').find(l => l.startsWith('delete '));
   assert.ok(deleteLine, 'kubectl delete must have been invoked');
-  assert.ok(deleteLine.includes('deployment/teamargv-crypto-oracle-rsa'), deleteLine);
-  assert.ok(deleteLine.includes('service/teamargv-crypto-oracle-rsa'), deleteLine);
-  assert.ok(deleteLine.includes('ingress/teamargv-crypto-oracle-rsa-ingress'), deleteLine);
-  assert.ok(deleteLine.includes('networkpolicy/teamargv-crypto-oracle-rsa-netpol'), deleteLine);
+  // Expected object names follow the shared spawn/cleanup derivation
+  // (team names are hash-disambiguated since batch 1); the point of this
+  // group is the type-qualified shape, not the literal old name.
+  const appName = deriveSandboxAppName('teamargv', 'crypto-oracle-rsa');
+  assert.ok(deleteLine.includes(`deployment/${appName}`), deleteLine);
+  assert.ok(deleteLine.includes(`service/${appName}`), deleteLine);
+  assert.ok(deleteLine.includes(`ingress/${appName}-ingress`), deleteLine);
+  assert.ok(deleteLine.includes(`networkpolicy/${appName}-netpol`), deleteLine);
   assert.ok(!deleteLine.includes('deployment,service'), 'cross-product type list must be gone');
 }
 console.log('✔ Group 2 passed: kCTF cleanup deletes exactly the four owned objects, type-qualified.');

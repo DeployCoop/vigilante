@@ -79,7 +79,41 @@ async function runTests() {
   }
   console.log(`✔ Test 6 passed: triggerCanaryAlarm executed SOAR containment (${alarmResult.soarAction.containmentId}).`);
 
-  console.log('🎉 ALL 6 DECEPTION MESH TESTS PASSED SUCCESSFULLY!\n');
+  // Test 7: webhook listener honors autoIsolate:false (H7). The old
+  // listener passed the bare boolean `options.autoIsolate !== false`
+  // as the options argument, so triggerCanaryAlarm always read
+  // `undefined !== false` and isolated anyway. Pin the fixed path
+  // end to end: start the listener with isolation off, trip it with
+  // a cid request, and read the persisted alarm record — it must
+  // alarm with soarAction null.
+  const { startCanaryWebhookListener } = await import('../src/engine/deception.js');
+  const { getVigilanteCanaryDir } = await import('../src/engine/config.js');
+  const listener = await startCanaryWebhookListener({ autoIsolate: false });
+  const tripCid = `test-no-isolate-${Date.now().toString(36)}`;
+  try {
+    await fetch(`http://127.0.0.1:${listener.port}/?cid=${tripCid}`);
+    const alarmsDir = path.join(getVigilanteCanaryDir(), 'alarms');
+    let alarm = null;
+    for (let i = 0; i < 50 && !alarm; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      const files = await fs.readdir(alarmsDir).catch(() => []);
+      for (const f of files) {
+        if (!f.endsWith('.json')) continue;
+        const rec = JSON.parse(await fs.readFile(path.join(alarmsDir, f), 'utf8'));
+        if (rec.canaryId === tripCid) { alarm = rec; break; }
+      }
+    }
+    if (!alarm) throw new Error('listener trip produced no alarm record');
+    if (alarm.soarAction !== null) {
+      throw new Error(`autoIsolate:false must not isolate, got soarAction: ${JSON.stringify(alarm.soarAction)}`);
+    }
+    console.log(`✔ Test 7 passed: webhook listener with autoIsolate:false alarmed without SOAR isolation (${alarm.alarmId}).`);
+  } finally {
+    listener.server.closeAllConnections?.();
+    await listener.close();
+  }
+
+  console.log('🎉 ALL 7 DECEPTION MESH TESTS PASSED SUCCESSFULLY!\n');
 }
 
 runTests().catch(err => {

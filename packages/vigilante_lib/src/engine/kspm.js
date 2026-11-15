@@ -179,10 +179,12 @@ export async function generateKspmScorecard(options = {}) {
 
   // 1. Gather live or mock pods
   let workloadPods = options.pods || null;
+  let livePods = Boolean(options.pods);
   if (!workloadPods) {
     try {
       const widePods = await getPodsWide(options.namespace || null);
       if (widePods && widePods.length > 0) {
+        livePods = true;
         workloadPods = widePods.map(p => ({
           name: p.name,
           namespace: p.namespace,
@@ -250,6 +252,7 @@ export async function generateKspmScorecard(options = {}) {
   let cisPass = 38;
   let cisFail = 4;
   let cisWarn = 2;
+  let cisFromAudit = false;
 
   try {
     const kubeAudits = await listSavedKubeAudits();
@@ -258,6 +261,7 @@ export async function generateKspmScorecard(options = {}) {
       cisPass = t.pass || cisPass;
       cisFail = t.fail || cisFail;
       cisWarn = t.warn || cisWarn;
+      cisFromAudit = true;
     }
   } catch {
     // fallback
@@ -287,6 +291,13 @@ export async function generateKspmScorecard(options = {}) {
     workloadCount: workloadPods.length,
     findings,
     topViolations: findings.slice(0, 10),
+    pssScore: pssResult.pssScore,
+    // Provenance: the scorecard used to silently fall back to sample
+    // workloads and default CIS counts when the cluster or saved
+    // audits were unavailable, and the web page displayed hardcoded
+    // percentages instead. Callers can now label sample data as such.
+    livePods,
+    cisFromAudit,
     summary: {
       pss: pssResult.summary || { privileged: 1, baseline: 2, restricted: workloadPods.length - 3 },
       cis: { pass: cisPass, fail: cisFail, warn: cisWarn, score: cisScore }

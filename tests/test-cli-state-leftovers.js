@@ -128,9 +128,15 @@ console.log('✔ Test 5 passed: User scenarios live under the XDG config tree (B
 
 // Test 6 (B10): `vigilante down` removes instance state, including the TLS
 // private key — exercised through the real bin in an isolated XDG home
+// NOTE: the fixture instance is named 'axonwall-k3s', the current
+// default cluster name (config.js: k3s provider → 'axonwall-k3s'). It
+// used to be 'vigilante-dev', which bare `down` no longer targets
+// since the Nov 1 k3s-default change — so `down` removed the (empty)
+// 'axonwall-k3s' instance dir and left 'vigilante-dev' behind, and
+// the failure was masked because B12 always stopped this suite first.
 {
   const downXdg = path.join(tmpRoot, 'down-xdg');
-  const instanceDir = path.join(downXdg, 'vigilante', 'instances', 'vigilante-dev');
+  const instanceDir = path.join(downXdg, 'vigilante', 'instances', 'axonwall-k3s');
   await fsPromises.mkdir(path.join(instanceDir, 'certs'), { recursive: true });
   await fsPromises.writeFile(path.join(downXdg, 'vigilante', 'config.yaml'), [
     'hostr:',
@@ -138,7 +144,7 @@ console.log('✔ Test 5 passed: User scenarios live under the XDG config tree (B
     '  autoCleanOnDown: false',
     ''
   ].join('\n'));
-  await fsPromises.writeFile(path.join(instanceDir, 'instance.json'), '{"instanceName":"vigilante-dev"}');
+  await fsPromises.writeFile(path.join(instanceDir, 'instance.json'), '{"instanceName":"axonwall-k3s"}');
   await fsPromises.writeFile(path.join(instanceDir, 'certs', 'vigilante.local.pem'), 'CERT');
   await fsPromises.writeFile(path.join(instanceDir, 'certs', 'vigilante.local-key.pem'), 'PRIVATE KEY');
 

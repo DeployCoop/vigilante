@@ -652,6 +652,12 @@ export async function listSavedOobScans() {
           totalCreds: parsed.totalCreds,
           summary: parsed.summary,
           bmcs: parsed.bmcs,
+          // The parsed report carries the captured RAKP hash lines; the
+          // web page used to read a `rakpHashes` array that was never
+          // surfaced here, so its RAKP section was always empty.
+          rakpHashes: (parsed.rakpHashes || [])
+            .map(h => h.hashcatLine)
+            .filter(Boolean),
           sizeBytes: stats.size,
           mtime: stats.mtime,
           createdAt: stats.birthtime || stats.mtime

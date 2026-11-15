@@ -9,7 +9,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import { getVigilanteEvidenceDir, requireSnapshotSealingKey, resolveSnapshotSealingKey } from './config.js';
+import { getVigilanteEvidenceDir, requireSnapshotSealingKey, resolveSnapshotSealingKey, sanitizePathComponent, resolvePathInside } from './config.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -177,8 +177,17 @@ export async function createForensicsSnapshot(containerInfo = {}, options = {}) 
   await fs.mkdir(baseEvidenceDir, { recursive: true });
 
   const timestamp = Date.now();
-  const snapshotId = `snapshot-${podName}-${containerId.substring(0, 8)}-${timestamp}`;
-  const snapshotBundleDir = path.join(baseEvidenceDir, snapshotId);
+  // The bundle directory used to be built from the raw podName /
+  // containerId, so `podName: '../../../tmp/pwn'` wrote outside the
+  // evidence dir (MCP and CLI callers pass these straight through).
+  // Sanitize the components for the filesystem name (the manifest
+  // below still records the true pod/container identity, and the seal
+  // binds both), and resolve inside the evidence dir so any escape
+  // attempt fails closed instead of writing elsewhere.
+  const safePodName = sanitizePathComponent(podName);
+  const safeContainerId = sanitizePathComponent(containerId).substring(0, 8);
+  const snapshotId = `snapshot-${safePodName}-${safeContainerId}-${timestamp}`;
+  const snapshotBundleDir = resolvePathInside(baseEvidenceDir, snapshotId);
   await fs.mkdir(snapshotBundleDir, { recursive: true });
 
   // 1. Harvest volatiles
@@ -249,9 +258,21 @@ export async function verifySnapshotIntegrity(snapshotDir, options = {}) {
     return { valid: false, issue: 'Missing manifest.json' };
   }
 
-  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-  const volatiles = JSON.parse(await fs.readFile(volatilesFile, 'utf8'));
-  const diffManifest = JSON.parse(await fs.readFile(diffFile, 'utf8'));
+  // Only the missing manifest was handled; a missing or truncated
+  // volatiles.json / disk_diff.json (or a truncated manifest) threw
+  // ENOENT / SyntaxError out of the verifier and crashed the caller
+  // instead of failing closed. Verification of a tampered bundle must
+  // report valid:false.
+  let manifest;
+  let volatiles;
+  let diffManifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    volatiles = JSON.parse(await fs.readFile(volatilesFile, 'utf8'));
+    diffManifest = JSON.parse(await fs.readFile(diffFile, 'utf8'));
+  } catch (err) {
+    return { valid: false, issue: `Snapshot bundle is unreadable or corrupt: ${err.message}` };
+  }
 
   const payload = Buffer.concat([
     Buffer.from(JSON.stringify(volatiles)),

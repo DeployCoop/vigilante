@@ -100,9 +100,9 @@ async function saveInstanceMetadataUnlocked(instanceName = 'vigilante-dev', meta
   const merged = {
     ...existing,
     ...metadata,
-    instanceName: sanitizePathComponent(instanceName || 'vigilante-dev'),
-    clusterName: metadata.clusterName || instanceName || 'vigilante-dev',
-    provider: metadata.provider || existing.provider || 'k3d',
+    instanceName: sanitizePathComponent(instanceName || 'axonwall-k3s'),
+    clusterName: metadata.clusterName || instanceName || 'axonwall-k3s',
+    provider: metadata.provider || existing.provider || 'k3s',
     updatedAt: new Date().toISOString()
   };
 
@@ -217,11 +217,11 @@ export async function listInstances() {
         const raw = await fs.readFile(path.join(instancePath, 'instance.json'), 'utf8');
         meta = JSON.parse(raw);
       } catch {
-        meta = { instanceName, clusterName: instanceName, provider: 'k3d' };
+        meta = { instanceName, clusterName: instanceName, provider: 'k3s' };
       }
 
       const clusterName = meta.clusterName || instanceName;
-      const provider = meta.provider || 'k3d';
+      const provider = meta.provider || 'k3s';
       const matchingCluster = liveClusters.find(c =>
         c.name === clusterName || (provider === 'k3s' && c.provider === 'k3s')
       );
@@ -302,7 +302,7 @@ export async function deleteInstance(instanceName = 'vigilante-dev', {
   if (deleteCluster) {
     try {
       const meta = await loadInstanceMetadata(safeName);
-      const provider = meta?.provider || 'k3d';
+      const provider = meta?.provider || 'k3s';
       if (onLog) onLog(`Tearing down ${provider.toUpperCase()} cluster '${safeName}'...`);
       const clusterResult = await deleteClusterEngine(safeName, { provider, onLog });
       clusterStatus = clusterResult.status;

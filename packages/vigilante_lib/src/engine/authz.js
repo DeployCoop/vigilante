@@ -94,7 +94,7 @@ export const GrantContextSchema = z.object({
   notBefore: z.string().datetime().optional(),
   notAfter: z.string().datetime().optional(),
   source: z.enum(['loopback', 'any']).optional(),
-  authMethod: z.enum(['session', 'token', 'oidc', 'any']).optional()
+  authMethod: z.enum(['session', 'token', 'oidc', 'ldap', 'any']).optional()
 }).strict();
 
 export const GrantSchema = z.object({
@@ -110,6 +110,8 @@ export const PrincipalSchema = z.object({
   role: z.enum(ROLES),
   tokenHash: z.string().optional(),
   oidcSubject: z.string().optional(),
+  ldapUid: z.string().optional(),
+  ldapGroups: z.array(z.string()).optional(),
   disabled: z.boolean().default(false),
   grants: z.array(GrantSchema).default([]),
   revocations: z.array(z.enum(PERMISSIONS)).default([]),
@@ -127,7 +129,8 @@ export const SessionSchema = z.object({
 export const AuthzStoreSchema = z.object({
   version: z.literal(1),
   principals: z.array(PrincipalSchema).default([]),
-  sessions: z.array(SessionSchema).default([])
+  sessions: z.array(SessionSchema).default([]),
+  ldap: z.record(z.any()).optional()
 });
 
 /**
@@ -384,6 +387,8 @@ export function toPublicPrincipal(p) {
     kind: p.kind,
     role: p.role,
     oidcSubject: p.oidcSubject,
+    ldapUid: p.ldapUid,
+    ldapGroups: p.ldapGroups || [],
     disabled: p.disabled,
     grants: p.grants || [],
     revocations: p.revocations || [],
@@ -391,6 +396,99 @@ export function toPublicPrincipal(p) {
     createdAt: p.createdAt,
     updatedAt: p.updatedAt
   };
+}
+
+/**
+ * Find a principal by LDAP UID (case-insensitive)
+ */
+export function findPrincipalByLdapUid(store, ldapUid) {
+  if (!store || !Array.isArray(store.principals) || !ldapUid) return null;
+  const target = String(ldapUid).trim().toLowerCase();
+  if (!target) return null;
+  return (
+    store.principals.find(p => p.ldapUid && String(p.ldapUid).trim().toLowerCase() === target) ||
+    null
+  );
+}
+
+/**
+ * Synchronize (JIT auto-provision or update) an authenticated OpenLDAP user into authz.yaml.
+ * Preserves existing custom grants, revocations, tokenHash, and the last-active-owner invariant.
+ */
+export async function syncLdapPrincipal(
+  authResult,
+  { autoProvision = true } = {},
+  filePath = getVigilanteAuthzFile()
+) {
+  if (!authResult || !authResult.ok || !authResult.username) {
+    throw new Error('Cannot sync unauthenticated LDAP result');
+  }
+
+  const loaded = loadAuthzStore(filePath);
+  if (loaded.state !== 'ready' || !loaded.store) {
+    throw new Error('Authz store invalid or unreadable');
+  }
+
+  const store = loaded.store;
+  const uid = String(authResult.username).trim();
+  const mappedRole = ROLES.includes(authResult.role) ? authResult.role : 'viewer';
+  const groups = Array.isArray(authResult.groups) ? authResult.groups : [];
+  const now = new Date().toISOString();
+
+  let existing = findPrincipalByLdapUid(store, uid);
+  if (!existing) {
+    existing =
+      store.principals.find(
+        p => !p.ldapUid && p.kind === 'human' && p.name.toLowerCase() === uid.toLowerCase()
+      ) || null;
+  }
+
+  if (existing) {
+    if (existing.disabled) {
+      throw new Error(`Principal '${existing.name}' is disabled.`);
+    }
+
+    // Protect last active owner from demotion
+    let nextRole = mappedRole;
+    if (existing.role === 'owner' && mappedRole !== 'owner') {
+      const activeOwners = store.principals.filter(p => p.role === 'owner' && !p.disabled);
+      if (activeOwners.length <= 1) {
+        nextRole = 'owner';
+      }
+    }
+
+    existing.ldapUid = uid;
+    existing.ldapGroups = groups;
+    existing.role = nextRole;
+    existing.updatedAt = now;
+
+    await saveAuthzStore(store, filePath);
+    return existing;
+  }
+
+  if (!autoProvision) {
+    return null;
+  }
+
+  // If store has no principals yet, ensure the first provisioned admin/owner or initial user works seamlessly
+  const id = `user_${crypto.randomBytes(6).toString('hex')}`;
+  const newPrincipal = {
+    id,
+    name: authResult.displayName || uid,
+    kind: 'human',
+    role: mappedRole,
+    ldapUid: uid,
+    ldapGroups: groups,
+    disabled: false,
+    grants: [],
+    revocations: [],
+    createdAt: now,
+    updatedAt: now
+  };
+
+  store.principals.push(newPrincipal);
+  await saveAuthzStore(store, filePath);
+  return newPrincipal;
 }
 
 /**
@@ -455,7 +553,10 @@ export async function initOwner({ name = 'Owner', password, token }, filePath = 
 /**
  * Add a new principal
  */
-export async function addPrincipal({ name, kind = 'human', role = 'viewer', oidcSubject, grants = [], revocations = [] }, filePath = getVigilanteAuthzFile()) {
+export async function addPrincipal(
+  { name, kind = 'human', role = 'viewer', oidcSubject = undefined, ldapUid = undefined, ldapGroups = undefined, grants = [], revocations = [] },
+  filePath = getVigilanteAuthzFile()
+) {
   const loaded = loadAuthzStore(filePath);
   if (loaded.state !== 'ready' || !loaded.store) throw new Error('Authz store not ready');
   const store = loaded.store;
@@ -472,6 +573,8 @@ export async function addPrincipal({ name, kind = 'human', role = 'viewer', oidc
     role,
     tokenHash,
     oidcSubject: oidcSubject || undefined,
+    ldapUid: ldapUid ? String(ldapUid).trim() : undefined,
+    ldapGroups: Array.isArray(ldapGroups) ? ldapGroups : undefined,
     disabled: false,
     grants,
     revocations,
@@ -510,6 +613,8 @@ export async function updatePrincipal(id, patch, filePath = getVigilanteAuthzFil
   if (patch.role !== undefined) p.role = patch.role;
   if (patch.disabled !== undefined) p.disabled = patch.disabled;
   if (patch.oidcSubject !== undefined) p.oidcSubject = patch.oidcSubject || undefined;
+  if (patch.ldapUid !== undefined) p.ldapUid = patch.ldapUid ? String(patch.ldapUid).trim() : undefined;
+  if (patch.ldapGroups !== undefined) p.ldapGroups = Array.isArray(patch.ldapGroups) ? patch.ldapGroups : undefined;
   if (patch.grants !== undefined) p.grants = patch.grants;
   if (patch.revocations !== undefined) p.revocations = patch.revocations;
   p.updatedAt = new Date().toISOString();

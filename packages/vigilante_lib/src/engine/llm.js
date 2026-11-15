@@ -1101,7 +1101,15 @@ export async function askSocraticMentor({
 
   const customContext = `=== Challenge Socratic Context ===${contextSnippet}`;
 
-  const rawResponse = await askSecurityAnalyst({
+  // The callee used to be `askSecurityAnalyst`, which is defined nowhere
+  // in the repo (dangling since the monorepo migration) — every Socratic
+  // hint request threw `ReferenceError: askSecurityAnalyst is not
+  // defined`, so the CTF mentor and analyst hint flows could never
+  // succeed and the pages papered over it with canned fallback text.
+  // runAnalystInference is the live provider dispatcher with the same
+  // parameter shape; unknown providers fail cleanly with
+  // "Unsupported AI provider" (see test-llm.js Test 8).
+  const rawResponse = await runAnalystInference({
     prompt: prompt || 'Can you review my observations and guide my next analytical steps using the Socratic method?',
     customContext,
     provider,
@@ -1142,6 +1150,15 @@ export const SOCRATIC_TIER_CONFIG = {
 
 /**
  * Retrieves a pedagogically progressive Socratic hint for a challenge
+ * @param {Object} [options]
+ * @param {number} [options.tier=1]
+ * @param {Object} [options.challenge]
+ * @param {string} [options.userQuery='']
+ * @param {string} [options.provider] Provider id from SUPPORTED_PROVIDERS
+ *   (unknown ids fall back to the engine default)
+ * @param {string} [options.model]
+ * @param {Function} [options.onChunk]
+ * @param {Function} [options.onStatusUpdate]
  */
 export async function getSocraticHintTier({
   tier = 1,

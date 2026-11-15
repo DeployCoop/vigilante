@@ -41,6 +41,14 @@ export default function ValuesPage() {
             autoSelectedRef.current = true;
             setSelectedChart(data.charts[0]);
             setEditorContent(data.charts[0].content || '');
+          } else {
+            // Re-resolve the selection against the fresh objects: the
+            // old object identity never matches the new list, so the
+            // row highlight vanished on every refresh.
+            setSelectedChart((prev) => {
+              if (!prev) return null;
+              return data.charts.find((c: ChartItem) => c.moduleId === prev.moduleId && c.chartName === prev.chartName) || null;
+            });
           }
         }
         setLoading(false);
@@ -61,7 +69,10 @@ export default function ValuesPage() {
     if (!selectedChart) return;
     setSaving(true);
     try {
-      const filePath = selectedChart.userOverridePath || selectedChart.targetPath;
+      // Save to the existing override, or to the canonical XDG override
+      // location for a first-time edit — never to the shipped default,
+      // which the old targetPath fallback silently overwrote.
+      const filePath = selectedChart.userOverridePath || selectedChart.xdgPath;
       const res = await fetch('/api/values', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +178,7 @@ export default function ValuesPage() {
                   key={i}
                   onClick={() => handleSelectChart(c)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all space-y-1 ${
-                    selectedChart === c
+                    selectedChart?.moduleId === c.moduleId && selectedChart?.chartName === c.chartName
                       ? 'bg-teal-950/40 border-teal-500/50 text-white'
                       : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
                   }`}
@@ -201,7 +212,7 @@ export default function ValuesPage() {
                     {selectedChart.moduleId} / {selectedChart.chartName}.yaml
                   </h3>
                   <p className="text-[11px] text-slate-500 pt-0.5">
-                    Target Override: <code>{selectedChart.userOverridePath || selectedChart.targetPath}</code>
+                    Target Override: <code>{selectedChart.userOverridePath || selectedChart.xdgPath}</code>
                   </p>
                 </div>
 

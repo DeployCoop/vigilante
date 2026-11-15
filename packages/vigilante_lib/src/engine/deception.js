@@ -573,7 +573,7 @@ export async function startCanaryWebhookListener(options = {}) {
             sourcePod: 'external-intruder',
             sourceIp: clientIp,
             namespace: 'perimeter'
-          }, options.autoIsolate !== false);
+          }, { autoIsolate: options.autoIsolate });
         } catch (err) {
           logger.error('CANARY', `Failed to trigger alarm for callback: ${err.message}`);
         }

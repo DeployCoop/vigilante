@@ -370,7 +370,7 @@ export default function DashboardPage() {
             <Layers className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-2xl font-bold text-white font-mono">
-            {loading ? '...' : `${status?.modulesCount || 12} Registered`}
+            {loading ? '...' : `${status?.modulesCount ?? '—'} Registered`}
           </div>
           <div className="text-xs text-slate-500 font-mono pt-1">Suricata, Zeek, OpenVAS, Wazuh</div>
         </div>

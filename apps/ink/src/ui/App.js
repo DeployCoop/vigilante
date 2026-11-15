@@ -609,10 +609,15 @@ const AppContent = ({
         provider: clusterProvider,
         onLog: (msg) => addLog(msg)
       });
+      // Only 'deleted' means something was actually destroyed — the
+      // old code logged success for every status, so a k3s target that
+      // was never there (or was left running) read as destroyed.
       if (res.status === 'not_found') {
         addLog(`Cluster '${clusterName}' was not found.`);
-      } else {
+      } else if (res.status === 'deleted') {
         addLog(`Cluster '${clusterName}' destroyed successfully.`);
+      } else {
+        addLog(`Cluster '${clusterName}' was not destroyed (status: ${res.status}).`);
       }
       updateTask('down', { status: 'done' });
 

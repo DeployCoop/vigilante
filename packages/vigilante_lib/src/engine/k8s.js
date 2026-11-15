@@ -1,6 +1,28 @@
+import fsSync from 'node:fs';
 import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
 import { isValidDnsLabel } from './config.js';
+
+/**
+ * Resolve execution environment for kubectl / helm so the in-house K3s
+ * kubeconfig (/etc/rancher/k3s/k3s.yaml) is automatically used when present.
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function getKubeExecutionEnv() {
+  if (!process.env.KUBECONFIG) {
+    try {
+      if (fsSync.existsSync('/etc/rancher/k3s/k3s.yaml')) {
+        return {
+          ...process.env,
+          KUBECONFIG: '/etc/rancher/k3s/k3s.yaml',
+        };
+      }
+    } catch {
+      // Ignore fs check error
+    }
+  }
+  return process.env;
+}
 
 /**
  * Apply Kubernetes manifest YAML with validation fallback and transient error retries
@@ -22,7 +44,8 @@ export async function safeKubectlApply(yamlContent, options = {}) {
         '--validate=false',
         '-f', '-'
       ], {
-        input: yamlContent
+        input: yamlContent,
+        env: getKubeExecutionEnv()
       });
       return stdout;
     } catch (err) {
@@ -69,17 +92,18 @@ export async function ensureNamespace(namespace = 'default', options = {}) {
   }
 
   const { onLog = null } = options;
+  const kubeEnv = getKubeExecutionEnv();
 
   try {
     // Check if namespace already exists
-    await execa('kubectl', ['get', 'namespace', namespace, '--request-timeout=5s']);
+    await execa('kubectl', ['get', 'namespace', namespace, '--request-timeout=5s'], { env: kubeEnv });
     return;
   } catch {
     // Namespace does not exist or API call failed; attempt creation
   }
 
   try {
-    await execa('kubectl', ['create', 'namespace', namespace]);
+    await execa('kubectl', ['create', 'namespace', namespace], { env: kubeEnv });
     if (onLog) onLog(`✔ Created Kubernetes namespace '${namespace}'.`);
   } catch (createErr) {
     const errMsg = createErr.message || '';
@@ -92,7 +116,7 @@ export async function ensureNamespace(namespace = 'default', options = {}) {
       const { stdout } = await execa('kubectl', [
         'create', 'namespace', namespace,
         '--dry-run=client', '-o', 'yaml'
-      ]);
+      ], { env: kubeEnv });
       await safeKubectlApply(stdout, options);
     } catch (finalErr) {
       if (!finalErr.message?.includes('AlreadyExists')) {
@@ -104,12 +128,13 @@ export async function ensureNamespace(namespace = 'default', options = {}) {
 
 /**
  * Wait for Kubernetes API server to be fully ready and responsive
- * @param {string} [clusterName='vigilante-dev']
+ * @param {string} [clusterName='axonwall-k3s']
  * @param {number} [timeoutMs=60000]
  * @param {Function} [onLog]
  */
-export async function waitForApiServerReady(clusterName = 'vigilante-dev', timeoutMs = 60000, onLog = null) {
+export async function waitForApiServerReady(clusterName = 'axonwall-k3s', timeoutMs = 60000, onLog = null) {
   const startTime = Date.now();
+  const kubeEnv = getKubeExecutionEnv();
   logger.info('K8S:WAIT_READY', `Waiting for Kubernetes API server '${clusterName}' to become ready...`);
 
   while (Date.now() - startTime < timeoutMs) {
@@ -117,7 +142,7 @@ export async function waitForApiServerReady(clusterName = 'vigilante-dev', timeo
       const { stdout } = await execa('kubectl', [
         'get', '--raw', '/readyz',
         '--request-timeout=3s'
-      ]);
+      ], { env: kubeEnv });
       if (stdout && stdout.trim() === 'ok') {
         logger.info('K8S:READY', `Kubernetes API server '${clusterName}' /readyz returned ok.`);
         return true;
@@ -130,7 +155,7 @@ export async function waitForApiServerReady(clusterName = 'vigilante-dev', timeo
       const { stdout } = await execa('kubectl', [
         'get', 'namespaces',
         '--request-timeout=3s'
-      ]);
+      ], { env: kubeEnv });
       if (stdout && stdout.includes('default')) {
         logger.info('K8S:READY', `Kubernetes API server '${clusterName}' listed namespaces successfully.`);
         return true;
@@ -146,14 +171,14 @@ export async function waitForApiServerReady(clusterName = 'vigilante-dev', timeo
 }
 
 /**
- * Resolve kubectl context arguments dynamically for k3d and k3s
- * @param {string} [clusterName='vigilante-dev']
+ * Resolve kubectl context arguments dynamically for k3s and k3d
+ * @param {string} [clusterName='axonwall-k3s']
  * @param {string} [provider=null]
  * @returns {Promise<string[]>}
  */
-export async function getClusterContextArgs(clusterName = 'vigilante-dev', provider = null) {
+export async function getClusterContextArgs(clusterName = 'axonwall-k3s', provider = null) {
   try {
-    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name']);
+    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name'], { env: getKubeExecutionEnv() });
     const contexts = stdout.split('\n').map(c => c.trim()).filter(Boolean);
 
     if (provider === 'k3s') {

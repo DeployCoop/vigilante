@@ -24,7 +24,9 @@ interface AuditResult {
   findings: AuditFinding[];
   passed?: boolean;
   targetPath?: string;
-  filesAudited?: number;
+  // The audit engine returns `filesScanned`. The old `filesAudited`
+  // field never existed, so the banner always showed the fallback 12.
+  filesScanned?: number;
 }
 
 export default function AuditPage() {
@@ -66,7 +68,9 @@ export default function AuditPage() {
   };
 
   const findings = data?.findings || [];
-  const passed = data?.passed !== false;
+  // null until a scan returns: with no data the gate has not passed,
+  // it simply has not run yet.
+  const passed = data ? data.passed !== false : null;
 
   const getSeverityBadge = (sev: string) => {
     switch (sev?.toUpperCase()) {
@@ -129,18 +133,22 @@ export default function AuditPage() {
         <div className="flex items-center gap-3">
           <div
             className={`w-3 h-3 rounded-full ${
-              passed ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
+              passed === null ? 'bg-slate-500' : passed ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
             }`}
           />
           <div>
             <div className="text-sm font-bold text-white flex items-center gap-2">
               <span>Pipeline Gate Status:</span>
-              <span className={passed ? 'text-emerald-400' : 'text-rose-400'}>
-                {passed ? 'PASSED (Zero Blocking Flaws)' : 'BLOCKED (High/Critical Violations Found)'}
+              <span className={passed === null ? 'text-slate-400' : passed ? 'text-emerald-400' : 'text-rose-400'}>
+                {passed === null
+                  ? 'AWAITING SCAN'
+                  : passed
+                    ? 'PASSED (Zero Blocking Flaws)'
+                    : 'BLOCKED (High/Critical Violations Found)'}
               </span>
             </div>
             <div className="text-slate-400 text-[11px] pt-0.5">
-              Scanned Target: <code>{data?.targetPath || '.'}</code> | Files Audited: {data?.filesAudited || 12}
+              Scanned Target: <code>{data?.targetPath || '.'}</code> | Files Audited: {data?.filesScanned ?? '—'}
             </div>
           </div>
         </div>

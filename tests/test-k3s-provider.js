@@ -33,9 +33,12 @@ async function run() {
   console.log(`✔ Test 1 passed: detectK3sAvailability returned valid detection state (available: ${detection.available}).`);
 
   // Test 2: getClusterContext string resolver
+  // NOTE: the no-provider default used to be 'k3d'; the Nov 1
+  // k3s-default change made it 'k3s' (getClusterContext defaults
+  // provider to 'k3s'), and this expectation was never updated.
   assert.strictEqual(getClusterContext('prod-soc', 'k3s'), 'k3s-prod-soc');
   assert.strictEqual(getClusterContext('prod-soc', 'k3d'), 'k3d-prod-soc');
-  assert.strictEqual(getClusterContext('prod-soc'), 'k3d-prod-soc');
+  assert.strictEqual(getClusterContext('prod-soc'), 'k3s-prod-soc');
   console.log('✔ Test 2 passed: getClusterContext correctly formats context names per provider.');
 
   // Test 3: resolveKubeContext
@@ -93,11 +96,14 @@ async function run() {
     await fs.rm(testDir, { recursive: true, force: true });
   }
 
-  // Test 7: deleteCluster for non-existent k3s cluster
+  // Test 7: deleteCluster for non-existent k3s cluster returns
+  // not_found (H2). This used to assert status 'deleted', pinning the
+  // no-op: deleteK3sCluster returned 'deleted' without deleting
+  // anything, and deleteInstance reported the ghost cluster destroyed.
   const delRes = await deleteCluster('non-existent-cluster', { provider: 'k3s' });
   assert.strictEqual(delRes.provider, 'k3s');
-  assert.strictEqual(delRes.status, 'deleted');
-  console.log('✔ Test 7 passed: deleteCluster with provider: "k3s" handles clean deletion.');
+  assert.strictEqual(delRes.status, 'not_found');
+  console.log('✔ Test 7 passed: deleteCluster with provider: "k3s" reports a non-existent cluster as not_found.');
 
   console.log('🎉 All K3S / K3D Cluster Provider tests passed successfully!');
 }
