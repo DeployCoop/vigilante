@@ -1,0 +1,108 @@
+{{- if .Values.stacks.seedBuiltins -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redairange.fullname" . }}-stacks-seed
+  namespace: {{ include "redairange.namespace" . }}
+  labels:
+    {{- include "redairange.labels" . | nindent 4 }}
+data:
+  gen_ai_target.yaml: |
+    services:
+      gen_ai_target:
+        image: python:3.11-slim
+        container_name: rar-gen-ai-target
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11001:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=gen-ai-target
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  adversarial_playground.yaml: |
+    services:
+      adversarial_playground:
+        image: python:3.11-slim
+        container_name: rar-adversarial-playground
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11000:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=adversarial-playground
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  evasion_attacks.yaml: |
+    services:
+      evasion_attacks:
+        image: python:3.11-slim
+        container_name: rar-evasion-attacks
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11002:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=evasion-attacks
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  model_tampering.yaml: |
+    services:
+      model_tampering:
+        image: python:3.11-slim
+        container_name: rar-model-tampering
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11003:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=model-tampering
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  privacy_attacks.yaml: |
+    services:
+      privacy_attacks:
+        image: python:3.11-slim
+        container_name: rar-privacy-attacks
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11004:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=privacy-attacks
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  defense_ai_target.yaml: |
+    services:
+      defense_ai_target:
+        image: python:3.11-slim
+        container_name: rar-defense-ai-target
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11005:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=defense-ai-target
+          - REDAIRANGE_KIND=target
+        command: ["python3", "-m", "http.server", "8000"]
+  blackcart_arsenal.yaml: |
+    services:
+      blackcart_arsenal:
+        image: python:3.11-slim
+        container_name: rar-blackcart-arsenal
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:11006:8000"
+        security_opt:
+          - no-new-privileges:true
+        environment:
+          - REDAIRANGE_SCENARIO=blackcart-arsenal
+          - REDAIRANGE_KIND=arsenal
+        command: ["python3", "-m", "http.server", "8000"]
+{{- end }}

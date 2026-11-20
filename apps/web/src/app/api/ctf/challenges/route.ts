@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CHALLENGE_TEMPLATES, CHALLENGE_CATEGORIES } from 'vigilante_lib/engine/kctf.js';
+import { AI_CTF_CATEGORY, buildAiCtfChallengeCatalog } from 'vigilante_lib/engine/redairange.js';
 import { requireCtfFlagSecret } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest, resolveAuthzContext } from '@/lib/authz';
 import { getTournamentEngine, persistTournamentState } from '@/lib/ctf-tournament-server';
@@ -17,7 +18,12 @@ export async function GET(req: NextRequest) {
     const engine = await getTournamentEngine();
     const team = teamId ? (engine.teams.get(teamId) || Array.from(engine.teams.values()).find(t => t.name.toLowerCase() === teamId.toLowerCase())) : null;
 
-    const enrichedChallenges = CHALLENGE_TEMPLATES.map(c => {
+    const combinedTemplates = [
+      ...CHALLENGE_TEMPLATES,
+      ...buildAiCtfChallengeCatalog()
+    ];
+
+    const enrichedChallenges = combinedTemplates.map(c => {
       const chalState = engine.challenges.get(c.id);
       const solvesCount = chalState?.solvesCount || 0;
       const currentPoints = chalState?.currentPoints || 500;
@@ -34,6 +40,9 @@ export async function GET(req: NextRequest) {
         serviceType: c.serviceType,
         description: c.description,
         hintsCount: c.hints?.length || 0,
+        source: (c as any).source || 'kctf',
+        owaspLlm: (c as any).owaspLlm || undefined,
+        mitreAtlas: (c as any).mitreAtlas || undefined,
         currentPoints,
         solvesCount,
         firstBlood,
@@ -43,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      categories: CHALLENGE_CATEGORIES,
+      categories: [...CHALLENGE_CATEGORIES, AI_CTF_CATEGORY],
       challengesCount: enrichedChallenges.length,
       challenges: enrichedChallenges,
       tournament: {

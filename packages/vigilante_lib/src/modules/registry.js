@@ -10,6 +10,7 @@ import { SuricataModule } from './suricata/index.js';
 import { ZeekModule } from './zeek/index.js';
 import { ZAPModule } from './zap/index.js';
 import { BloodHoundModule } from './bloodhound/index.js';
+import { RedAiRangeModule } from './redairange/index.js';
 
 export class ModuleRegistry {
   constructor() {
@@ -30,6 +31,7 @@ export class ModuleRegistry {
     this.register(new ZeekModule());
     this.register(new ZAPModule());
     this.register(new BloodHoundModule());
+    this.register(new RedAiRangeModule());
   }
 
   /**

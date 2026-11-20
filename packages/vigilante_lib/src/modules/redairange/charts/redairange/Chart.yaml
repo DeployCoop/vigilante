@@ -1,0 +1,16 @@
+apiVersion: v2
+name: redairange
+description: RedAiRange AI Red Teaming & Adversarial ML Cyber Range with isolated Docker-in-Docker sidecar
+type: application
+version: 0.1.0
+appVersion: "1"
+keywords:
+  - ai-security
+  - red-teaming
+  - adversarial-ml
+  - llm-security
+  - cyber-range
+  - redairange
+home: https://github.com/ErdemOzgen/RedAiRange
+maintainers:
+  - name: Vigilante Security Team

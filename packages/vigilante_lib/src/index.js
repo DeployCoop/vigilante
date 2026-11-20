@@ -10,6 +10,25 @@ export { SuricataModule } from './modules/suricata/index.js';
 export { ZeekModule } from './modules/zeek/index.js';
 export { ZAPModule } from './modules/zap/index.js';
 export { BloodHoundModule } from './modules/bloodhound/index.js';
+export { RedAiRangeModule } from './modules/redairange/index.js';
+export {
+  AI_CTF_CATEGORY,
+  REDAIRANGE_SCENARIOS,
+  assertSafeScenarioId,
+  resolveSafeStackPath,
+  getRedAiRangeScenario,
+  listRedAiRangeScenarios,
+  validateStackComposeYaml,
+  generateScenarioComposeYaml,
+  deriveAiCtfFlag,
+  verifyAiCtfFlag,
+  redactAiCtfRecord,
+  buildAiCtfChallengeCatalog,
+  provisionAiCtfChallenge,
+  listBridgedAiChallenges,
+  teardownBridgedAiChallenge,
+  evaluateAiAttackTelemetry
+} from './engine/redairange.js';
 export {
   RECON_PROFILES,
   checkReconToolsInstalled,

@@ -1,0 +1,75 @@
+replicaCount: 1
+
+image:
+  repository: erdemozgen/redairange
+  tag: "1"
+  pullPolicy: IfNotPresent
+
+# Isolated pod-private Docker-in-Docker (DinD) sidecar.
+# NEVER mounts the host /var/run/docker.sock; communicates exclusively via a
+# pod-scoped emptyDir Unix socket (/var/run/dind/docker.sock).
+dind:
+  enabled: true
+  image:
+    repository: docker
+    tag: "27-dind"
+    pullPolicy: IfNotPresent
+  storageDriver: overlay2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 6Gi
+
+stacks:
+  dir: /opt/stacks
+  seedBuiltins: true
+
+persistence:
+  enabled: true
+  storageClass: ""
+  dataSize: 5Gi
+  stacksSize: 20Gi
+  dindStorageSize: 30Gi
+
+service:
+  type: ClusterIP
+  port: 5002
+  scenarioPorts:
+    - name: jupyter
+      port: 11000
+    - name: genai-target
+      port: 11001
+    - name: evasion-lab
+      port: 11002
+    - name: model-tamper
+      port: 11003
+    - name: privacy-lab
+      port: 11004
+    - name: defense-ai
+      port: 11005
+    - name: blackcart
+      port: 11006
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+    - host: redairange.vigilante.local
+  tls:
+    - secretName: redairange-tls
+      hosts:
+        - redairange.vigilante.local
+
+networkPolicy:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi

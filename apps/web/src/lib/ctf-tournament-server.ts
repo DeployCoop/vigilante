@@ -3,6 +3,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { TournamentEngine, TOURNAMENT_STATES } from 'vigilante_lib/engine/tournament.js';
 import { CHALLENGE_TEMPLATES } from 'vigilante_lib/engine/kctf.js';
+import { buildAiCtfChallengeCatalog } from 'vigilante_lib/engine/redairange.js';
 import { getVigilanteConfigDir, resolveCtfFlagSecret } from 'vigilante_lib/engine/config.js';
 
 let cachedEngine: TournamentEngine | null = null;
@@ -24,8 +25,12 @@ export async function getTournamentEngine(): Promise<TournamentEngine> {
     secretKey
   });
 
-  // Seed default challenge templates
-  for (const chal of CHALLENGE_TEMPLATES) {
+  // Seed default challenge templates (kCTF + RedAiRange AI-CTF bridge)
+  const allTemplates = [
+    ...CHALLENGE_TEMPLATES,
+    ...buildAiCtfChallengeCatalog()
+  ];
+  for (const chal of allTemplates) {
     try {
       engine.addChallenge({
         id: chal.id,
@@ -34,7 +39,7 @@ export async function getTournamentEngine(): Promise<TournamentEngine> {
         difficulty: chal.difficulty,
         port: chal.port,
         protocol: chal.protocol,
-        defaultFlag: chal.defaultFlag,
+        defaultFlag: (chal as any).defaultFlag || null,
         isDynamicFlag: true,
         description: chal.description,
         hints: chal.hints || [],

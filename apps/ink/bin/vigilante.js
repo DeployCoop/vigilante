@@ -74,6 +74,7 @@ const cli = meow(`
     snapshot    Forensic volatile memory and disk snapshot archive
     evidencepack Court-admissible ISO 27037 & RFC 3161 evidence bundle generator
     falco       Inspect Falco eBPF runtime threat sensor, detection rules, and metrics
+    redairange  Manage RedAiRange AI red teaming cyber range, scenarios & AI-CTF bridge
     authz       Manage RBAC authorization store, principals, tokens, and grants
 
   Options
@@ -1172,6 +1173,114 @@ Usage:
   vigilante falco test-rule <file>    Validate syntax of custom Falco rule file
   vigilante falco trigger <scenario>  Simulate eBPF alert (shell-spawn, c2-connection, etc.)
   vigilante falco stats               Show aggregated runtime detection metrics
+`);
+      process.exit(0);
+    }
+  });
+} else if (command === 'redairange' || command === 'rar') {
+  Promise.all([
+    import('../src/engine/redairange.js'),
+    import('../src/modules/redairange/index.js')
+  ]).then(async ([rarEngine, rarModulePkg]) => {
+    const {
+      REDAIRANGE_SCENARIOS,
+      listRedAiRangeScenarios,
+      generateScenarioComposeYaml,
+      provisionAiCtfChallenge,
+      listBridgedAiChallenges,
+      redactAiCtfRecord,
+      evaluateAiAttackTelemetry
+    } = rarEngine;
+    const { RedAiRangeModule } = rarModulePkg;
+    const rarMod = new RedAiRangeModule();
+    const sub = cli.input[1] || 'status';
+
+    if (sub === 'status') {
+      const rt = rarMod.getRuntimeInfo();
+      const cluster = cli.flags.instance || cli.flags.clusterName || config.defaults?.clusterName || 'vigilante-dev';
+      const domain = cli.flags.domain || config.defaults?.domain || 'vigilante.local';
+      const st = await rarMod.status({ domain, clusterName: cluster });
+      const bridged = await listBridgedAiChallenges();
+      console.log('\n🤖 REDAIRANGE AI RED TEAMING CYBER RANGE STATUS');
+      console.log('='.repeat(70));
+      console.log(`Runtime Mode:      ${rt.mode} (Host docker.sock: ${rt.hostDockerSocketMounted ? 'MOUNTED' : 'ISOLATED / NONE'})`);
+      console.log(`Container Images:  ${rt.appImage} + ${rt.dindImage}`);
+      console.log(`Default Namespace: ${rarMod.namespace}`);
+      console.log(`Cluster Status:    ${st.status}`);
+      console.log(`Scenarios Catalog: ${REDAIRANGE_SCENARIOS.length} built-in AI target & arsenal stacks`);
+      console.log(`AI-CTF Bridged:    ${bridged.length} active bridged challenge(s)`);
+      if (st.endpoints && st.endpoints.length > 0) {
+        console.log('\nEndpoints:');
+        st.endpoints.forEach(e => console.log(`  • ${e.name}: ${e.url}`));
+      }
+      console.log('='.repeat(70) + '\n');
+      process.exit(0);
+    } else if (sub === 'scenarios') {
+      const list = listRedAiRangeScenarios();
+      console.log(`\n🤖 REDAIRANGE SCENARIOS (${list.length} Built-In Stacks)`);
+      console.log('='.repeat(75));
+      list.forEach((s, i) => {
+        console.log(`[${i + 1}] ${s.id} (${s.kind.toUpperCase()} · ${s.difficulty} · port ${s.port})`);
+        console.log(`    Name:        ${s.name}`);
+        console.log(`    OWASP LLM:   ${s.owaspLlm.join(', ')}`);
+        console.log(`    MITRE ATLAS: ${s.mitreAtlas.join(', ')}`);
+        console.log(`    Desc:        ${s.description}\n`);
+      });
+      process.exit(0);
+    } else if (sub === 'compose') {
+      const scenarioId = cli.input[2];
+      if (!scenarioId) {
+        console.error('Usage: vigilante redairange compose <scenarioId>');
+        process.exit(1);
+      }
+      try {
+        console.log(generateScenarioComposeYaml(scenarioId));
+        process.exit(0);
+      } catch (err) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    } else if (sub === 'bridge') {
+      const scenarioId = cli.input[2];
+      const teamId = cli.input[3] || 'cli-team';
+      if (!scenarioId) {
+        const bridged = await listBridgedAiChallenges();
+        console.log(JSON.stringify({ count: bridged.length, bridged }, null, 2));
+        process.exit(0);
+      }
+      try {
+        const record = await provisionAiCtfChallenge({
+          scenarioId,
+          teamId,
+          domain: cli.flags.domain || config.defaults?.domain || 'vigilante.local',
+          clusterName: cli.flags.instance || cli.flags.clusterName || config.defaults?.clusterName || 'vigilante-dev',
+          mock: Boolean(cli.flags.nonInteractive)
+        });
+        console.log(JSON.stringify(redactAiCtfRecord(record), null, 2));
+        process.exit(0);
+      } catch (err) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    } else if (sub === 'telemetry') {
+      const scenarioId = cli.input[2] || 'gen-ai-target';
+      try {
+        console.log(JSON.stringify(evaluateAiAttackTelemetry(scenarioId), null, 2));
+        process.exit(0);
+      } catch (err) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    } else {
+      console.log(`
+🤖 Vigilante RedAiRange AI Red-Teaming CLI
+======================================================================
+Usage:
+  vigilante redairange status                    Show isolated DinD range health & endpoints
+  vigilante redairange scenarios                 List AI red-teaming targets & arsenal stacks
+  vigilante redairange compose <scenarioId>      Print hardened compose.yaml for a scenario
+  vigilante redairange bridge [scenarioId team]  List or bridge a scenario into AI-CTF
+  vigilante redairange telemetry <scenarioId>    Inspect Falco / MITRE ATLAS detection mapping
 `);
       process.exit(0);
     }

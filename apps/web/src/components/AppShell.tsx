@@ -27,7 +27,8 @@ import {
   LogOut,
   LogIn,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Bot
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { useAbilityContext } from '@/lib/ability';
@@ -38,6 +39,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/event', label: 'Player Field Manual', icon: BookOpen, badge: 'Guide' },
       { href: '/ctf', label: 'kCTF Arena', icon: Flag, pulse: true },
+      { href: '/redairange', label: 'RedAiRange AI Lab', icon: Bot, badge: 'AI' },
     ]
   },
   {

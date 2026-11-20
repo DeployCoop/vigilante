@@ -10,7 +10,7 @@ async function runTests() {
   const allModules = globalModuleRegistry.getAll();
   const ids = allModules.map(m => m.id);
 
-  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas') || !ids.includes('wazuh') || !ids.includes('flamingo') || !ids.includes('falco') || !ids.includes('suricata') || !ids.includes('zeek') || !ids.includes('zap') || !ids.includes('bloodhound')) {
+  if (!ids.includes('opensearch') || !ids.includes('vigil-soc') || !ids.includes('kctf') || !ids.includes('openvas') || !ids.includes('wazuh') || !ids.includes('flamingo') || !ids.includes('falco') || !ids.includes('suricata') || !ids.includes('zeek') || !ids.includes('zap') || !ids.includes('bloodhound') || !ids.includes('redairange')) {
     throw new Error(`Expected default modules, got: ${JSON.stringify(ids)}`);
   }
   console.log('✔ Test 1 passed: Default modules registered in globalModuleRegistry.');
