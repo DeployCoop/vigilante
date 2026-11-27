@@ -130,11 +130,11 @@ async function runTests() {
   }
   console.log('✔ Test 7 passed: resetModule executes two-phase teardown and reinstall cleanly.');
 
-  // Test 8: vigil-soc chart version and 0.6.0 image rendering
+  // Test 8: vigil-soc chart version and 1.2.0 image rendering
   const vigilChartYamlPath = path.resolve('src/modules/vigil-soc/charts/vigil/Chart.yaml');
   const vigilChartYaml = await fs.readFile(vigilChartYamlPath, 'utf8');
-  if (!vigilChartYaml.includes('version: 0.6.0') || !vigilChartYaml.includes('appVersion: 0.6.0')) {
-    throw new Error('vigil-soc Chart.yaml must specify version 0.6.0 and appVersion 0.6.0');
+  if (!vigilChartYaml.includes('version: 1.2.0') || !vigilChartYaml.includes('appVersion: 1.2.0')) {
+    throw new Error('vigil-soc Chart.yaml must specify version 1.2.0 and appVersion 1.2.0');
   }
 
   // Verify daemon-statefulset template includes state volume mount and VIGIL_DIR fix for issue #1152
@@ -143,7 +143,7 @@ async function runTests() {
   if (!daemonTemplate.includes('vigil.stateVolumeMount') || !daemonTemplate.includes('vigil.stateEnv')) {
     throw new Error('daemon-statefulset.yaml must include vigil.stateVolumeMount and vigil.stateEnv');
   }
-  console.log('✔ Test 8 passed: vigil-soc chart upgraded to 0.6.0 with VIGIL_DIR state volume mount.');
+  console.log('✔ Test 8 passed: vigil-soc chart upgraded to 1.2.0 with VIGIL_DIR state volume mount.');
 
   // Test 9: getModuleStatuses collects every module's status and isolates failures
   // (the web /api/status route calls this method; it must exist and must not
