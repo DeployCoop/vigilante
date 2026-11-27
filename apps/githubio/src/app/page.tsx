@@ -16,7 +16,7 @@ export default function Home() {
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="text-2xl font-black tracking-wider text-emerald-400">VIGILANTE</span>
-              <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">v0.6.0</span>
+              <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">v1.2.0</span>
             </div>
             <span className="text-[10px] font-mono tracking-widest text-cyan-400 uppercase">Cyber Defense · CTF Range · eBPF Ops</span>
           </div>
