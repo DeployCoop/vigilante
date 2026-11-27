@@ -147,6 +147,18 @@ async function runTests() {
   assert(mcpServer, 'MCP server instance must be created');
   console.log('✔ Test 8 passed: MCP Server initializes with OpenVAS tools available.');
 
+  // Test 9: M-openvas — listSavedOpenVasReports must not read another
+  // network's report via a traversal hostIp (previously the raw hostIp was
+  // joined into the path, so '../test_openvas_net/10.0.1.50' read the
+  // 10.0.1.50 report from this network's own directory).
+  const traversalReports = await listSavedOpenVasReports('test_openvas_net', '../test_openvas_net/10.0.1.50');
+  assert.deepStrictEqual(traversalReports, [], 'A traversal hostIp must return no reports');
+  const dotdotReports = await listSavedOpenVasReports('test_openvas_net', '../../etc');
+  assert.deepStrictEqual(dotdotReports, [], 'A bare traversal hostIp must return no reports');
+  const legitReports = await listSavedOpenVasReports('test_openvas_net', '10.0.1.50');
+  assert.ok(legitReports.length >= 1, 'The legitimate hostIp must still resolve its report');
+  console.log('✔ Test 9 passed: listSavedOpenVasReports rejects traversal hostIp values.');
+
   console.log('\n🎉 All OpenVAS / Greenbone Community Edition Module tests passed successfully!\n');
 }
 

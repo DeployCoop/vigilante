@@ -202,4 +202,73 @@ console.log('🧪 Testing AI Security Analyst Engine (Ollama/Claude/GPT/Gemini).
   console.log('✔ Test 10 passed: Cloud provider API key missing errors thrown with remediation tips.');
 }
 
+// Test 11: M-llm — chatOllama aborts a stalled model after timeoutMs
+// instead of hanging forever (previously: signal defaulted to null with
+// no AbortController anywhere in the chat path).
+{
+  const http = await import('node:http');
+  const { chatOllama, DEFAULT_CHAT_TIMEOUT_MS, MAX_STREAM_CONTENT_CHARS } = await import('../src/engine/llm.js');
+  assert.strictEqual(DEFAULT_CHAT_TIMEOUT_MS, 120000);
+  assert.ok(MAX_STREAM_CONTENT_CHARS >= 1000000);
+  const server = http.createServer(() => {
+    // Accept the connection and never respond: a stalled model.
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  const start = Date.now();
+  let err = null;
+  try {
+    await chatOllama({
+      host: `http://127.0.0.1:${port}`,
+      model: 'llama3.2',
+      messages: [{ role: 'user', content: 'hi' }],
+      timeoutMs: 150
+    });
+  } catch (e) {
+    err = e;
+  }
+  const elapsedMs = Date.now() - start;
+  server.close();
+  assert.ok(err, 'chatOllama must reject when the model stalls past timeoutMs');
+  assert.ok(elapsedMs < 5000, `chatOllama must abort near timeoutMs, took ${elapsedMs}ms`);
+  console.log(`✔ Test 11 passed: chatOllama aborted a stalled model after timeoutMs (took ${elapsedMs}ms).`);
+}
+
+// Test 12: M-llm — chatOllama streaming accumulation is capped
+// (a runaway model streaming forever previously grew fullContent unbounded).
+{
+  const http = await import('node:http');
+  const { chatOllama, MAX_STREAM_CONTENT_CHARS } = await import('../src/engine/llm.js');
+  const bigChunk = 'x'.repeat(100000);
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    // 25 x 100KB of streamed content = 2.5MB, past the 2M-char cap.
+    for (let i = 0; i < 25; i++) {
+      res.write(`${JSON.stringify({ message: { content: bigChunk } })}\n`);
+    }
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  let err = null;
+  try {
+    await chatOllama({
+      host: `http://127.0.0.1:${port}`,
+      model: 'llama3.2',
+      messages: [{ role: 'user', content: 'hi' }],
+      onChunk: () => {},
+      timeoutMs: 10000
+    });
+  } catch (e) {
+    err = e;
+  }
+  server.close();
+  assert.ok(err, 'chatOllama must reject when the stream exceeds the cap');
+  assert.ok(
+    err.message.includes('character cap'),
+    `Expected a character-cap error, got: ${err.message}`
+  );
+  console.log(`✔ Test 12 passed: chatOllama aborted a runaway stream at the ${MAX_STREAM_CONTENT_CHARS}-char cap.`);
+}
+
 console.log('🎉 All AI Security Analyst Engine tests passed successfully!');

@@ -3,6 +3,14 @@ import { execa } from 'execa';
 import { logger } from '../utils/logger.js';
 import { isValidDnsLabel } from './config.js';
 
+// Default per-attempt timeout for kubectl subprocesses (M-timeouts).
+// The --request-timeout flags on read calls bound the API request, but a
+// wedged kubectl binary or a stalled connection could still hang the
+// process forever; execa's timeout bounds the whole subprocess. 30s is
+// deliberately longer than the 2-5s request timeouts so the server-side
+// timeout fires first on a slow-but-live API server.
+export const KUBECTL_TIMEOUT_MS = 30000;
+
 /**
  * Resolve execution environment for kubectl / helm so the in-house K3s
  * kubeconfig (/etc/rancher/k3s/k3s.yaml) is automatically used when present.
@@ -34,7 +42,7 @@ export function getKubeExecutionEnv() {
  * @returns {Promise<string>} - kubectl stdout
  */
 export async function safeKubectlApply(yamlContent, options = {}) {
-  const { maxRetries = 6, retryDelayMs = 1000, onLog = null } = options;
+  const { maxRetries = 6, retryDelayMs = 1000, onLog = null, timeoutMs = KUBECTL_TIMEOUT_MS } = options;
 
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -45,7 +53,8 @@ export async function safeKubectlApply(yamlContent, options = {}) {
         '-f', '-'
       ], {
         input: yamlContent,
-        env: getKubeExecutionEnv()
+        env: getKubeExecutionEnv(),
+        timeout: timeoutMs
       });
       return stdout;
     } catch (err) {
@@ -91,19 +100,19 @@ export async function ensureNamespace(namespace = 'default', options = {}) {
     throw new Error(`Invalid namespace '${namespace}': expected a DNS label (lowercase alphanumerics and '-', 1-63 chars, starting and ending with an alphanumeric).`);
   }
 
-  const { onLog = null } = options;
+  const { onLog = null, timeoutMs = KUBECTL_TIMEOUT_MS } = options;
   const kubeEnv = getKubeExecutionEnv();
 
   try {
     // Check if namespace already exists
-    await execa('kubectl', ['get', 'namespace', namespace, '--request-timeout=5s'], { env: kubeEnv });
+    await execa('kubectl', ['get', 'namespace', namespace, '--request-timeout=5s'], { env: kubeEnv, timeout: timeoutMs });
     return;
   } catch {
     // Namespace does not exist or API call failed; attempt creation
   }
 
   try {
-    await execa('kubectl', ['create', 'namespace', namespace], { env: kubeEnv });
+    await execa('kubectl', ['create', 'namespace', namespace], { env: kubeEnv, timeout: timeoutMs });
     if (onLog) onLog(`✔ Created Kubernetes namespace '${namespace}'.`);
   } catch (createErr) {
     const errMsg = createErr.message || '';
@@ -116,7 +125,7 @@ export async function ensureNamespace(namespace = 'default', options = {}) {
       const { stdout } = await execa('kubectl', [
         'create', 'namespace', namespace,
         '--dry-run=client', '-o', 'yaml'
-      ], { env: kubeEnv });
+      ], { env: kubeEnv, timeout: timeoutMs });
       await safeKubectlApply(stdout, options);
     } catch (finalErr) {
       if (!finalErr.message?.includes('AlreadyExists')) {
@@ -178,7 +187,7 @@ export async function waitForApiServerReady(clusterName = 'axonwall-k3s', timeou
  */
 export async function getClusterContextArgs(clusterName = 'axonwall-k3s', provider = null) {
   try {
-    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name'], { env: getKubeExecutionEnv() });
+    const { stdout } = await execa('kubectl', ['config', 'get-contexts', '-o', 'name'], { env: getKubeExecutionEnv(), timeout: KUBECTL_TIMEOUT_MS });
     const contexts = stdout.split('\n').map(c => c.trim()).filter(Boolean);
 
     if (provider === 'k3s') {

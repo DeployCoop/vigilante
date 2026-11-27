@@ -6,7 +6,8 @@ import {
   saveInstanceMetadata,
   loadInstanceMetadata,
   listInstances,
-  deleteInstance
+  deleteInstance,
+  getInstanceWriteChainCount
 } from '../src/engine/instances.js';
 import {
   getVigilanteInstancesDir,
@@ -96,6 +97,42 @@ async function runTests() {
       throw new Error('deleteInstance failed to remove custom-cluster-1 directory');
     }
     console.log('✔ Test 6 passed: deleteInstance removed instance directory cleanly.');
+
+    // Test 7: M-instances — instance.json writes are atomic and the write
+    // chain drains (no torn file, no leftover tmp, no leaked chain keys).
+    // The two soc-prod saves run concurrently: the second must merge onto
+    // the first's result (notes preserved), not onto the pre-save state.
+    await Promise.all([
+      saveInstanceMetadata('soc-prod', { httpPort: 8081, notes: 'x'.repeat(100000) }),
+      saveInstanceMetadata('soc-prod', { httpPort: 8082 }),
+      saveInstanceMetadata('soc-dev', { httpPort: 9090 })
+    ]);
+    const saved = await loadInstanceMetadata('soc-prod');
+    if (!saved || saved.httpPort !== 8082 || saved.notes !== 'x'.repeat(100000)) {
+      throw new Error(`Concurrent saves lost data or tore the file: ${JSON.stringify(saved)?.slice(0, 120)}`);
+    }
+    const dirEntries = await fs.readdir(getInstanceDir('soc-prod'));
+    if (dirEntries.some((e) => e.startsWith('instance.json.tmp-'))) {
+      throw new Error(`Atomic write left a tmp file behind: ${dirEntries.join(', ')}`);
+    }
+    if (getInstanceWriteChainCount() !== 0) {
+      throw new Error(`Write chains must drain to 0 after writers settle, got ${getInstanceWriteChainCount()}`);
+    }
+    console.log('✔ Test 7 passed: instance.json writes atomic, no tmp leftovers, write chains drained.');
+
+    // Test 8: M-instances — deleteInstance serializes with writers: a save
+    // that starts before the delete cannot resurrect the instance dir (or
+    // throw ENOENT when the delete removes the dir mid-write). The 5MB
+    // payload makes the save slow enough that the race is deterministic
+    // without the lock.
+    const slowSave = saveInstanceMetadata('soc-dev', { httpPort: 9091, notes: 'y'.repeat(5000000) });
+    const del = deleteInstance('soc-dev', { deleteCluster: false });
+    await Promise.all([slowSave, del]);
+    const afterDelete = await listInstances();
+    if (afterDelete.some((i) => i.instanceName === 'soc-dev')) {
+      throw new Error('deleteInstance raced a concurrent save and the instance was resurrected');
+    }
+    console.log('✔ Test 8 passed: deleteInstance serialized with writers; no resurrection.');
 
     console.log('🎉 All Multi-Instance & Instance Isolation tests passed successfully!');
   } finally {

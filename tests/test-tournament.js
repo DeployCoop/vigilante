@@ -152,4 +152,51 @@ assert.strictEqual(matrix.matrix[0].challenges['web-sqli'].solved, true);
 assert.strictEqual(matrix.matrix[0].challenges['web-sqli'].badge, '🩸');
 console.log('✔ Test 13 passed: Time-series score curve SVG rendered and 2D solve matrix generated.');
 
+// Test 14: M-histories — submitFlag rate limit uses the per-pair window,
+// not a filter over the whole submissions array (O(n) per submit).
+{
+  // team1 has not submitted to pwn-nsjail yet: a fresh rate-limit pair.
+  const wrong = 'VIGILANTE{wrong-flag}';
+  for (let i = 0; i < 5; i++) {
+    const r = engine.submitFlag({ teamId: team1.id, challengeId: 'pwn-nsjail', flag: wrong });
+    assert.strictEqual(r.success, false);
+    assert.ok(r.reason.includes('Incorrect flag'), `Attempt ${i + 1} must be an incorrect-flag rejection, got: ${r.reason}`);
+  }
+  const limited = engine.submitFlag({ teamId: team1.id, challengeId: 'pwn-nsjail', flag: wrong });
+  assert.strictEqual(limited.success, false);
+  assert.ok(limited.reason.includes('Rate limit exceeded'), `6th submit must be rate-limited, got: ${limited.reason}`);
+  const window = engine.recentSubmissions.get(`${team1.id}:pwn-nsjail`);
+  assert.strictEqual(window.length, 5, `Rate window must hold exactly 5 timestamps, got ${window.length}`);
+  console.log('✔ Test 14 passed: submitFlag rate limit enforced from the per-pair window.');
+}
+
+// Test 15: M-histories — submissions/solves/tickHistory are capped to the
+// most recent entries instead of growing for the life of the tournament.
+{
+  // Pre-fill past the caps (earlier tests already added a few entries);
+  // one more submit/solve/tick must prune back to exactly the cap.
+  for (let i = 0; i < 5000; i++) {
+    engine.submissions.push({ teamId: 'seed', challengeId: 'seed', flag: 'seed', isCorrect: false, timestamp: 0 });
+    engine.solves.push({ teamId: 'seed', challengeId: 'seed', timestamp: 0 });
+  }
+  assert.ok(engine.submissions.length > 5000);
+  assert.ok(engine.solves.length > 5000);
+  // A fresh pair (team2/pwn-nsjail) so the rate window does not block.
+  const wrongRes = engine.submitFlag({ teamId: team2.id, challengeId: 'pwn-nsjail', flag: 'VIGILANTE{wrong-flag}' });
+  assert.strictEqual(wrongRes.success, false);
+  assert.strictEqual(engine.submissions.length, 5000, `submissions must stay capped at 5000, got ${engine.submissions.length}`);
+  assert.strictEqual(engine.submissions[4999].teamId, team2.id, 'The newest submission must survive the prune');
+  const goodFlag = generateTeamDynamicFlag({ teamId: team2.id, challengeId: 'pwn-nsjail', secretKey: engine.secretKey });
+  const solveRes = engine.submitFlag({ teamId: team2.id, challengeId: 'pwn-nsjail', flag: goodFlag });
+  assert.strictEqual(solveRes.success, true);
+  assert.strictEqual(engine.solves.length, 5000, `solves must stay capped at 5000, got ${engine.solves.length}`);
+  assert.strictEqual(engine.solves[4999].teamId, team2.id, 'The newest solve must survive the prune');
+  // Tick history: 505 ticks must leave exactly the 500 most recent.
+  for (let i = 0; i < 505; i++) {
+    engine.runAttackDefenseTick({ slaResults: {} });
+  }
+  assert.strictEqual(engine.adState.tickHistory.length, 500, `tickHistory must stay capped at 500, got ${engine.adState.tickHistory.length}`);
+  console.log('✔ Test 15 passed: submissions/solves/tickHistory capped at 5000/5000/500.');
+}
+
 console.log('\n🎉 All Multi-Mode Tournament Engine tests passed successfully!\n');

@@ -133,4 +133,43 @@ assert.strictEqual(pcap.buffer[2], 0xb2);
 assert.strictEqual(pcap.buffer[3], 0xa1);
 console.log('✔ Test 8 passed: Valid PCAP traffic capture generated for adversary analysis.');
 
+// Test 9: M-ad — stop() aborts an in-flight tick; no round is recorded
+// and the phase returns to IDLE (previously the tick ran to TICK_COMPLETE
+// and overwrote the IDLE phase stop() had set).
+{
+  const roundsBefore = runner.rounds.length;
+  runner.stopRequested = true;
+  const aborted = await runner.stepTick();
+  assert.strictEqual(aborted, null, 'A tick aborted by stop() must return null');
+  assert.strictEqual(runner.rounds.length, roundsBefore, 'An aborted tick must not record a round');
+  assert.strictEqual(runner.currentPhase, 'IDLE', 'An aborted tick must leave the phase IDLE');
+  // Recovery: clearing the flag lets ticks run again.
+  runner.stopRequested = false;
+  const recovered = await runner.stepTick();
+  assert.ok(recovered && recovered.tick > 0, 'Ticks must run again after the stop flag clears');
+  assert.strictEqual(runner.rounds.length, roundsBefore + 1);
+  console.log('✔ Test 9 passed: stop() aborts an in-flight tick without recording a round.');
+}
+
+// Test 10: M-ad — a throwing tick is logged, not an unhandled rejection
+// (previously start() called stepTick() un-awaited and un-caught).
+{
+  let unhandled = null;
+  const onUnhandled = (err) => { unhandled = err; };
+  process.on('unhandledRejection', onUnhandled);
+  const origExecuteTick = runner.executeTick.bind(runner);
+  runner.executeTick = async () => { throw new Error('boom-tick'); };
+  try {
+    runner.start();
+    await new Promise((r) => setTimeout(r, 200));
+    runner.stop();
+    assert.strictEqual(unhandled, null, `Throwing tick must not be an unhandled rejection: ${unhandled}`);
+    assert.strictEqual(runner.isRunning, false);
+  } finally {
+    runner.executeTick = origExecuteTick;
+    process.removeListener('unhandledRejection', onUnhandled);
+  }
+  console.log('✔ Test 10 passed: throwing tick logged by start() instead of an unhandled rejection.');
+}
+
 console.log('\n🎉 All Autonomous Attack-Defense SLA Runner tests passed successfully!\n');

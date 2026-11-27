@@ -27,6 +27,19 @@ export const FIRST_BLOOD_BONUSES = [
   { rank: 3, multiplier: 0.02, label: 'Third Blood (3rd)', badge: '🥉' }
 ];
 
+// M-histories: submissions/solves/tickHistory grew without bound for the
+// life of a tournament, and submitFlag's rate-limit check filtered the
+// entire submissions array per submit (O(n) per submit). Histories are
+// capped to the most recent entries; rate limiting uses a per-pair
+// timestamp window (see recentSubmissions) instead of the full array.
+// The tick-history cap matches ad-runner.js (both push to the same
+// adState.tickHistory array).
+export const MAX_SUBMISSIONS = 5000;
+export const MAX_SOLVES = 5000;
+export const MAX_TICK_HISTORY = 500;
+export const SUBMISSION_RATE_LIMIT = 5;
+export const SUBMISSION_RATE_WINDOW_MS = 60000;
+
 /**
  * Calculates dynamic decay points for a Jeopardy challenge based on total solves
  */
@@ -101,6 +114,9 @@ export class TournamentEngine {
     this.submissions = [];
     this.announcements = [];
     this.alerts = [];
+    // Per team:challenge recent-submission timestamps (last 60s) for the
+    // rate-limit check, so it no longer scans the whole submissions array.
+    this.recentSubmissions = new Map();
 
     // Attack-Defense state
     this.adState = {
@@ -339,13 +355,17 @@ export class TournamentEngine {
       return { success: false, reason: 'Challenge already solved by your team' };
     }
 
-    // Rate limiting: max 5 submissions per minute
-    const recentSubmissions = this.submissions.filter(
-      s => s.teamId === teamId && s.challengeId === challengeId && now - s.timestamp < 60000
-    );
-    if (recentSubmissions.length >= 5) {
+    // Rate limiting: max 5 submissions per minute per team:challenge.
+    // Uses the per-pair timestamp window instead of filtering the whole
+    // submissions array on every submit (O(n) per submit).
+    const rateKey = `${teamId}:${challengeId}`;
+    const recentWindow = (this.recentSubmissions.get(rateKey) || [])
+      .filter(t => now - t < SUBMISSION_RATE_WINDOW_MS);
+    if (recentWindow.length >= SUBMISSION_RATE_LIMIT) {
       return { success: false, reason: 'Rate limit exceeded: Please wait before submitting again' };
     }
+    recentWindow.push(now);
+    this.recentSubmissions.set(rateKey, recentWindow);
 
     team.submissionsCount += 1;
 
@@ -396,6 +416,9 @@ export class TournamentEngine {
       timestamp: now
     };
     this.submissions.push(submissionRecord);
+    if (this.submissions.length > MAX_SUBMISSIONS) {
+      this.submissions.splice(0, this.submissions.length - MAX_SUBMISSIONS);
+    }
 
     if (!isCorrect) {
       return { success: false, reason: 'Incorrect flag submitted' };
@@ -448,6 +471,9 @@ export class TournamentEngine {
       isFrozen: this.state === TOURNAMENT_STATES.FROZEN
     };
     this.solves.push(solveEvent);
+    if (this.solves.length > MAX_SOLVES) {
+      this.solves.splice(0, this.solves.length - MAX_SOLVES);
+    }
     challenge.solves.push(solveEvent);
 
     this.broadcastEvent('SOLVE_EVENT', solveEvent);
@@ -510,6 +536,9 @@ export class TournamentEngine {
     }
 
     this.adState.tickHistory.push(tickData);
+    if (this.adState.tickHistory.length > MAX_TICK_HISTORY) {
+      this.adState.tickHistory.splice(0, this.adState.tickHistory.length - MAX_TICK_HISTORY);
+    }
     return tickData;
   }
 

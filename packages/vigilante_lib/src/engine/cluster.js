@@ -2,10 +2,10 @@ import { execa } from 'execa';
 import fsSync from 'node:fs';
 import { execStream, commandExists } from '../utils/exec.js';
 import { logger } from '../utils/logger.js';
-import { waitForApiServerReady, getClusterContextArgs, getKubeExecutionEnv } from './k8s.js';
+import { waitForApiServerReady, getClusterContextArgs, getKubeExecutionEnv, KUBECTL_TIMEOUT_MS } from './k8s.js';
 import { assertCliTarget } from './config.js';
 
-export { getClusterContextArgs, getKubeExecutionEnv };
+export { getClusterContextArgs, getKubeExecutionEnv, KUBECTL_TIMEOUT_MS };
 
 /**
  * List all k3d clusters

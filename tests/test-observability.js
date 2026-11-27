@@ -93,4 +93,19 @@ assert.ok(streamReceivedCount >= 2, `Expected at least 2 streamed events, got ${
 assert.ok(stream.ringBuffer.size >= 2);
 console.log('✔ Test 4 passed: streamLiveEvents delivered live events into ring buffer and invoked callbacks.');
 
+// Test 5: M-events — streamLiveEvents honors maxEvents and stops on its own
+// (previously maxEvents was documented but ignored, so a dropped handle
+// leaked the interval forever).
+let cappedCount = 0;
+let endFired = false;
+const capped = streamLiveEvents({ intervalMs: 10, maxEvents: 3 }, () => { cappedCount++; });
+capped.emitter.on('end', () => { endFired = true; });
+await new Promise(r => setTimeout(r, 150));
+assert.strictEqual(cappedCount, 3, `Expected exactly 3 events, got ${cappedCount}`);
+assert.ok(endFired, 'Expected an end event after maxEvents is reached');
+await new Promise(r => setTimeout(r, 100));
+assert.strictEqual(cappedCount, 3, 'Stream must not deliver more events after auto-stop');
+capped.stop();
+console.log('✔ Test 5 passed: streamLiveEvents honored maxEvents and stopped on its own.');
+
 console.log('🎉 All eBPF Real-Time Syscall Observability & Socket Matrix tests passed successfully!\n');
