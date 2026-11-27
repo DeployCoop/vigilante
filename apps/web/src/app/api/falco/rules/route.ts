@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BUILTIN_FALCO_RULES, validateFalcoRule } from 'vigilante_lib/engine/falco.js';
+import { BUILTIN_FALCO_RULES, validateFalcoRule, parseFalcoRulesYaml } from 'vigilante_lib/engine/falco.js';
 import { authorizeRequest } from '@/lib/authz';
 import { errorMessage } from '@/lib/envelope';
 
@@ -34,6 +34,30 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+
+    if (typeof body.raw === 'string') {
+      const parsedRules = parseFalcoRulesYaml(body.raw);
+      if (!parsedRules || parsedRules.length === 0) {
+        return NextResponse.json({
+          success: true,
+          valid: false,
+          errors: ['Failed to parse Falco YAML or no rule definition found']
+        });
+      }
+      const allErrors: string[] = [];
+      for (const r of parsedRules) {
+        const res = validateFalcoRule(r);
+        if (!res.valid) {
+          allErrors.push(...res.errors);
+        }
+      }
+      return NextResponse.json({
+        success: true,
+        valid: allErrors.length === 0,
+        errors: allErrors,
+        parsedRules
+      });
+    }
 
     const validation = validateFalcoRule(body);
 

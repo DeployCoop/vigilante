@@ -1,0 +1,36 @@
+# Example user override for RedAiRange (AI Red Teaming Cyber Range) module
+ingress:
+  enabled: true
+  hosts:
+    - host: redairange.{{DOMAIN}}
+  tls:
+    - secretName: {{TLS_SECRET}}
+      hosts:
+        - redairange.{{DOMAIN}}
+
+image:
+  repository: erdemozgen/redairange
+  tag: "1"
+  pullPolicy: IfNotPresent
+
+dind:
+  enabled: true
+  image:
+    repository: docker
+    tag: "27-dind"
+    pullPolicy: IfNotPresent
+  storageDriver: overlay2
+
+persistence:
+  enabled: true
+  dataSize: 5Gi
+  stacksSize: 20Gi
+  dindStorageSize: 30Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi

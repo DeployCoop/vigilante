@@ -1276,7 +1276,7 @@ export function parseCrashContext({
   // 2. Extract Instruction Pointer / Fault Address
   let faultAddress = null;
   const faultMatch = text.match(/fault\s*(?:at|address)\s*[:=]?\s*(0x[0-9a-fA-F]+)/i);
-  const ripMatch = text.match(/(?:\$rip|\$eip|pc|ip)\s*[=:]\s*(0x[0-9a-fA-F]+)/i);
+  const ripMatch = text.match(/(?:\$rip|\$eip|\brip|\beip|\bpc|\bip)\s*(?:[=:]\s*|\s+)(0x[0-9a-fA-F]+)/i);
   const inFuncMatch = text.match(/in\s+[a-zA-Z0-9_]+\s*\(\)\s*(?:at\s*)?(0x[0-9a-fA-F]+)?/i);
   const anyHexMatch = text.match(/0x[0-9a-fA-F]{6,16}/);
 
@@ -1290,11 +1290,11 @@ export function parseCrashContext({
     faultAddress = anyHexMatch[0];
   }
 
-  // 3. Extract Registers if present
+  // 3. Extract Registers if present (supports both `rip = 0x...` / `rip: 0x...` and GDB `rip            0x...`)
   const registers = {};
   const regNames = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'rip', 'eip', 'esp', 'ebp'];
   for (const reg of regNames) {
-    const rMatch = text.match(new RegExp(`(?:\\$|\\b)${reg}\\s*[:=]\\s*(0x[0-9a-fA-F]+)`, 'i'));
+    const rMatch = text.match(new RegExp(`(?:\\$|\\b)${reg}\\s*(?:[:=]\\s*|\\s+)(0x[0-9a-fA-F]+)`, 'i'));
     if (rMatch) {
       registers[reg] = rMatch[1];
     }

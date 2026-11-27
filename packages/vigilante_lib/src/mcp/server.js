@@ -145,6 +145,17 @@ import {
   evaluateFalcoSoarAction
 } from '../engine/falco.js';
 import { FalcoModule } from '../modules/falco/index.js';
+import { RedAiRangeModule } from '../modules/redairange/index.js';
+import {
+  REDAIRANGE_SCENARIOS,
+  listRedAiRangeScenarios,
+  generateScenarioComposeYaml,
+  validateStackComposeYaml,
+  provisionAiCtfChallenge,
+  listBridgedAiChallenges,
+  redactAiCtfRecord,
+  evaluateAiAttackTelemetry
+} from '../engine/redairange.js';
 
 /**
  * Creates and configures the Vigilante MCP Server
@@ -275,6 +286,18 @@ export function createVigilanteMcpServer() {
           uri: 'vigilante://falco/rules',
           name: 'Falco Detection Rules Catalog',
           description: 'Active and built-in Falco threat detection rules with MITRE ATT&CK mapping.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://redairange/status',
+          name: 'RedAiRange AI Cyber Range Status',
+          description: 'Health, isolated Docker-in-Docker (DinD) runtime metadata, endpoints, and bridged AI-CTF challenge count for RedAiRange.',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'vigilante://redairange/scenarios',
+          name: 'RedAiRange AI Red-Teaming Scenarios Catalog',
+          description: 'Built-in AI/ML red teaming targets and Blackcart arsenal stacks mapped to OWASP LLM Top 10 and MITRE ATLAS.',
           mimeType: 'application/json'
         }
       ]
@@ -632,6 +655,48 @@ export function createVigilanteMcpServer() {
             uri,
             mimeType: 'application/json',
             text: JSON.stringify({ count: BUILTIN_FALCO_RULES.length, rules: BUILTIN_FALCO_RULES }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // RedAiRange AI Cyber Range Status
+    if (uri === 'vigilante://redairange/status') {
+      const rarMod = new RedAiRangeModule();
+      const cfg = loadConfig();
+      const cluster = cfg.defaults?.clusterName || 'vigilante-dev';
+      const domain = cfg.defaults?.domain || 'vigilante.local';
+      const provider = cfg.defaults?.clusterProvider || null;
+      const status = await rarMod.status({ domain, clusterName: cluster, provider });
+      const runtime = rarMod.getRuntimeInfo();
+      const bridged = await listBridgedAiChallenges();
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              ...status,
+              runtime,
+              scenariosCount: REDAIRANGE_SCENARIOS.length,
+              bridgedCount: bridged.length
+            }, null, 2)
+          }
+        ]
+      };
+    }
+
+    // RedAiRange AI Scenarios Catalog
+    if (uri === 'vigilante://redairange/scenarios') {
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              count: REDAIRANGE_SCENARIOS.length,
+              scenarios: REDAIRANGE_SCENARIOS
+            }, null, 2)
           }
         ]
       };
@@ -2676,6 +2741,67 @@ export function createVigilanteMcpServer() {
               }
             }
           }
+        },
+        {
+          name: 'get_redairange_status',
+          description: 'Check deployment health, isolated Docker-in-Docker (DinD) runtime guardrails, ingress endpoints, and active AI-CTF bridge count for the RedAiRange module.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              namespace: { type: 'string', description: 'Target Kubernetes namespace (default: redairange)' },
+              clusterName: { type: 'string', description: 'Cluster name (default: vigilante-dev)' }
+            }
+          }
+        },
+        {
+          name: 'list_redairange_scenarios',
+          description: 'List RedAiRange AI/ML red-teaming target and arsenal scenarios with OWASP LLM Top 10 and MITRE ATLAS mappings.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['all', 'target', 'arsenal'], description: 'Filter by stack kind (target or arsenal)' },
+              difficulty: { type: 'string', enum: ['all', 'Easy', 'Medium', 'Hard'], description: 'Filter by scenario difficulty' },
+              search: { type: 'string', description: 'Keyword search across scenario name, OWASP LLM, or MITRE ATLAS IDs' }
+            }
+          }
+        },
+        {
+          name: 'generate_redairange_compose',
+          description: 'Generate a hardened RedAiRange scenario compose.yaml stack or validate a custom compose.yaml against Vigilante isolation guardrails (blocks host docker.sock and privileged escape mounts).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenarioId: { type: 'string', description: 'Built-in RedAiRange scenario ID (e.g. gen-ai-target, model-tampering, privacy-attacks)' },
+              rawYaml: { type: 'string', description: 'Optional custom compose.yaml content to security-lint instead of generating a built-in stack' },
+              port: { type: 'number', description: 'Optional loopback port override (1024-65535)' }
+            }
+          }
+        },
+        {
+          name: 'bridge_redairange_to_ctf',
+          description: 'Provision a RedAiRange AI red-teaming scenario as a Vigilante AI-CTF challenge with fail-closed HMAC-SHA256 dynamic per-team flag (redacted in output). Defaults to real cluster provisioning; pass mock=true for offline simulation.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenarioId: { type: 'string', description: 'RedAiRange scenario ID to bridge (e.g. gen-ai-target, adversarial-playground, model-tampering)' },
+              teamId: { type: 'string', description: 'Team identifier for per-team dynamic HMAC flag derivation (default: mcp-team)' },
+              namespace: { type: 'string', description: 'Target RedAiRange Kubernetes namespace (default: redairange)' },
+              clusterName: { type: 'string', description: 'Cluster name (default: vigilante-dev)' },
+              mock: { type: 'boolean', description: 'Set true for offline synthetic simulation (default: false)' }
+            },
+            required: ['scenarioId']
+          }
+        },
+        {
+          name: 'evaluate_ai_redteam_telemetry',
+          description: 'Map a RedAiRange AI attack scenario to recommended Falco eBPF runtime detection rules, Suricata signatures, MITRE ATLAS tactics, and automated SOAR containment actions.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenarioId: { type: 'string', description: 'RedAiRange scenario ID (e.g. gen-ai-target, evasion-attacks, model-tampering, privacy-attacks)' }
+            },
+            required: ['scenarioId']
+          }
         }
       ]
     };
@@ -4600,6 +4726,85 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
       const metrics = aggregateFalcoMetrics(events);
       return {
         content: [{ type: 'text', text: JSON.stringify(metrics, null, 2) }]
+      };
+    }
+
+    // Tool: get_redairange_status
+    if (name === 'get_redairange_status') {
+      const rarMod = new RedAiRangeModule();
+      const cfg = loadConfig();
+      const cluster = args.clusterName || cfg.defaults?.clusterName || 'vigilante-dev';
+      const domain = cfg.defaults?.domain || 'vigilante.local';
+      const provider = cfg.defaults?.clusterProvider || null;
+      const status = await rarMod.status({ domain, clusterName: cluster, namespace: args.namespace, provider });
+      const runtime = rarMod.getRuntimeInfo();
+      const bridged = await listBridgedAiChallenges();
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            ...status,
+            runtime,
+            scenariosCount: REDAIRANGE_SCENARIOS.length,
+            bridgedCount: bridged.length
+          }, null, 2)
+        }]
+      };
+    }
+
+    // Tool: list_redairange_scenarios
+    if (name === 'list_redairange_scenarios') {
+      const scenarios = listRedAiRangeScenarios({
+        kind: args.kind || null,
+        difficulty: args.difficulty || null,
+        search: args.search || null
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ count: scenarios.length, scenarios }, null, 2) }]
+      };
+    }
+
+    // Tool: generate_redairange_compose
+    if (name === 'generate_redairange_compose') {
+      if (typeof args.rawYaml === 'string' && args.rawYaml.trim()) {
+        const validation = validateStackComposeYaml(args.rawYaml);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ mode: 'validate', validation }, null, 2) }]
+        };
+      }
+      const composeYaml = generateScenarioComposeYaml(args.scenarioId, { port: args.port || null });
+      const validation = validateStackComposeYaml(composeYaml);
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ mode: 'generate', scenarioId: args.scenarioId, composeYaml, validation }, null, 2) }]
+      };
+    }
+
+    // Tool: bridge_redairange_to_ctf
+    if (name === 'bridge_redairange_to_ctf') {
+      const cfg = loadConfig();
+      const cluster = args.clusterName || cfg.defaults?.clusterName || 'vigilante-dev';
+      const domain = cfg.defaults?.domain || 'vigilante.local';
+      const provider = cfg.defaults?.clusterProvider || null;
+      const record = await provisionAiCtfChallenge({
+        scenarioId: args.scenarioId,
+        teamId: args.teamId || 'mcp-team',
+        domain,
+        namespace: args.namespace || 'redairange',
+        clusterName: cluster,
+        provider,
+        mock: args.mock !== undefined ? Boolean(args.mock) : false
+      });
+      // Never expose flag or flag-bearing compose manifest over MCP
+      return {
+        content: [{ type: 'text', text: JSON.stringify(redactAiCtfRecord(record), null, 2) }]
+      };
+    }
+
+    // Tool: evaluate_ai_redteam_telemetry
+    if (name === 'evaluate_ai_redteam_telemetry') {
+      const telemetry = evaluateAiAttackTelemetry(args.scenarioId);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(telemetry, null, 2) }]
       };
     }
 

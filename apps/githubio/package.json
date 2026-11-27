@@ -14,11 +14,11 @@
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
-    "@next/mdx": "^16.4.0",
+    "@next/mdx": "^16.4.6",
     "@tailwindcss/typography": "^0.5.20",
     "@types/mdx": "^2.0.14",
     "mermaid": "^12.1.0",
-    "next": "16.4.0",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "rehype-pretty-code": "^0.14.5",
@@ -31,7 +31,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.6",
     "pagefind": "^1.5.2",
     "tailwindcss": "^4",
     "typescript": "^5"

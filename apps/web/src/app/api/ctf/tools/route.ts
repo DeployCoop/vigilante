@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   generateDeBruijnPattern,
   findDeBruijnOffset,
   autoIdentifyCipher,
   parseJwt,
   dragXorCrib,
-  rsaWeakPrimes
+  rsaWeakPrimes,
+  findRopGadgets,
+  checksec
 } from 'vigilante_lib/engine/ctf-tools.js';
+import { resolvePathInside } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
 import { errorMessage } from '@/lib/envelope';
 
@@ -82,8 +87,70 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = rsaWeakPrimes({ n, e, method });
+      const result = (rsaWeakPrimes as any)({ n, e, method });
       return NextResponse.json({ success: true, tool, ...result });
+    }
+
+    if (tool === 'rop') {
+      let buf: Buffer | null = null;
+      if (body.hexBytes) {
+        buf = Buffer.from(body.hexBytes.replace(/[^0-9a-fA-F]/g, ''), 'hex');
+      } else if (body.base64Bytes) {
+        buf = Buffer.from(body.base64Bytes, 'base64');
+      } else if (body.filePath) {
+        const allowedBase = path.resolve(process.cwd(), 'ctf-workspace');
+        let targetPath: string;
+        try {
+          targetPath = resolvePathInside(allowedBase, String(body.filePath));
+        } catch {
+          return NextResponse.json(
+            { success: false, error: 'Path traversal: filePath must reside within ctf-workspace' },
+            { status: 400 }
+          );
+        }
+        buf = await fs.readFile(targetPath);
+      }
+
+      if (!buf || buf.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Binary input required: provide hexBytes, base64Bytes, or a filePath within ctf-workspace' },
+          { status: 400 }
+        );
+      }
+
+      const ropResult = (findRopGadgets as any)({ binaryBuffer: buf });
+      return NextResponse.json({ success: true, tool, ...ropResult });
+    }
+
+    if (tool === 'checksec') {
+      let buf: Buffer | null = null;
+      if (body.hexBytes) {
+        buf = Buffer.from(body.hexBytes.replace(/[^0-9a-fA-F]/g, ''), 'hex');
+      } else if (body.base64Bytes) {
+        buf = Buffer.from(body.base64Bytes, 'base64');
+      } else if (body.filePath) {
+        const allowedBase = path.resolve(process.cwd(), 'ctf-workspace');
+        let targetPath: string;
+        try {
+          targetPath = resolvePathInside(allowedBase, String(body.filePath));
+        } catch {
+          return NextResponse.json(
+            { success: false, error: 'Path traversal: filePath must reside within ctf-workspace' },
+            { status: 400 }
+          );
+        }
+        buf = await fs.readFile(targetPath);
+      }
+
+      if (!buf || buf.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Binary input required: provide hexBytes, base64Bytes, or a filePath within ctf-workspace' },
+          { status: 400 }
+        );
+      }
+
+      const secInfo = await checksec(buf);
+      return NextResponse.json({ success: true, tool, ...secInfo });
     }
 
     return NextResponse.json(

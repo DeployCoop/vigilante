@@ -1,0 +1,24 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "redairange.fullname" . }}-isolation
+  namespace: {{ include "redairange.namespace" . }}
+  labels:
+    {{- include "redairange.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "redairange.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}
+        {{- range .Values.service.scenarioPorts }}
+        - protocol: TCP
+          port: {{ .port }}
+        {{- end }}
+{{- end }}

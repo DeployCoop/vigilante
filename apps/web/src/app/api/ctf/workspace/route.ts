@@ -5,6 +5,7 @@ import {
   sealSolveEvidence
 } from 'vigilante_lib/engine/ctf-client.js';
 import { CHALLENGE_TEMPLATES } from 'vigilante_lib/engine/kctf.js';
+import { resolvePathInside } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest } from '@/lib/authz';
 import { errorMessage } from '@/lib/envelope';
 
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'init';
+    const baseDir = process.cwd();
 
     if (action === 'init') {
       const {
@@ -27,8 +29,18 @@ export async function POST(req: NextRequest) {
         teamName = 'Team Unknown'
       } = body;
 
+      let safeTargetDir: string;
+      try {
+        safeTargetDir = resolvePathInside(baseDir, String(targetDir));
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Path traversal: targetDir must reside within workspace root' },
+          { status: 400 }
+        );
+      }
+
       const result = await initCtfWorkspace({
-        targetDir,
+        targetDir: safeTargetDir,
         tournamentTitle,
         tournamentUrl,
         teamToken,
@@ -63,6 +75,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      let safeOutputDir = outputDir;
+      if (outputDir) {
+        try {
+          safeOutputDir = resolvePathInside(baseDir, String(outputDir));
+        } catch {
+          return NextResponse.json(
+            { success: false, error: 'Path traversal: outputDir must reside within workspace root' },
+            { status: 400 }
+          );
+        }
+      }
+
       const result = await generateSignedWriteup({
         challengeId,
         challengeName,
@@ -72,7 +96,7 @@ export async function POST(req: NextRequest) {
         vulnerabilityDescription,
         exploitScript,
         flag,
-        outputDir
+        outputDir: safeOutputDir
       });
 
       return NextResponse.json({
@@ -100,14 +124,26 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const result = await sealSolveEvidence({
+      let safeOutputDir = outputDir;
+      if (outputDir) {
+        try {
+          safeOutputDir = resolvePathInside(baseDir, String(outputDir));
+        } catch {
+          return NextResponse.json(
+            { success: false, error: 'Path traversal: outputDir must reside within workspace root' },
+            { status: 400 }
+          );
+        }
+      }
+
+      const result = await (sealSolveEvidence as any)({
         teamId,
         challengeId,
         flag,
         solveScriptContent,
         writeupContent,
         sessionCastContent,
-        outputDir
+        outputDir: safeOutputDir
       });
 
       return NextResponse.json({

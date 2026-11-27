@@ -450,6 +450,14 @@ export function getCtfSandboxesFile() {
 }
 
 /**
+ * Get the file used to persist RedAiRange AI-CTF bridge records across processes
+ * @returns {string}
+ */
+export function getRedAiRangeBridgeFile() {
+  return path.join(getVigilanteConfigDir(), 'redairange-bridge.json');
+}
+
+/**
  * Resolve the HMAC secret used to derive and verify per-team CTF flags.
  * Order: explicit argument, the VIGILANTE_CTF_SECRET environment variable,
  * then `ctf.flagSecret` in config.yaml. Returns null when no secret is
