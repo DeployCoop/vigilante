@@ -137,7 +137,11 @@ async function runTests() {
       }
       const elapsedMs = Date.now() - start;
       if (!timeoutErr) throw new Error('runNmapScan against a hung nmap must reject');
-      if (!/timed out/i.test(timeoutErr.message)) throw new Error(`Expected a timeout error, got: ${timeoutErr.message}`);
+      // execa 8 races its timeout rejection against the killed process's own
+      // exit rejection, so the same kill surfaces as either "timed out" or
+      // "killed with SIGTERM" (flaky 1-in-5 under load). Both prove the timeout
+      // killed the subprocess; the elapsed bound below is the real proof.
+      if (!/timed out/i.test(timeoutErr.message) && !/killed with SIGTERM/i.test(timeoutErr.message)) throw new Error(`Expected a timeout error, got: ${timeoutErr.message}`);
       if (elapsedMs > 5000) throw new Error(`runNmapScan must abort near timeoutMs, took ${elapsedMs}ms`);
       console.log(`✔ Test 9 passed: hung nmap killed after ~200ms timeout (took ${elapsedMs}ms).`);
     } finally {

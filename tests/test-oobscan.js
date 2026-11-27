@@ -237,7 +237,11 @@ async function runTests() {
       }
       const elapsedMs = Date.now() - start;
       assert.ok(timeoutErr, 'runOobScan against a hung oobscan must reject');
-      assert.match(timeoutErr.message, /timed out/i, `Expected a timeout error, got: ${timeoutErr.message}`);
+      // execa 8 races its timeout rejection against the killed process's own
+      // exit rejection, so the same kill surfaces as either "timed out" or
+      // "killed with SIGTERM" (flaky 1-in-5 under load). Both prove the timeout
+      // killed the subprocess; the elapsed bound below is the real proof.
+      assert.match(timeoutErr.message, /timed out|killed with SIGTERM/i, `Expected a timeout error, got: ${timeoutErr.message}`);
       assert.ok(elapsedMs < 5000, `runOobScan must abort near timeoutMs, took ${elapsedMs}ms`);
       console.log(`✔ Test 9 passed: hung oobscan killed after ~200ms timeout (took ${elapsedMs}ms).`);
     } finally {
