@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencti.fullname" . }}-minio
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "minio") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "minio") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencti.componentLabels" (dict "context" . "component" "minio") | nindent 8 }}
+    spec:
+      containers:
+        - name: minio
+          image: {{ include "opencti.image" (dict "context" . "component" "minio") | quote }}
+          imagePullPolicy: {{ include "opencti.imagePullPolicy" (dict "context" . "component" "minio") }}
+          args:
+            - server
+            - /data
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.rootUser | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - name: s3
+              containerPort: 9000
+              protocol: TCP
+          volumeMounts:
+            {{- if .Values.minio.persistence.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+      {{- if .Values.minio.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "opencti.fullname" . }}-minio
+      {{- end }}

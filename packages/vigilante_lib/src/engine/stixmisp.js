@@ -77,7 +77,7 @@ export function parseStixBundle(bundleData) {
 /**
  * Helper to extract raw IOC value and type from standard STIX pattern string
  */
-function extractIocFromPattern(pattern = '') {
+export function extractIocFromPattern(pattern = '') {
   if (!pattern) return { type: 'unknown', value: null };
 
   const ipv4Match = pattern.match(/ipv4-addr:value\s*=\s*'([^']+)'/i);

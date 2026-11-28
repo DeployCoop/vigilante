@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { getVigilanteCtiDir, ensureVigilanteConfig } from './config.js';
+import { matchOpenCtiIndicators } from './opencti.js';
 import { logger } from '../utils/logger.js';
 
 // Sample fallback CTI indicators for offline testing / baseline detection
@@ -210,6 +211,17 @@ export async function matchCtiIndicators(indicatorsInput = [], options = {}) {
       });
       continue;
     }
+  }
+
+  // OpenCTI cache (offline): match anything the feed checks above missed
+  // against the synced OpenCTI indicators. A missing or corrupt cache is
+  // skipped, never fatal — the feed matches above still apply.
+  try {
+    const alreadyMatched = new Set(matches.map((m) => String(m.indicator).trim()));
+    const unmatched = targetList.filter((item) => !alreadyMatched.has(String(item).trim()));
+    matches.push(...matchOpenCtiIndicators(unmatched));
+  } catch (err) {
+    logger.warn('CTI', `OpenCTI cache match skipped: ${err?.message || err}`);
   }
 
   // Attach metadata properties so both array usage and object usage work seamlessly

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencti.fullname" . }}-redis
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencti.componentLabels" (dict "context" . "component" "redis") | nindent 8 }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ include "opencti.image" (dict "context" . "component" "redis") | quote }}
+          imagePullPolicy: {{ include "opencti.imagePullPolicy" (dict "context" . "component" "redis") }}
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          volumeMounts:
+            {{- if .Values.redis.persistence.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+      {{- if .Values.redis.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "opencti.fullname" . }}-redis
+      {{- end }}

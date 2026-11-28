@@ -80,7 +80,7 @@ async function runTests() {
   }
 
   // Test 6: documented view commands are not branded "Unknown command"
-  for (const cmd of ['ai', 'openvas', 'battle']) {
+  for (const cmd of ['ai', 'openvas', 'battle', 'opencti']) {
     const { status, out } = runCli([cmd, '--non-interactive']);
     assert.strictEqual(status, 0, `${cmd} should exit 0, got ${status}`);
     assert(!out.includes(`Unknown command: ${cmd}`), `${cmd} must not be reported unknown`);

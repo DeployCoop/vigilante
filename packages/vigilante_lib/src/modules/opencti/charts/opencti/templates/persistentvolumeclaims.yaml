@@ -1,0 +1,47 @@
+{{- if .Values.redis.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opencti.fullname" . }}-redis
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "redis") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size | quote }}
+---
+{{- end }}
+{{- if .Values.rabbitmq.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opencti.fullname" . }}-rabbitmq
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "rabbitmq") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.rabbitmq.persistence.size | quote }}
+---
+{{- end }}
+{{- if .Values.minio.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opencti.fullname" . }}-minio
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "minio") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size | quote }}
+{{- end }}

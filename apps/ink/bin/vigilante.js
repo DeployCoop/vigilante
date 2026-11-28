@@ -75,6 +75,7 @@ const cli = meow(`
     evidencepack Court-admissible ISO 27037 & RFC 3161 evidence bundle generator
     falco       Inspect Falco eBPF runtime threat sensor, detection rules, and metrics
     redairange  Manage RedAiRange AI red teaming cyber range, scenarios & AI-CTF bridge
+    opencti     Query and sync the OpenCTI threat intelligence platform
     authz       Manage RBAC authorization store, principals, tokens, and grants
 
   Options
@@ -239,6 +240,21 @@ const cli = meow(`
       shortFlag: 'q'
     },
     incident: {
+      type: 'string'
+    },
+    type: {
+      type: 'string'
+    },
+    score: {
+      type: 'number'
+    },
+    since: {
+      type: 'string'
+    },
+    openctiUrl: {
+      type: 'string'
+    },
+    description: {
       type: 'string'
     },
     // Declared explicitly so --mock=false / --no-mock parse as booleans:
@@ -1284,6 +1300,134 @@ Usage:
 `);
       process.exit(0);
     }
+  });
+} else if (command === 'opencti') {
+  import('../src/engine/opencti.js').then(async (opencti) => {
+    const {
+      resolveOpenCtiConfig,
+      checkOpenCtiConnection,
+      lookupOpenCtiObservable,
+      syncOpenCtiIndicators,
+      readOpenCtiIndicatorCache,
+      createOpenCtiIndicator,
+      pushStixBundleToOpenCti
+    } = opencti;
+    const sub = cli.input[1] || 'status';
+    const cfg = resolveOpenCtiConfig({ url: cli.flags.openctiUrl || undefined });
+
+    // The token never comes from argv: env or config.yaml only.
+    const requireToken = () => {
+      if (!cfg.configured) {
+        console.error('OpenCTI token is not configured. Set $OPENCTI_TOKEN or opencti.token in config.yaml');
+        process.exit(1);
+      }
+    };
+
+    try {
+      if (sub === 'status') {
+        const conn = await checkOpenCtiConnection({ url: cfg.url, token: cfg.token });
+        const cache = readOpenCtiIndicatorCache();
+        console.log('\n🛰️  OPENCTI THREAT INTELLIGENCE STATUS');
+        console.log('='.repeat(70));
+        console.log(`Instance:      ${cfg.url}`);
+        console.log(`Connected:     ${conn.connected ? 'yes' : 'no'}`);
+        if (conn.connected) {
+          console.log(`User:          ${conn.user?.name || conn.user?.id || '(unknown)'}${conn.user?.email ? ` <${conn.user.email}>` : ''}`);
+        } else {
+          console.log(`Error:         ${conn.error}`);
+        }
+        if (cache) {
+          console.log(`Cache:         ${cache.count} indicator(s), last sync ${cache.syncedAt}`);
+        } else {
+          console.log('Cache:         (none — run `vigilante opencti sync`)');
+        }
+        console.log('='.repeat(70) + '\n');
+        process.exit(0);
+      } else if (sub === 'lookup') {
+        const value = cli.input[2];
+        if (!value) {
+          console.error('Usage: vigilante opencti lookup <ip|domain|url|hash>');
+          process.exit(1);
+        }
+        requireToken();
+        const result = await lookupOpenCtiObservable(value, { url: cfg.url, token: cfg.token });
+        console.log(`\n🛰️  OPENCTI LOOKUP: ${result.value} (${result.type})`);
+        console.log('='.repeat(70));
+        console.log(`Found:         ${result.found ? 'yes' : 'no'}`);
+        for (const obs of result.observables) {
+          console.log(`Observable:    ${obs.entityType || '?'} ${obs.observableValue} (score ${obs.score ?? '—'})`);
+        }
+        for (const ind of result.indicators) {
+          console.log(`Indicator:     ${ind.name || ind.id} — ${ind.pattern || ''}`);
+          console.log(`               score ${ind.score ?? '—'} · revoked ${ind.revoked ? 'yes' : 'no'} · labels ${ind.labels.join(', ') || '—'}`);
+        }
+        console.log('='.repeat(70) + '\n');
+        process.exit(0);
+      } else if (sub === 'sync') {
+        requireToken();
+        const result = await syncOpenCtiIndicators({ url: cfg.url, token: cfg.token, since: cli.flags.since || undefined });
+        console.log(`\n🛰️  OPENCTI SYNC: ${result.synced} indicator(s) fetched, cache holds ${result.count}`);
+        console.log(`Cache file:    ${result.file}`);
+        console.log(`Synced at:     ${result.syncedAt}\n`);
+        process.exit(0);
+      } else if (sub === 'push') {
+        const bundleFile = cli.input[2];
+        if (!bundleFile) {
+          console.error('Usage: vigilante opencti push <stix-bundle.json>');
+          process.exit(1);
+        }
+        requireToken();
+        const { readFile } = await import('node:fs/promises');
+        const bundle = JSON.parse(await readFile(bundleFile, 'utf8'));
+        const result = await pushStixBundleToOpenCti(bundle, { url: cfg.url, token: cfg.token });
+        console.log(`\n🛰️  OPENCTI PUSH: ${result.pushed.indicators} indicator(s), ${result.pushed.observables} observable(s) pushed`);
+        console.log(`Skipped:       ${result.skipped.relationships} relationship(s), ${result.skipped.other} other object(s)`);
+        if (result.failures.length > 0) {
+          console.log('Failures:');
+          for (const f of result.failures) console.log(`  • ${f.type} ${f.id || ''}: ${f.error}`);
+        }
+        console.log('');
+        process.exit(result.ok ? 0 : 1);
+      } else if (sub === 'create-indicator') {
+        const value = cli.input[2];
+        const type = cli.flags.type;
+        if (!value || !type) {
+          console.error('Usage: vigilante opencti create-indicator <value> --type <ipv4|ipv6|domain|url|sha256|sha1|md5> [--score N] [--description "..."]');
+          process.exit(1);
+        }
+        requireToken();
+        const created = await createOpenCtiIndicator({
+          url: cfg.url,
+          token: cfg.token,
+          value,
+          type,
+          score: typeof cli.flags.score === 'number' ? cli.flags.score : null,
+          description: cli.flags.description || undefined
+        });
+        console.log(`\n🛰️  OPENCTI INDICATOR CREATED: ${created.id}`);
+        console.log(`Pattern:       ${created.pattern}`);
+        console.log(`Score:         ${created.score ?? '—'}\n`);
+        process.exit(0);
+      } else {
+        console.log(`Usage:
+  vigilante opencti status                       Show connection + cache status
+  vigilante opencti lookup <ip|domain|url|hash>  Look a value up in OpenCTI
+  vigilante opencti sync [--since <iso-date>]    Sync indicators into the local cache
+  vigilante opencti push <stix-bundle.json>      Push a STIX 2.1 bundle into OpenCTI
+  vigilante opencti create-indicator <value> --type <ipv4|ipv6|domain|url|sha256|sha1|md5> [--score N]
+
+OpenCTI is configured via $OPENCTI_URL / $OPENCTI_TOKEN (or opencti.url / opencti.token in config.yaml).
+The token is never accepted on the command line.
+`);
+        process.exit(0);
+      }
+    } catch (err) {
+      console.error(`OpenCTI error: ${err?.message || err}`);
+      process.exit(1);
+    }
+  }).catch((err) => {
+    console.error(`OpenCTI error: ${err?.message || err}`);
+    process.exit(1);
   });
 } else if (command === 'scenario') {
   const engine = new ScenarioEngine();

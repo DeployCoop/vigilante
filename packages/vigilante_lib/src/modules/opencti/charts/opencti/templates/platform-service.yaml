@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opencti.fullname" . }}-platform
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "platform") | nindent 4 }}
+spec:
+  type: {{ .Values.platform.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.platform.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "platform") | nindent 4 }}

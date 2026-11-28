@@ -20,6 +20,7 @@ This document details all 12 modular security packages supported by **Vigilante*
 | **`flamingo`** | SIEM UI | Modern OpenSearch Web Interface | `https://flamingo.vigilante.local` | Inherits OpenSearch |
 | **`kctf`** | Cyber Range | Google kCTF Sandboxed Security Challenges | `https://ctf.vigilante.local` | CTF Admin Managed |
 | **`openvas`** | Vulnerability| Greenbone Vulnerability Management (GVM) | `https://openvas.vigilante.local` | `admin` / `OpenVAS123!` |
+| **`opencti`** | CTI | OpenCTI Threat Intelligence Platform (STIX 2.1) | `https://opencti.vigilante.local` | Generated at install (printed once by the install log) |
 
 ---
 
@@ -145,6 +146,14 @@ This document details all 12 modular security packages supported by **Vigilante*
 - **Architecture**:
   - Minimalistic, low-footprint mock backend for rapid offline development, UI testing, and CI validation.
   - Avoids starting heavy Java/Elasticsearch containers when testing CLI interactions and reporting tools.
+
+### 13. OpenCTI Threat Intelligence Platform (`opencti`)
+- **Directory**: `packages/vigilante_lib/src/modules/opencti/`
+- **Architecture**:
+  - OpenCTI 7.261127.0 platform + worker, with bundled Redis, RabbitMQ, and S3 storage (pgsty/silo). Search runs on the OpenSearch module (declared dependency, `engine_client=opensearch`).
+  - No default credentials: the module generates the admin password/token and the RabbitMQ/MinIO passwords on first install (reused from the `opencti-credentials` Secret afterwards) and prints the admin token once — that token is `$OPENCTI_TOKEN` for the integration below.
+- **Integration**: the OpenCTI engine (`engine/opencti.js`) talks GraphQL to the platform — `vigilante opencti <status|lookup|sync|push|create-indicator>`, five MCP tools (`opencti_status`, `opencti_lookup`, `opencti_sync_indicators`, `opencti_create_indicator`, `opencti_push_stix`), the `/opencti` web page, and `matchCtiIndicators` (synced indicators match alongside the Feodo/URLhaus feeds).
+- **Values Override**: `packages/vigilante_lib/src/modules/opencti/values/opencti.yaml`
 
 ---
 
