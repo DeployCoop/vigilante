@@ -1,0 +1,144 @@
+# Default values for the OpenCTI Helm chart.
+# Deployed by the vigilante opencti module (modules/opencti/index.js), which
+# passes the secrets via --set (generated or operator-provided) and the
+# ingress host/TLS secret via --set. Search runs on the OpenSearch module:
+# ELASTICSEARCH__ENGINE_CLIENT=opensearch against the repo's opensearch
+# install (security plugin disabled there, so no search credentials).
+
+# ----------------------------------------------------------------------------
+# Platform (opencti/platform)
+# ----------------------------------------------------------------------------
+platform:
+  replicaCount: 1
+  image:
+    repository: opencti/platform
+    # Empty → fall back to .Chart.AppVersion (7.261127.0)
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  adminEmail: admin@vigilante.local
+  logLevel: error
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1024Mi
+    limits:
+      cpu: 2000m
+      memory: 4096Mi
+
+# ----------------------------------------------------------------------------
+# Worker (opencti/worker)
+# ----------------------------------------------------------------------------
+worker:
+  replicaCount: 1
+  image:
+    repository: opencti/worker
+    # Empty → fall back to .Chart.AppVersion (7.261127.0)
+    tag: ""
+    pullPolicy: IfNotPresent
+  logLevel: info
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
+
+# ----------------------------------------------------------------------------
+# Redis (bundled; the platform's cache)
+# ----------------------------------------------------------------------------
+redis:
+  image:
+    repository: redis
+    tag: "8.10.1"
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ----------------------------------------------------------------------------
+# RabbitMQ (bundled; the platform's message bus)
+# ----------------------------------------------------------------------------
+rabbitmq:
+  image:
+    repository: rabbitmq
+    tag: "4.3-management"
+    pullPolicy: IfNotPresent
+  user: opencti
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+
+# ----------------------------------------------------------------------------
+# S3-compatible storage (bundled; file attachments).
+# Image tracks the official OpenCTI compose (pgsty/silo); pin it via
+# minio.image.tag if the deployment needs a fixed build.
+# ----------------------------------------------------------------------------
+minio:
+  image:
+    repository: pgsty/silo
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  rootUser: opencti
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+
+# ----------------------------------------------------------------------------
+# Search engine — the OpenSearch module (dependency). Override when the
+# OpenSearch install lives in another namespace or under another release.
+# ----------------------------------------------------------------------------
+opensearch:
+  # Engine client: auto-detects OpenSearch vs Elasticsearch; forced here
+  # because the repo's search backend is always OpenSearch.
+  engineClient: opensearch
+  url: http://opensearch-cluster-master.default.svc.cluster.local:9200
+
+# ----------------------------------------------------------------------------
+# Secrets — every value is required; the module passes them via --set.
+# Never commit real values here.
+# ----------------------------------------------------------------------------
+secrets:
+  adminPassword: ""
+  adminToken: ""
+  rabbitmqPassword: ""
+  minioPassword: ""
+
+# ----------------------------------------------------------------------------
+# Ingress (mkcert TLS secret injected by the module)
+# ----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  hosts:
+    - host: opencti.vigilante.local
+  tls:
+    - secretName: opencti-tls
+      hosts:
+        - opencti.vigilante.local

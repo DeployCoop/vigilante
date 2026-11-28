@@ -24,13 +24,15 @@ import {
   X,
   Key,
   BookOpen,
-  Bot
+  Bot,
+  Satellite
 } from 'lucide-react';
 
 export const COMMAND_ITEMS = [
   // CTF Cyber Range
   { href: '/event', label: 'CTF Player Field Manual & Solver Workbench', section: 'CTF Cyber Range Platform', icon: BookOpen, key: 'e' },
   { href: '/redairange', label: 'RedAiRange AI Red-Teaming Range & AI-CTF Bridge', section: 'CTF Cyber Range Platform', icon: Bot, key: 'r' },
+  { href: '/opencti', label: 'OpenCTI Threat Intelligence Lookup & Sync', section: 'NIST Phase 2: Detection & Analysis', icon: Satellite, key: 'o' },
 
   // Settings & Access
   { href: '/settings/access', label: 'Access Control & Security Audit (CASL RBAC)', section: 'Settings & Administration', icon: Key, key: 'a' },

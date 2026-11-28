@@ -3,7 +3,8 @@ import { CHALLENGE_TEMPLATES, CHALLENGE_CATEGORIES } from 'vigilante_lib/engine/
 import { AI_CTF_CATEGORY, buildAiCtfChallengeCatalog } from 'vigilante_lib/engine/redairange.js';
 import { requireCtfFlagSecret } from 'vigilante_lib/engine/config.js';
 import { authorizeRequest, resolveAuthzContext } from '@/lib/authz';
-import { getTournamentEngine, persistTournamentState } from '@/lib/ctf-tournament-server';
+import { getTournamentEngine, persistTournamentState, type ChallengeTemplateView } from '@/lib/ctf-tournament-server';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     const engine = await getTournamentEngine();
     const team = teamId ? (engine.teams.get(teamId) || Array.from(engine.teams.values()).find(t => t.name.toLowerCase() === teamId.toLowerCase())) : null;
 
-    const combinedTemplates = [
+    const combinedTemplates: ChallengeTemplateView[] = [
       ...CHALLENGE_TEMPLATES,
       ...buildAiCtfChallengeCatalog()
     ];
@@ -40,9 +41,9 @@ export async function GET(req: NextRequest) {
         serviceType: c.serviceType,
         description: c.description,
         hintsCount: c.hints?.length || 0,
-        source: (c as any).source || 'kctf',
-        owaspLlm: (c as any).owaspLlm || undefined,
-        mitreAtlas: (c as any).mitreAtlas || undefined,
+        source: c.source || 'kctf',
+        owaspLlm: c.owaspLlm || undefined,
+        mitreAtlas: c.mitreAtlas || undefined,
         currentPoints,
         solvesCount,
         firstBlood,
@@ -63,8 +64,8 @@ export async function GET(req: NextRequest) {
         totalTeams: engine.teams.size
       }
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -88,9 +89,9 @@ export async function POST(req: NextRequest) {
     let ctfSecret: string;
     try {
       ctfSecret = requireCtfFlagSecret();
-    } catch (secretErr: any) {
+    } catch (secretErr: unknown) {
       return NextResponse.json(
-        { success: false, error: secretErr.message },
+        { success: false, error: errorMessage(secretErr) },
         { status: 503 }
       );
     }
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
       teamName: team.name,
       challengeId
     }, { status: result.success ? 200 : 400 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

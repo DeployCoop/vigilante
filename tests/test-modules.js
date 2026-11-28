@@ -184,6 +184,56 @@ async function runTests() {
   }
   console.log('✔ Test 9 passed: getModuleStatuses collects statuses, forwards cluster/domain, and isolates per-module failures.');
 
+  // Test 10: OpenCTI module registration + chart contents
+  const opencti = new ModuleRegistry().get('opencti');
+  if (!opencti) {
+    throw new Error('Module registry must include opencti');
+  }
+  if (opencti.id !== 'opencti' || JSON.stringify(opencti.dependencies) !== JSON.stringify(['opensearch'])) {
+    throw new Error(`opencti module must declare dependencies ['opensearch'], got: ${JSON.stringify(opencti.dependencies)}`);
+  }
+  const openctiRuntime = opencti.getRuntimeInfo();
+  if (openctiRuntime.platformImage !== 'opencti/platform:7.261127.0' || openctiRuntime.workerImage !== 'opencti/worker:7.261127.0') {
+    throw new Error(`opencti runtime images must pin 7.261127.0, got: ${openctiRuntime.platformImage} / ${openctiRuntime.workerImage}`);
+  }
+  if (opencti.namespace !== 'opencti') {
+    throw new Error(`opencti module namespace must be 'opencti', got: ${opencti.namespace}`);
+  }
+  const openctiChartYaml = await fs.readFile(path.resolve('src/modules/opencti/charts/opencti/Chart.yaml'), 'utf8');
+  if (!openctiChartYaml.includes('version: 0.1.0') || !openctiChartYaml.includes('appVersion: 7.261127.0')) {
+    throw new Error('opencti Chart.yaml must specify version 0.1.0 and appVersion 7.261127.0');
+  }
+  const platformTemplate = await fs.readFile(path.resolve('src/modules/opencti/charts/opencti/templates/platform-deployment.yaml'), 'utf8');
+  for (const needle of ['ELASTICSEARCH__ENGINE_CLIENT', 'ELASTICSEARCH__URL', 'APP__ADMIN__TOKEN', 'RABBITMQ__HOSTNAME', 'MINIO__ENDPOINT']) {
+    if (!platformTemplate.includes(needle)) {
+      throw new Error(`platform-deployment.yaml must set ${needle}`);
+    }
+  }
+  const secretTemplate = await fs.readFile(path.resolve('src/modules/opencti/charts/opencti/templates/secret.yaml'), 'utf8');
+  for (const needle of ['secrets.adminPassword', 'secrets.adminToken', 'secrets.rabbitmqPassword', 'secrets.minioPassword']) {
+    if (!secretTemplate.includes(needle) || !secretTemplate.includes('required')) {
+      throw new Error(`secret.yaml must require ${needle} instead of shipping a default`);
+    }
+  }
+  const workerTemplate = await fs.readFile(path.resolve('src/modules/opencti/charts/opencti/templates/worker-deployment.yaml'), 'utf8');
+  if (!workerTemplate.includes('OPENCTI_URL') || !workerTemplate.includes('OPENCTI_TOKEN')) {
+    throw new Error('worker-deployment.yaml must point OPENCTI_URL at the platform service with OPENCTI_TOKEN from the Secret');
+  }
+  const ingressTemplate = await fs.readFile(path.resolve('src/modules/opencti/charts/opencti/templates/ingress.yaml'), 'utf8');
+  if (!ingressTemplate.includes('opencti.fullname') || !ingressTemplate.includes('-platform')) {
+    throw new Error('ingress.yaml must route to the platform Service');
+  }
+  const endpoints = await opencti.getEndpoints({ domain: 'vigilante.local' });
+  if (!endpoints.some((e) => e.url === 'https://opencti.vigilante.local/graphql')) {
+    throw new Error(`opencti endpoints must include the GraphQL URL, got: ${JSON.stringify(endpoints.map((e) => e.url))}`);
+  }
+  // No cluster in the sandbox: status() must report Not Installed honestly, not throw.
+  const noCluster = await opencti.status({ domain: 'vigilante.local' });
+  if (noCluster.installed !== false || noCluster.status !== 'Not Installed') {
+    throw new Error(`opencti status with no cluster must be Not Installed, got: ${JSON.stringify(noCluster.status)}`);
+  }
+  console.log('✔ Test 10 passed: opencti module registered (opensearch dependency), chart pins 7.261127.0, secrets required, endpoints + honest no-cluster status.');
+
   console.log('🎉 All Modules tests passed successfully!');
 }
 

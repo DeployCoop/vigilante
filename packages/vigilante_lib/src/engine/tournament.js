@@ -78,6 +78,18 @@ export function generateTeamDynamicFlag({
  * Core Tournament Engine class managing Jeopardy, Attack-Defense, and King of the Hill
  */
 export class TournamentEngine {
+  /**
+   * @param {Object} [options]
+   * @param {string} [options.id='vigilante-cup-2026']
+   * @param {string} [options.title='Vigilante Cyber Defense CTF Tournament']
+   * @param {string[]} [options.modes] - Tournament modes (TOURNAMENT_MODES values)
+   * @param {string} [options.activeMode]
+   * @param {number} [options.initialPoints=500]
+   * @param {number} [options.minimumPoints=100]
+   * @param {number} [options.decaySolves=30]
+   * @param {string} [options.secretKey] - CTF flag HMAC secret; falls back to
+   *   resolveCtfFlagSecret() and then an ephemeral per-engine key
+   */
   constructor({
     id = 'vigilante-cup-2026',
     title = 'Vigilante Cyber Defense CTF Tournament',

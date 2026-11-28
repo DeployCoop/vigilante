@@ -11,6 +11,7 @@ import { ZeekModule } from './zeek/index.js';
 import { ZAPModule } from './zap/index.js';
 import { BloodHoundModule } from './bloodhound/index.js';
 import { RedAiRangeModule } from './redairange/index.js';
+import { OpenCtiModule } from './opencti/index.js';
 
 export class ModuleRegistry {
   constructor() {
@@ -32,6 +33,7 @@ export class ModuleRegistry {
     this.register(new ZAPModule());
     this.register(new BloodHoundModule());
     this.register(new RedAiRangeModule());
+    this.register(new OpenCtiModule());
   }
 
   /**

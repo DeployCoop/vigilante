@@ -223,7 +223,7 @@ async function runTests() {
     process.env.XDG_CONFIG_HOME = tempXdg;
     const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-fake-oobscan-'));
     const fakeOobscan = path.join(fakeBinDir, 'oobscan');
-    await fs.writeFile(fakeOobscan, '#!/bin/sh\nif [ "$1" = "version" ]; then echo "oobscan version 1.2.3"; exit 0; fi\nsleep 30\n', 'utf8');
+    await fs.writeFile(fakeOobscan, '#!/bin/sh\nif [ "$1" = "version" ]; then echo "oobscan version 1.2.3"; exit 0; fi\nexec sleep 30\n', 'utf8');
     await fs.chmod(fakeOobscan, 0o755);
     const origPath = process.env.PATH;
     process.env.PATH = `${fakeBinDir}:${origPath}`;

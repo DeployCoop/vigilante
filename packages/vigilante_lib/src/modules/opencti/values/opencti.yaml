@@ -1,0 +1,20 @@
+# Default values override for the OpenCTI module.
+# Placeholders {{DOMAIN}} and {{TLS_SECRET}} are substituted by the module's
+# install flow (resolveChartValuesArgs); secrets come via --set, never here.
+ingress:
+  enabled: true
+  hosts:
+    - host: opencti.{{DOMAIN}}
+  tls:
+    - secretName: {{TLS_SECRET}}
+      hosts:
+        - opencti.{{DOMAIN}}
+
+platform:
+  adminEmail: admin@vigilante.local
+
+# Search runs on the OpenSearch module (dependency). Override only if the
+# OpenSearch install lives in another namespace or under another release.
+opensearch:
+  engineClient: opensearch
+  url: http://opensearch-cluster-master.default.svc.cluster.local:9200

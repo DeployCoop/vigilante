@@ -94,7 +94,12 @@ async function runTests() {
     'describe_pod',
     'get_cluster_status',
     'list_threat_playbooks',
-    'run_threat_simulation'
+    'run_threat_simulation',
+    'opencti_status',
+    'opencti_lookup',
+    'opencti_sync_indicators',
+    'opencti_create_indicator',
+    'opencti_push_stix'
   ];
   for (const exp of expectedTools) {
     if (!toolNames.includes(exp)) {

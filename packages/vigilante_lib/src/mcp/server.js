@@ -106,6 +106,7 @@ import {
 } from '../engine/soar.js';
 import { runAgentSocInvestigation } from '../engine/agent-soc.js';
 import { syncFeodoTrackerC2, syncUrlhausThreats, matchCtiIndicators, updateSuricataRules } from '../engine/cti.js';
+import { checkOpenCtiConnection, lookupOpenCtiObservable, syncOpenCtiIndicators, createOpenCtiIndicator, pushStixBundleToOpenCti } from '../engine/opencti.js';
 import { generateKspmScorecard, saveKspmReport } from '../engine/kspm.js';
 import { runPipelineAudit, generateSarifReport } from '../engine/audit.js';
 import { listActiveCanaries, generateCanaryServiceAccount, generateCanarySecret, generateDecoyDeploymentYaml, registerCanaryAsset } from '../engine/deception.js';
@@ -2030,6 +2031,60 @@ export function createVigilanteMcpServer() {
               }
             },
             required: ['indicators']
+          }
+        },
+        {
+          name: 'opencti_status',
+          description: 'Check connectivity to the configured OpenCTI threat intelligence platform and report the synced-indicator cache state.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'opencti_lookup',
+          description: 'Look one observable value (IP, domain, URL, or file hash) up in OpenCTI and return the observable plus every indicator referencing it.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              value: { type: 'string', description: 'IP address, domain, URL, or file hash to look up' }
+            },
+            required: ['value']
+          }
+        },
+        {
+          name: 'opencti_sync_indicators',
+          description: 'Sync indicators from the configured OpenCTI instance into the local CTI cache so query_cti can match against them.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              since: { type: 'string', description: 'ISO date: only fetch indicators modified after this time (defaults to the last sync watermark)' }
+            }
+          }
+        },
+        {
+          name: 'opencti_create_indicator',
+          description: 'Create one indicator in OpenCTI from a raw observable value and type. Explicit write action: creates a STIX indicator in the platform.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              value: { type: 'string', description: 'Observable value (IP, domain, URL, or hash)' },
+              type: { type: 'string', description: 'Observable type: ipv4, ipv6, domain, url, sha256, sha1, or md5' },
+              score: { type: 'number', description: 'OpenCTI score 0-100 (default: unset)' },
+              description: { type: 'string', description: 'Human-readable description for the indicator' }
+            },
+            required: ['value', 'type']
+          }
+        },
+        {
+          name: 'opencti_push_stix',
+          description: 'Push a STIX 2.1 bundle into OpenCTI: indicators become indicators, cyber-observables become observables. Relationships are skipped (they need OpenCTI internal IDs). Explicit write action.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              bundleJson: { type: 'string', description: 'STIX 2.1 JSON bundle string or object' }
+            },
+            required: ['bundleJson']
           }
         },
         {
@@ -4155,6 +4210,51 @@ ${observation ? `Observation noted: ${observation}` : ''}`;
             text: JSON.stringify(result, null, 2)
           }
         ]
+      };
+    }
+
+    // Tool: opencti_status
+    if (name === 'opencti_status') {
+      const result = await checkOpenCtiConnection();
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: opencti_lookup
+    if (name === 'opencti_lookup') {
+      const result = await lookupOpenCtiObservable(args.value);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: opencti_sync_indicators
+    if (name === 'opencti_sync_indicators') {
+      const result = await syncOpenCtiIndicators({ since: args.since || undefined });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: opencti_create_indicator (explicit write)
+    if (name === 'opencti_create_indicator') {
+      const result = await createOpenCtiIndicator({
+        value: args.value,
+        type: args.type,
+        score: typeof args.score === 'number' ? args.score : null,
+        description: args.description || undefined
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+      };
+    }
+
+    // Tool: opencti_push_stix (explicit write)
+    if (name === 'opencti_push_stix') {
+      const result = await pushStixBundleToOpenCti(args.bundleJson);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
       };
     }
 

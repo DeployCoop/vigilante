@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencti.fullname" . }}-rabbitmq
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "rabbitmq") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "rabbitmq") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencti.componentLabels" (dict "context" . "component" "rabbitmq") | nindent 8 }}
+    spec:
+      containers:
+        - name: rabbitmq
+          image: {{ include "opencti.image" (dict "context" . "component" "rabbitmq") | quote }}
+          imagePullPolicy: {{ include "opencti.imagePullPolicy" (dict "context" . "component" "rabbitmq") }}
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: {{ .Values.rabbitmq.user | quote }}
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_NODENAME
+              value: rabbit01@localhost
+          ports:
+            - name: amqp
+              containerPort: 5672
+              protocol: TCP
+            - name: management
+              containerPort: 15672
+              protocol: TCP
+          volumeMounts:
+            {{- if .Values.rabbitmq.persistence.enabled }}
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            {{- end }}
+          resources:
+            {{- toYaml .Values.rabbitmq.resources | nindent 12 }}
+      {{- if .Values.rabbitmq.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "opencti.fullname" . }}-rabbitmq
+      {{- end }}

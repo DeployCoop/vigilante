@@ -5,6 +5,30 @@ import { TournamentEngine, TOURNAMENT_STATES } from 'vigilante_lib/engine/tourna
 import { CHALLENGE_TEMPLATES } from 'vigilante_lib/engine/kctf.js';
 import { buildAiCtfChallengeCatalog } from 'vigilante_lib/engine/redairange.js';
 import { getVigilanteConfigDir, resolveCtfFlagSecret } from 'vigilante_lib/engine/config.js';
+import { errorMessage } from '@/lib/envelope';
+
+/**
+ * Challenge template as consumed by the web CTF routes: the kCTF template
+ * set (packages/vigilante_lib/src/engine/kctf.js) plus the RedAiRange
+ * AI-CTF catalog (buildAiCtfChallengeCatalog in redairange.js). The catalog
+ * entries carry source/owaspLlm/mitreAtlas; the kCTF templates carry
+ * defaultFlag. Both shapes share the core fields below.
+ */
+export interface ChallengeTemplateView {
+  id: string;
+  name: string;
+  category: string;
+  difficulty: string;
+  port: number;
+  protocol: string;
+  serviceType: string;
+  description: string;
+  hints?: string[];
+  defaultFlag?: string;
+  source?: string;
+  owaspLlm?: string[];
+  mitreAtlas?: string[];
+}
 
 let cachedEngine: TournamentEngine | null = null;
 
@@ -19,14 +43,14 @@ export async function getTournamentEngine(): Promise<TournamentEngine> {
     return cachedEngine;
   }
 
-  const engine = new (TournamentEngine as any)({
+  const engine = new TournamentEngine({
     id: 'vigilante-kctf-arena',
     title: 'Vigilante kCTF Cyber Range Tournament',
     secretKey
   });
 
   // Seed default challenge templates (kCTF + RedAiRange AI-CTF bridge)
-  const allTemplates = [
+  const allTemplates: ChallengeTemplateView[] = [
     ...CHALLENGE_TEMPLATES,
     ...buildAiCtfChallengeCatalog()
   ];
@@ -39,7 +63,7 @@ export async function getTournamentEngine(): Promise<TournamentEngine> {
         difficulty: chal.difficulty,
         port: chal.port,
         protocol: chal.protocol,
-        defaultFlag: (chal as any).defaultFlag || null,
+        defaultFlag: chal.defaultFlag || null,
         isDynamicFlag: true,
         description: chal.description,
         hints: chal.hints || [],
@@ -88,8 +112,8 @@ export async function getTournamentEngine(): Promise<TournamentEngine> {
         }
       }
     }
-  } catch (err: any) {
-    console.warn('[tournament] Could not restore saved state:', err.message);
+  } catch (err: unknown) {
+    console.warn('[tournament] Could not restore saved state:', errorMessage(err));
   }
 
   cachedEngine = engine;
@@ -104,7 +128,7 @@ export async function persistTournamentState(engine: TournamentEngine): Promise<
     const state = engine.exportState();
     await fs.writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
     await fs.rename(tmp, file);
-  } catch (err: any) {
-    console.warn('[tournament] Could not persist state:', err.message);
+  } catch (err: unknown) {
+    console.warn('[tournament] Could not persist state:', errorMessage(err));
   }
 }

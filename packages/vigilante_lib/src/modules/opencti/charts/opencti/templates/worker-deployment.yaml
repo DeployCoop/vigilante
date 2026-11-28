@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencti.fullname" . }}-worker
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencti.componentLabels" (dict "context" . "component" "worker") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: worker
+          image: {{ include "opencti.image" (dict "context" . "component" "worker") | quote }}
+          imagePullPolicy: {{ include "opencti.imagePullPolicy" (dict "context" . "component" "worker") }}
+          env:
+            - name: OPENCTI_URL
+              value: {{ printf "http://%s-platform:%d" (include "opencti.fullname" .) (.Values.platform.service.port | int) | quote }}
+            - name: OPENCTI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: OPENCTI_ADMIN_TOKEN
+            - name: WORKER_LOG_LEVEL
+              value: {{ .Values.worker.logLevel | quote }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}

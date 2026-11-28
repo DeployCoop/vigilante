@@ -5,6 +5,7 @@ import { resolveCtfFlagSecret } from 'vigilante_lib/engine/config.js';
 import { listK3dClusters, detectK3sAvailability } from 'vigilante_lib/engine/cluster.js';
 import { listActiveSandboxes } from 'vigilante_lib/engine/kctf.js';
 import { authorizeRequest } from '@/lib/authz';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,20 +34,20 @@ export async function GET(req: NextRequest) {
 
     const clusterRunning = k3dClusters.length > 0 || k3sStatus.serviceActive || k3sStatus.kubectlK3sConnected;
     const clusterSummary = k3dClusters.length > 0
-      ? `k3d clusters online (${k3dClusters.map((c: any) => c.name).join(', ')})`
+      ? `k3d clusters online (${k3dClusters.map((c: { name: string }) => c.name).join(', ')})`
       : k3sStatus.kubectlK3sConnected
       ? 'Native host k3s cluster reachable'
       : 'No active Kubernetes cluster detected (emulation/mock mode enabled)';
 
     // 3. Sandboxes Quota Check
     const sandboxes = await listActiveSandboxes();
-    const activeCount = sandboxes.filter((s: any) => s.status === 'ACTIVE').length;
+    const activeCount = sandboxes.filter((s: { status: string }) => s.status === 'ACTIVE').length;
     const quotaRemaining = Math.max(0, 3 - activeCount);
 
     // 4. Local CTF Workspace Check
     const workspaceDir = path.resolve(process.cwd(), 'ctf-workspace');
     let workspaceReady = false;
-    let challengeDirs: string[] = [];
+    const challengeDirs: string[] = [];
 
     try {
       const stat = await fs.stat(workspaceDir);
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
         challenges: challengeDirs
       }
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }

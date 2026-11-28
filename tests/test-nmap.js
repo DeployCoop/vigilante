@@ -123,7 +123,7 @@ async function runTests() {
     // (default 10 min; the override here keeps the test fast).
     const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-fake-nmap-'));
     const fakeNmap = path.join(fakeBinDir, 'nmap');
-    await fs.writeFile(fakeNmap, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "Nmap version 7.95"; exit 0; fi\nsleep 30\n', 'utf8');
+    await fs.writeFile(fakeNmap, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "Nmap version 7.95"; exit 0; fi\nexec sleep 30\n', 'utf8');
     await fs.chmod(fakeNmap, 0o755);
     const origPath = process.env.PATH;
     process.env.PATH = `${fakeBinDir}:${origPath}`;

@@ -23,6 +23,68 @@ import {
   Check,
   Server
 } from 'lucide-react';
+import { errorMessage } from '@/lib/envelope';
+
+/** One endpoint from RedAiRangeModule.getEndpoints() (modules/redairange/index.js). */
+interface RedAiRangeEndpoint {
+  name: string;
+  url: string;
+  namespace: string;
+  description: string;
+}
+
+/** Runtime info from RedAiRangeModule.getRuntimeInfo(). */
+interface RedAiRangeRuntimeInfo {
+  mode: string;
+  hostDockerSocketMounted: boolean;
+  socketTransport: string;
+  appImage: string;
+  dindImage: string;
+  uiPort: number;
+  stacksDir: string;
+  scenarioPorts: number[];
+  supportedProviders: string[];
+  license: string;
+  upstreamRepo: string;
+}
+
+/** Module status from RedAiRangeModule.status(). */
+interface RedAiRangeModuleStatus {
+  id: string;
+  name: string;
+  namespace: string;
+  installed: boolean;
+  status: string;
+  pods: Array<{
+    name: string;
+    namespace: string;
+    phase: string;
+    ready: boolean;
+    containers: Array<{ name: string; ready: boolean; restarts: number }>;
+    restarts: number;
+  }>;
+  runtime: RedAiRangeRuntimeInfo;
+  endpoints: RedAiRangeEndpoint[];
+}
+
+/** GET /api/redairange/status response. */
+interface RedAiRangeStatusResponse {
+  success: boolean;
+  clusterName: string;
+  domain: string;
+  status: RedAiRangeModuleStatus;
+  runtime: RedAiRangeRuntimeInfo;
+  scenariosCount: number;
+  bridgedCount: number;
+}
+
+/** validateStackComposeYaml result (engine/redairange.js): services are the service names. */
+interface ComposeValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  services: string[];
+}
 
 interface Scenario {
   id: string;
@@ -67,7 +129,7 @@ export default function RedAiRangePage() {
   const [activeTab, setActiveTab] = useState<'scenarios' | 'bridge' | 'validator'>('scenarios');
 
   // Status state
-  const [statusData, setStatusData] = useState<any>(null);
+  const [statusData, setStatusData] = useState<RedAiRangeStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState<boolean>(true);
   const [deployLoading, setDeployLoading] = useState<boolean>(false);
   const [actionBanner, setActionBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
@@ -98,7 +160,7 @@ export default function RedAiRangePage() {
       - no-new-privileges:true
     command: ["python3", "-m", "http.server", "8000"]`
   );
-  const [validationResult, setValidationResult] = useState<any>(null);
+  const [validationResult, setValidationResult] = useState<ComposeValidationResult | null>(null);
   const [validating, setValidating] = useState<boolean>(false);
 
   const fetchAll = useCallback(async () => {
@@ -142,8 +204,8 @@ export default function RedAiRangePage() {
       } else {
         setActionBanner({ kind: 'err', text: data.error || `Failed to ${action} RedAiRange module.` });
       }
-    } catch (err: any) {
-      setActionBanner({ kind: 'err', text: err?.message || 'Request failed' });
+    } catch (err: unknown) {
+      setActionBanner({ kind: 'err', text: errorMessage(err) || 'Request failed' });
     } finally {
       setDeployLoading(false);
     }
@@ -162,8 +224,8 @@ export default function RedAiRangePage() {
       } else {
         setActionBanner({ kind: 'err', text: data.error || 'Could not generate compose stack' });
       }
-    } catch (err: any) {
-      setActionBanner({ kind: 'err', text: err?.message || 'Could not generate compose stack' });
+    } catch (err: unknown) {
+      setActionBanner({ kind: 'err', text: errorMessage(err) || 'Could not generate compose stack' });
     }
   };
 
@@ -187,8 +249,8 @@ export default function RedAiRangePage() {
       } else {
         setActionBanner({ kind: 'err', text: data.error || 'Failed to bridge scenario to AI-CTF' });
       }
-    } catch (err: any) {
-      setActionBanner({ kind: 'err', text: err?.message || 'Bridge request failed' });
+    } catch (err: unknown) {
+      setActionBanner({ kind: 'err', text: errorMessage(err) || 'Bridge request failed' });
     } finally {
       setBridgeLoadingId(null);
     }
@@ -206,8 +268,8 @@ export default function RedAiRangePage() {
       } else {
         setActionBanner({ kind: 'err', text: data.error || 'Teardown failed' });
       }
-    } catch (err: any) {
-      setActionBanner({ kind: 'err', text: err?.message || 'Teardown failed' });
+    } catch (err: unknown) {
+      setActionBanner({ kind: 'err', text: errorMessage(err) || 'Teardown failed' });
     }
   };
 
@@ -230,10 +292,10 @@ export default function RedAiRangePage() {
             : (data.reason || data.error || 'Rejected by fail-closed HMAC verifier')
         }
       }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFlagResults((prev) => ({
         ...prev,
-        [challengeId]: { ok: false, message: err?.message || 'Submission failed' }
+        [challengeId]: { ok: false, message: errorMessage(err) || 'Submission failed' }
       }));
     }
   };
@@ -249,8 +311,8 @@ export default function RedAiRangePage() {
       });
       const data = await res.json();
       setValidationResult(data);
-    } catch (err: any) {
-      setValidationResult({ valid: false, errors: [err?.message || 'Validation failed'], warnings: [] });
+    } catch (err: unknown) {
+      setValidationResult({ valid: false, errors: [errorMessage(err) || 'Validation failed'], warnings: [], services: [] });
     } finally {
       setValidating(false);
     }

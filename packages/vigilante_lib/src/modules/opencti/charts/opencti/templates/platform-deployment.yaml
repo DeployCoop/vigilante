@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencti.fullname" . }}-platform
+  namespace: {{ include "opencti.namespace" . }}
+  labels:
+    {{- include "opencti.componentLabels" (dict "context" . "component" "platform") | nindent 4 }}
+spec:
+  replicas: {{ .Values.platform.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opencti.componentSelectorLabels" (dict "context" . "component" "platform") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencti.componentLabels" (dict "context" . "component" "platform") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: platform
+          image: {{ include "opencti.image" (dict "context" . "component" "platform") | quote }}
+          imagePullPolicy: {{ include "opencti.imagePullPolicy" (dict "context" . "component" "platform") }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.platform.service.port }}
+              protocol: TCP
+          env:
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=8096
+            - name: APP__PORT
+              value: {{ .Values.platform.service.port | quote }}
+            - name: APP__BASE_URL
+              value: {{ printf "https://%s" (index .Values.ingress.hosts 0).host | quote }}
+            - name: APP__ADMIN__EMAIL
+              value: {{ .Values.platform.adminEmail | quote }}
+            - name: APP__ADMIN__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: OPENCTI_ADMIN_PASSWORD
+            - name: APP__ADMIN__TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: OPENCTI_ADMIN_TOKEN
+            - name: APP__APP_LOGS__LOGS_LEVEL
+              value: {{ .Values.platform.logLevel | quote }}
+            - name: REDIS__HOSTNAME
+              value: {{ include "opencti.fullname" . }}-redis
+            - name: REDIS__PORT
+              value: "6379"
+            - name: ELASTICSEARCH__ENGINE_CLIENT
+              value: {{ .Values.opensearch.engineClient | quote }}
+            - name: ELASTICSEARCH__URL
+              value: {{ .Values.opensearch.url | quote }}
+            - name: MINIO__ENDPOINT
+              value: {{ include "opencti.fullname" . }}-minio
+            - name: MINIO__PORT
+              value: "9000"
+            - name: MINIO__USE_SSL
+              value: "false"
+            - name: MINIO__ACCESS_KEY
+              value: {{ .Values.minio.rootUser | quote }}
+            - name: MINIO__SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: MINIO_ROOT_PASSWORD
+            - name: RABBITMQ__HOSTNAME
+              value: {{ include "opencti.fullname" . }}-rabbitmq
+            - name: RABBITMQ__PORT
+              value: "5672"
+            - name: RABBITMQ__PORT_MANAGEMENT
+              value: "15672"
+            - name: RABBITMQ__MANAGEMENT_SSL
+              value: "false"
+            - name: RABBITMQ__USERNAME
+              value: {{ .Values.rabbitmq.user | quote }}
+            - name: RABBITMQ__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-credentials
+                  key: RABBITMQ_PASSWORD
+            - name: PROVIDERS__LOCAL__STRATEGY
+              value: LocalStrategy
+          # TCP probes: the platform's HTTP health path is version-dependent,
+          # a socket probe is the honest readiness signal here.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.platform.resources | nindent 12 }}

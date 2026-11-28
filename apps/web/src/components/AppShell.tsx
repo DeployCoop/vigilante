@@ -28,7 +28,8 @@ import {
   LogIn,
   ShieldCheck,
   BookOpen,
-  Bot
+  Bot,
+  Satellite
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { useAbilityContext } from '@/lib/ability';
@@ -59,6 +60,7 @@ const NAV_SECTIONS = [
       { href: '/battlestation', label: 'BattleStation SOC', icon: Radio, pulse: true },
       { href: '/pods', label: 'Live Pods Monitor', icon: Server },
       { href: '/openvas', label: 'OpenVAS Scanner', icon: ShieldAlert },
+      { href: '/opencti', label: 'OpenCTI Intel', icon: Satellite },
       { href: '/oobscan', label: 'OOBscan BMC', icon: Cpu },
       { href: '/vuln', label: 'Vulnerability Brain', icon: ShieldAlert },
       { href: '/posture', label: 'KSPM & MITRE', icon: ShieldAlert },

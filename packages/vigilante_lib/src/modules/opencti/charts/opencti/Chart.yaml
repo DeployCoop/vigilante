@@ -1,0 +1,21 @@
+apiVersion: v2
+name: opencti
+description: Open Cyber Threat Intelligence Platform (STIX 2.1-native) with worker, Redis, RabbitMQ, and S3 storage
+type: application
+version: 0.1.0
+appVersion: 7.261127.0
+kubeVersion: '>=1.25.0-0'
+home: https://www.opencti.io
+sources:
+  - https://github.com/opencti-platform/opencti
+maintainers:
+  - name: Vigilante Security Team
+keywords:
+  - threat-intelligence
+  - cti
+  - stix
+  - opencti
+  - security
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: Apache-2.0
