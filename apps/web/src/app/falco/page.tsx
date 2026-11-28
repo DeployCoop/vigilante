@@ -24,16 +24,101 @@ import {
   Check,
   Copy
 } from 'lucide-react';
+import { errorMessage } from '@/lib/envelope';
+
+/** eBPF driver info from FalcoModule.getDriverInfo() (modules/falco/index.js). */
+interface FalcoDriverInfo {
+  kind: string;
+  driver: string;
+  description: string;
+  probeSource: string;
+  bufferCpus: number;
+  syscallCategories: string[];
+}
+
+/** GET /api/falco/status response: module status (FalcoModule.status()) + driver info. */
+interface FalcoStatusResponse {
+  success: boolean;
+  clusterName?: string;
+  domain?: string;
+  status?: {
+    id: string;
+    name: string;
+    namespace: string;
+    installed: boolean;
+    status: string;
+    pods: Array<{ name: string; namespace: string; phase: string; ready: boolean; restarts: number }>;
+    endpoints: Array<{ name: string; url: string; namespace: string; description: string }>;
+  };
+  driver?: FalcoDriverInfo;
+}
+
+/** One entry of BUILTIN_FALCO_RULES (engine/falco.js). */
+interface FalcoRule {
+  rule: string;
+  desc: string;
+  condition: string;
+  output: string;
+  priority: string;
+  source: string;
+  tags: string[];
+}
+
+/** Parsed Falco event from parseFalcoEvent (engine/falco.js). */
+interface FalcoSimEvent {
+  id: string;
+  uuid?: string;
+  source: string;
+  time: string;
+  rule: string;
+  priority: string;
+  severity: string;
+  message: string;
+  output: string;
+  output_fields: Record<string, string>;
+  container: string;
+  pod: string;
+  namespace: string;
+  process: string;
+  cmdline: string;
+  user: string;
+  tags: string[];
+  mitreTactics: string[];
+  mitreTechniques: string[];
+}
+
+/** SOAR decision from evaluateFalcoSoarAction (engine/falco.js). */
+interface FalcoSoarAction {
+  action: string;
+  description: string;
+  target: string;
+  recommendedSlaMinutes: number;
+}
+
+/** POST /api/falco/simulate response. */
+interface FalcoSimulationResult {
+  success: boolean;
+  event: FalcoSimEvent;
+  soarAction: FalcoSoarAction;
+}
+
+/** POST /api/falco/rules validation response. */
+interface FalcoValidationResult {
+  success: boolean;
+  valid: boolean;
+  errors: string[];
+  parsedRules?: FalcoRule[];
+}
 
 export default function FalcoDashboardPage() {
   const [activeTab, setActiveTab] = useState<'rules' | 'simulator' | 'validator'>('rules');
   
   // Status state
-  const [status, setStatus] = useState<any>(null);
+  const [status, setStatus] = useState<FalcoStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState<boolean>(true);
 
   // Rules state
-  const [rules, setRules] = useState<any[]>([]);
+  const [rules, setRules] = useState<FalcoRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState<boolean>(true);
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -42,7 +127,7 @@ export default function FalcoDashboardPage() {
   // Simulator state
   const [selectedScenario, setSelectedScenario] = useState<string>('shell-spawn');
   const [simLoading, setSimLoading] = useState<boolean>(false);
-  const [simResult, setSimResult] = useState<any>(null);
+  const [simResult, setSimResult] = useState<FalcoSimulationResult | null>(null);
 
   // Validator state
   const [ruleYaml, setRuleYaml] = useState<string>(
@@ -54,13 +139,15 @@ export default function FalcoDashboardPage() {
   tags: [mitre_execution, t1059]`
   );
   const [validationLoading, setValidationLoading] = useState<boolean>(false);
-  const [validationResult, setValidationResult] = useState<any>(null);
+  const [validationResult, setValidationResult] = useState<FalcoValidationResult | null>(null);
 
   // Copied indicator
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Loading flags start true via useState and are (re-)set by the button /
+  // filter handlers that call these fetchers — never here, so the mount
+  // effect below performs no synchronous setState (react-hooks/set-state-in-effect).
   const fetchStatus = () => {
-    setStatusLoading(true);
     fetch('/api/falco/status')
       .then((res) => res.json())
       .then((data) => {
@@ -73,7 +160,6 @@ export default function FalcoDashboardPage() {
   };
 
   const fetchRules = (priority?: string) => {
-    setRulesLoading(true);
     const url = priority && priority !== 'ALL'
       ? `/api/falco/rules?priority=${encodeURIComponent(priority)}`
       : '/api/falco/rules';
@@ -96,6 +182,7 @@ export default function FalcoDashboardPage() {
 
   const handlePriorityChange = (priority: string) => {
     setPriorityFilter(priority);
+    setRulesLoading(true);
     fetchRules(priority);
   };
 
@@ -129,8 +216,8 @@ export default function FalcoDashboardPage() {
       });
       const data = await res.json();
       setValidationResult(data);
-    } catch (err: any) {
-      setValidationResult({ success: false, valid: false, errors: [err.message] });
+    } catch (err: unknown) {
+      setValidationResult({ success: false, valid: false, errors: [errorMessage(err)] });
     } finally {
       setValidationLoading(false);
     }
@@ -176,7 +263,7 @@ export default function FalcoDashboardPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchStatus}
+            onClick={() => { setStatusLoading(true); fetchStatus(); }}
             title="Refresh sensor status"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300 transition-colors"
           >

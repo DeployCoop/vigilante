@@ -311,6 +311,10 @@ export const X86_64_ROP_GADGETS = [
 
 /**
  * Scans an ELF executable buffer for x86_64 Return-Oriented Programming (ROP) gadgets
+ * @param {Object} [options]
+ * @param {Buffer} options.binaryBuffer - ELF binary bytes to scan
+ * @param {string[] | null} [options.targetGadgets=null] - Gadget mnemonics to
+ *   search for; null searches all known x86_64 gadgets
  */
 export function findRopGadgets({
   binaryBuffer,

@@ -1340,6 +1340,13 @@ export async function listActiveSandboxes({
 
 /**
  * Extend an active sandbox TTL by additional minutes (up to max TTL)
+ * @param {Object} [options]
+ * @param {string} [options.sandboxId] - Sandbox to extend; falls back to the
+ *   ACTIVE sandbox for teamId + challengeId when omitted
+ * @param {string} [options.teamId]
+ * @param {string} [options.challengeId]
+ * @param {number} [options.additionalMinutes=15]
+ * @param {number} [options.maxTtlMinutes=MAX_SANDBOX_TTL_MINUTES]
  */
 export async function extendSandboxTtl({
   sandboxId,

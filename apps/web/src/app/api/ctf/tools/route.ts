@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = (rsaWeakPrimes as any)({ n, e, method });
+      const result = rsaWeakPrimes({ n, e, method });
       return NextResponse.json({ success: true, tool, ...result });
     }
 
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const ropResult = (findRopGadgets as any)({ binaryBuffer: buf });
+      const ropResult = findRopGadgets({ binaryBuffer: buf });
       return NextResponse.json({ success: true, tool, ...ropResult });
     }
 

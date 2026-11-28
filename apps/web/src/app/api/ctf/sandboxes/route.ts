@@ -45,15 +45,15 @@ export async function POST(req: NextRequest) {
 
     let sbx;
     try {
-      sbx = await (spawnEphemeralSandbox as any)({
+      sbx = await spawnEphemeralSandbox({
         challengeId,
         teamId,
         ttlMinutes,
         mock
       });
-    } catch (err: any) {
-      if (!mock && err.message?.includes('Kubernetes apply failed')) {
-        sbx = await (spawnEphemeralSandbox as any)({
+    } catch (err: unknown) {
+      if (!mock && err instanceof Error && err.message.includes('Kubernetes apply failed')) {
+        sbx = await spawnEphemeralSandbox({
           challengeId,
           teamId,
           ttlMinutes,
@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest) {
       if (!sandboxId) {
         return NextResponse.json({ success: false, error: 'sandboxId is required to extend TTL' }, { status: 400 });
       }
-      const result = await (extendSandboxTtl as any)({ sandboxId, additionalMinutes });
+      const result = await extendSandboxTtl({ sandboxId, additionalMinutes });
       return NextResponse.json({ success: true, ...result });
     }
 
@@ -97,8 +97,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ success: false, error: `Unknown action '${action}'` }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -115,7 +115,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'sandboxId is required' }, { status: 400 });
     }
 
-    const res = await (terminateSandbox as any)({ sandboxId, mock });
+    const res = await terminateSandbox({ sandboxId, mock });
     return NextResponse.json(res);
   } catch (err: unknown) {
     return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });

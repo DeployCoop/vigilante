@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const result = await (sealSolveEvidence as any)({
+      const result = await sealSolveEvidence({
         teamId,
         challengeId,
         flag,

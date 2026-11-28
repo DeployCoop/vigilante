@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeRequest } from '@/lib/authz';
 import { getTournamentEngine } from '@/lib/ctf-tournament-server';
+import { errorMessage } from '@/lib/envelope';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
       announcements: engine.announcements.slice(0, 5),
       svgChart
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: errorMessage(err) }, { status: 500 });
   }
 }
