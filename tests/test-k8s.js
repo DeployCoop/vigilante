@@ -37,7 +37,7 @@ async function runTests() {
   }
   const fakeBinDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vigilante-fake-kubectl-'));
   const fakeKubectl = path.join(fakeBinDir, 'kubectl');
-  await fs.writeFile(fakeKubectl, '#!/bin/sh\nsleep 30\n', 'utf8');
+  await fs.writeFile(fakeKubectl, '#!/bin/sh\nexec sleep 30\n', 'utf8');
   await fs.chmod(fakeKubectl, 0o755);
   const origPath = process.env.PATH;
   process.env.PATH = `${fakeBinDir}:${origPath}`;
